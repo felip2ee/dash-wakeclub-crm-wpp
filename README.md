@@ -42,3 +42,12 @@ bun run build
 ```
 
 O arquivo `.env`, dependências e artefatos de build não são versionados.
+
+## Imagem Docker
+
+A branch `main` publica automaticamente a imagem no GitHub Container Registry:
+
+```powershell
+docker pull ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest
+docker run --rm -p 3000:3000 --env-file .env ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest
+```
