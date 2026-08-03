@@ -20,10 +20,9 @@ ENV PORT=3000
 
 COPY package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile --production
-COPY --from=build --chown=bun:bun /app/dist ./dist
+COPY --from=build --chown=bun:bun /app/.output ./.output
 
 USER bun
 EXPOSE 3000
 
-CMD ["bun", "dist/server/server.js"]
-
+CMD ["bun", ".output/server/index.mjs"]
