@@ -3,7 +3,6 @@ import {
   MessageSquareText,
   KanbanSquare,
   BarChart3,
-  Megaphone,
   Bot,
   Waves,
   Eye,
@@ -25,17 +24,16 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { sair, type Sessao } from "@/server/auth";
 
 /** `demo` marca a tela que ainda roda em dado falso — ver /templates. */
 const navAdmin = [
+  { title: "Visão geral", url: "/admin", icon: ShieldCheck },
   { title: "Conversas", url: "/", icon: MessageSquareText },
-  { title: "Kanban de leads", url: "/kanban", icon: KanbanSquare },
-  { title: "Motor de IA (WF-02)", url: "/wf02", icon: Bot },
+  { title: "Todos os leads", url: "/kanban", icon: KanbanSquare },
+  { title: "IA e followups", url: "/wf02", icon: Bot },
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
-  { title: "Disparos", url: "/templates", icon: Megaphone, demo: true },
 ] as const;
 
 export function AppSidebar({ sessao }: { sessao: Sessao | null }) {
@@ -44,13 +42,7 @@ export function AppSidebar({ sessao }: { sessao: Sessao | null }) {
   const router = useRouter();
   const nav =
     sessao?.papel === "admin"
-      ? [
-          ...navAdmin,
-          { title: "Followups", url: "/followups" as const, icon: ListTodo },
-          { title: "Meus leads", url: "/meus-leads" as const, icon: UsersRound },
-          { title: "Instalar app", url: "/instalar" as const, icon: Smartphone },
-          { title: "Administração", url: "/admin" as const, icon: ShieldCheck },
-        ]
+      ? navAdmin
       : [
           { title: "Followups", url: "/followups" as const, icon: ListTodo },
           { title: "Meus leads", url: "/meus-leads" as const, icon: UsersRound },
@@ -94,14 +86,6 @@ export function AppSidebar({ sessao }: { sessao: Sessao | null }) {
                       <Link to={item.url} className="flex items-center gap-2">
                         <item.icon className="h-4 w-4" />
                         <span className="flex-1">{item.title}</span>
-                        {"demo" in item && item.demo && (
-                          <Badge
-                            variant="outline"
-                            className="h-5 rounded-full border-sidebar-border px-1.5 text-[10px] font-normal text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden"
-                          >
-                            demo
-                          </Badge>
-                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

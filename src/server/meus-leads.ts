@@ -2,7 +2,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { exigirSessao } from "./auth";
+import { exigirAtendente } from "./auth";
 import { getPool } from "./db";
 
 export type MeuLead = {
@@ -47,7 +47,7 @@ type LinhaMensagem = {
 
 export const listarMeusLeads = createServerFn({ method: "GET" }).handler(
   async (): Promise<MeuLead[]> => {
-    const sessao = await exigirSessao();
+    const sessao = await exigirAtendente();
     const { rows } = await getPool().query<LinhaLead>(
       `select id, nome, telefone, etiqueta, etiqueta_ordem, temperatura, resumo,
               ultima_msg_em, aguardando_equipe, horas_esperando
@@ -75,7 +75,7 @@ export const listarMeusLeads = createServerFn({ method: "GET" }).handler(
 export const listarMensagensDoMeuLead = createServerFn({ method: "GET" })
   .validator(z.object({ leadId: z.string().uuid() }))
   .handler(async ({ data }): Promise<MensagemDoMeuLead[]> => {
-    const sessao = await exigirSessao();
+    const sessao = await exigirAtendente();
     const pertence = await getPool().query<{ existe: boolean }>(
       `select exists (
          select 1

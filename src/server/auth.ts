@@ -205,3 +205,12 @@ export const exigirAdmin = createServerFn({ method: "GET" }).handler(async (): P
   if (sessao.papel !== "admin") throw redirect({ to: "/followups" });
   return sessao;
 });
+
+export const exigirAtendente = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Sessao> => {
+    const sessao = await getSessao();
+    if (!sessao) throw redirect({ to: "/login" });
+    if (sessao.papel !== "atendente") throw redirect({ to: "/admin" });
+    return sessao;
+  },
+);

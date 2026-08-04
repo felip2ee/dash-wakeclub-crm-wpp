@@ -7,7 +7,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { exigirSessao } from "./auth";
+import { exigirAtendente } from "./auth";
 import { getPool, getPoolRw } from "./db";
 
 export type FollowupFila = {
@@ -38,7 +38,7 @@ const iso = (data: Date | null) => (data ? data.toISOString() : null);
 
 export const listarMinhaFila = createServerFn({ method: "GET" }).handler(
   async (): Promise<FollowupFila[]> => {
-    const sessao = await exigirSessao();
+    const sessao = await exigirAtendente();
     const { rows } = await getPool().query(
       `select followup_id, lead_id, nome, telefone, etiqueta, temperatura,
               interesse, objecao, resumo, n_toques, ultima_msg_lead_em, tipo,
@@ -79,7 +79,7 @@ export const listarMinhaFila = createServerFn({ method: "GET" }).handler(
 export const registrarToque = createServerFn({ method: "POST" })
   .validator(z.object({ followupId: z.string().uuid() }))
   .handler(async ({ data }): Promise<{ registrado: true }> => {
-    const sessao = await exigirSessao();
+    const sessao = await exigirAtendente();
     const { rows } = await getPool().query(
       `select 1
          from wakeclub.v_followups_fila

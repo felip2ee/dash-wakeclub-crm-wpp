@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import {
   CalendarClock,
   CheckCheck,
@@ -23,7 +23,13 @@ import { listarMinhaFila, registrarToque, type FollowupFila } from "@/server/fol
 const CHAVE_FILA = ["minha-fila-followups"] as const;
 
 export const Route = createFileRoute("/followups")({
-  beforeLoad: async () => ({ sessao: await exigirSessao() }),
+  beforeLoad: async () => {
+    const sessao = await exigirSessao();
+    if (sessao.papel === "admin") {
+      throw redirect({ to: "/wf02", search: { aba: "followups" } });
+    }
+    return { sessao };
+  },
   loader: () => listarMinhaFila(),
   head: () => ({ meta: [{ title: "Followups — Wake Club" }] }),
   component: FollowupsPage,

@@ -15,6 +15,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -111,10 +112,13 @@ const SITUACAO: Record<
 };
 
 export const Route = createFileRoute("/wf02")({
+  validateSearch: z.object({
+    aba: z.enum(["timeline", "porlead", "fila", "followups"]).optional(),
+  }),
   beforeLoad: async () => ({ sessao: await exigirAdmin() }),
   head: () => ({
     meta: [
-      { title: "Motor de IA (WF-02) — Wake Club CRM" },
+      { title: "IA e followups — Wake Club CRM" },
       {
         name: "description",
         content: "O que o Qualificador IA decidiu, o que está na fila e o que falhou.",
@@ -128,6 +132,7 @@ export const Route = createFileRoute("/wf02")({
 
 function Wf02Page() {
   const { atividade, motor, followups } = Route.useLoaderData();
+  const { aba } = Route.useSearch();
   const router = useRouter();
 
   useEffect(() => {
@@ -146,7 +151,7 @@ function Wf02Page() {
           <div className="min-w-0 flex-1">
             <h1 className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight sm:text-xl">
               <Bot className="h-5 w-5 text-primary" />
-              Motor de IA · WF-02
+              IA e followups · WF-02
             </h1>
             <p className="text-xs text-muted-foreground sm:text-sm">
               {plural(atividade.length, "qualificação", "qualificações")} · {naFila} na fila ·{" "}
@@ -168,7 +173,7 @@ function Wf02Page() {
         </div>
       </header>
 
-      <Tabs defaultValue="timeline" className="flex min-h-0 flex-1 flex-col gap-0">
+      <Tabs defaultValue={aba ?? "timeline"} className="flex min-h-0 flex-1 flex-col gap-0">
         <div className="border-b border-border bg-card px-4 sm:px-6">
           <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-0 bg-transparent p-0">
             <Aba valor="timeline">Linha do tempo</Aba>

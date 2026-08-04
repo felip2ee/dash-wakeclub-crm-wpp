@@ -24,6 +24,7 @@ export default defineConfig({
             "**/src/server/auth.ts",
             "**/src/server/push.ts",
             "**/src/server/followups.ts",
+            "**/src/server/admin.ts",
           ],
         },
       },

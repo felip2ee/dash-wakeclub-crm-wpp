@@ -43,6 +43,7 @@ const VIEWS_ESPERADAS = [
   "v_relatorio_wf02_dia",
   "v_sessao_valida",
   "v_followups_fila",
+  "v_admin_labels_disponiveis",
   "v_admin_atendentes",
   "v_admin_resumo",
 ];
@@ -386,6 +387,62 @@ async function check() {
       }
     }
 
+    const { rows: privilegiosUsuarios } = await painelRw.query(
+      `select
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'ultimo_acesso_em', 'UPDATE')
+           as atualiza_ultimo_acesso,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'ativo', 'UPDATE')
+           as atualiza_ativo,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'senha_hash', 'UPDATE')
+           as atualiza_senha,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'papel', 'UPDATE')
+           as atualiza_papel,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'label_id', 'UPDATE')
+           as atualiza_label,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'nome', 'INSERT')
+           as insere_nome,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'usuario', 'INSERT')
+           as insere_usuario,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'senha_hash', 'INSERT')
+           as insere_senha,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'papel', 'INSERT')
+           as insere_papel,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'label_id', 'INSERT')
+           as insere_label,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'ativo', 'INSERT')
+           as insere_ativo,
+         has_column_privilege(current_user, 'wakeclub.usuarios', 'id', 'INSERT')
+           as insere_id`,
+    );
+    const privilegios = privilegiosUsuarios[0];
+    if (
+      privilegios.atualiza_ultimo_acesso &&
+      privilegios.atualiza_ativo &&
+      !privilegios.atualiza_senha &&
+      !privilegios.atualiza_papel &&
+      !privilegios.atualiza_label
+    ) {
+      console.log(cor.ok("  ✓ UPDATE limitado a usuarios.ultimo_acesso_em e usuarios.ativo"));
+    } else {
+      console.log(cor.erro("  ✗ privilégios de UPDATE em usuarios estão fora do contrato"));
+      tudoOk = false;
+    }
+
+    if (
+      privilegios.insere_nome &&
+      privilegios.insere_usuario &&
+      privilegios.insere_senha &&
+      privilegios.insere_label &&
+      !privilegios.insere_papel &&
+      !privilegios.insere_ativo &&
+      !privilegios.insere_id
+    ) {
+      console.log(cor.ok("  ✓ INSERT de usuarios limitado às colunas do cadastro"));
+    } else {
+      console.log(cor.erro("  ✗ privilégios de INSERT em usuarios estão fora do contrato"));
+      tudoOk = false;
+    }
+
     try {
       await painelRw.query("select * from wakeclub.leads limit 1");
       console.log(cor.erro("  ✗ a painel_rw CONSEGUIU LER leads. A role tem permissão demais."));
@@ -492,6 +549,12 @@ async function apply() {
     await admin.query("grant usage on schema wakeclub to painel_rw");
     await admin.query("grant select on wakeclub.usuarios to painel_rw");
     await admin.query("grant update (ultimo_acesso_em) on wakeclub.usuarios to painel_rw");
+    await admin.query("grant update (ativo) on wakeclub.usuarios to painel_rw");
+    await admin.query("revoke insert (papel, ativo) on wakeclub.usuarios from painel_rw");
+    await admin.query(
+      `grant insert (nome, usuario, senha_hash, label_id)
+         on wakeclub.usuarios to painel_rw`,
+    );
     await admin.query("grant select, insert, update, delete on wakeclub.sessoes to painel_rw");
     await admin.query(
       "grant select, insert, update, delete on wakeclub.push_subscriptions to painel_rw",

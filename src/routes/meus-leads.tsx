@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ArrowLeft, Clock3, MessageCircle, Search, UsersRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,11 @@ import { exigirSessao } from "@/server/auth";
 import { listarMensagensDoMeuLead, listarMeusLeads, type MeuLead } from "@/server/meus-leads";
 
 export const Route = createFileRoute("/meus-leads")({
-  beforeLoad: async () => ({ sessao: await exigirSessao() }),
+  beforeLoad: async () => {
+    const sessao = await exigirSessao();
+    if (sessao.papel === "admin") throw redirect({ to: "/kanban" });
+    return { sessao };
+  },
   loader: () => listarMeusLeads(),
   head: () => ({ meta: [{ title: "Meus leads — Wake Club" }] }),
   component: MeusLeadsPage,

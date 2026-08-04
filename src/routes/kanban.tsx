@@ -60,7 +60,7 @@ export const Route = createFileRoute("/kanban")({
   beforeLoad: async () => ({ sessao: await exigirAdmin() }),
   head: () => ({
     meta: [
-      { title: "Kanban — Wake Club CRM" },
+      { title: "Todos os leads — Wake Club CRM" },
       {
         name: "description",
         content: "Funil de leads da Wake Club por etapa do playbook.",
@@ -102,7 +102,7 @@ function KanbanPage() {
       <header className="flex flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-lg font-semibold tracking-tight sm:text-xl">
-            Kanban de leads
+            Todos os leads
           </h1>
           <p className="truncate text-xs text-muted-foreground sm:text-sm">
             {filtrados.length} {filtrados.length === 1 ? "lead" : "leads"}

@@ -887,9 +887,11 @@ acesso. Ordenar por `parados_2h desc`.
 > label de atendente tem que continuar sendo feito no WhatsApp, senão banco e celular
 > divergem (CLAUDE.md §15).
 
-**Cadastro de novas atendentes fica de fora desta entrega.** Envolve gerar hash bcrypt e
-casar com uma label existente na Evolution; por ora é SQL na mão, e está registrado como
-pendência no CLAUDE.md §11.
+**Cadastro de novas atendentes é feito pelo admin.** O servidor gera o hash bcrypt e
+exige uma label ativa, não marcada como `nao_atender` e ainda sem usuária vinculada. A
+`painel_rw` recebe `insert` somente em `nome`, `usuario`, `senha_hash` e `label_id`;
+`papel = 'atendente'` e `ativo = true` vêm dos defaults protegidos do banco. Não há
+edição posterior de senha, papel ou label nesta tela.
 
 ---
 
