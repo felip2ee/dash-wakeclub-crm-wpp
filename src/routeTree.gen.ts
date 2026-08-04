@@ -12,8 +12,14 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as Wf02RouteImport } from './routes/wf02'
 import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as MeusLeadsRouteImport } from './routes/meus-leads'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as KanbanRouteImport } from './routes/kanban'
+import { Route as InstalarRouteImport } from './routes/instalar'
+import { Route as FollowupsRouteImport } from './routes/followups'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPushEnviarRouteImport } from './routes/api/push/enviar'
 
 const Wf02Route = Wf02RouteImport.update({
   id: '/wf02',
@@ -30,9 +36,34 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MeusLeadsRoute = MeusLeadsRouteImport.update({
+  id: '/meus-leads',
+  path: '/meus-leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const KanbanRoute = KanbanRouteImport.update({
   id: '/kanban',
   path: '/kanban',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InstalarRoute = InstalarRouteImport.update({
+  id: '/instalar',
+  path: '/instalar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FollowupsRoute = FollowupsRouteImport.update({
+  id: '/followups',
+  path: '/followups',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -40,43 +71,106 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPushEnviarRoute = ApiPushEnviarRouteImport.update({
+  id: '/api/push/enviar',
+  path: '/api/push/enviar',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/followups': typeof FollowupsRoute
+  '/instalar': typeof InstalarRoute
   '/kanban': typeof KanbanRoute
+  '/login': typeof LoginRoute
+  '/meus-leads': typeof MeusLeadsRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
+  '/api/push/enviar': typeof ApiPushEnviarRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/followups': typeof FollowupsRoute
+  '/instalar': typeof InstalarRoute
   '/kanban': typeof KanbanRoute
+  '/login': typeof LoginRoute
+  '/meus-leads': typeof MeusLeadsRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
+  '/api/push/enviar': typeof ApiPushEnviarRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/followups': typeof FollowupsRoute
+  '/instalar': typeof InstalarRoute
   '/kanban': typeof KanbanRoute
+  '/login': typeof LoginRoute
+  '/meus-leads': typeof MeusLeadsRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
+  '/api/push/enviar': typeof ApiPushEnviarRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/kanban' | '/reports' | '/templates' | '/wf02'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/followups'
+    | '/instalar'
+    | '/kanban'
+    | '/login'
+    | '/meus-leads'
+    | '/reports'
+    | '/templates'
+    | '/wf02'
+    | '/api/push/enviar'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/kanban' | '/reports' | '/templates' | '/wf02'
-  id: '__root__' | '/' | '/kanban' | '/reports' | '/templates' | '/wf02'
+  to:
+    | '/'
+    | '/admin'
+    | '/followups'
+    | '/instalar'
+    | '/kanban'
+    | '/login'
+    | '/meus-leads'
+    | '/reports'
+    | '/templates'
+    | '/wf02'
+    | '/api/push/enviar'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/followups'
+    | '/instalar'
+    | '/kanban'
+    | '/login'
+    | '/meus-leads'
+    | '/reports'
+    | '/templates'
+    | '/wf02'
+    | '/api/push/enviar'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
+  FollowupsRoute: typeof FollowupsRoute
+  InstalarRoute: typeof InstalarRoute
   KanbanRoute: typeof KanbanRoute
+  LoginRoute: typeof LoginRoute
+  MeusLeadsRoute: typeof MeusLeadsRoute
   ReportsRoute: typeof ReportsRoute
   TemplatesRoute: typeof TemplatesRoute
   Wf02Route: typeof Wf02Route
+  ApiPushEnviarRoute: typeof ApiPushEnviarRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -102,11 +196,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/meus-leads': {
+      id: '/meus-leads'
+      path: '/meus-leads'
+      fullPath: '/meus-leads'
+      preLoaderRoute: typeof MeusLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/kanban': {
       id: '/kanban'
       path: '/kanban'
       fullPath: '/kanban'
       preLoaderRoute: typeof KanbanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/instalar': {
+      id: '/instalar'
+      path: '/instalar'
+      fullPath: '/instalar'
+      preLoaderRoute: typeof InstalarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/followups': {
+      id: '/followups'
+      path: '/followups'
+      fullPath: '/followups'
+      preLoaderRoute: typeof FollowupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -116,15 +245,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/push/enviar': {
+      id: '/api/push/enviar'
+      path: '/api/push/enviar'
+      fullPath: '/api/push/enviar'
+      preLoaderRoute: typeof ApiPushEnviarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
+  FollowupsRoute: FollowupsRoute,
+  InstalarRoute: InstalarRoute,
   KanbanRoute: KanbanRoute,
+  LoginRoute: LoginRoute,
+  MeusLeadsRoute: MeusLeadsRoute,
   ReportsRoute: ReportsRoute,
   TemplatesRoute: TemplatesRoute,
   Wf02Route: Wf02Route,
+  ApiPushEnviarRoute: ApiPushEnviarRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

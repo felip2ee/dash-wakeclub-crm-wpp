@@ -20,6 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { campaigns, templates, type Template } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { exigirAdmin } from "@/server/auth";
 
 /**
  * Disparos — ÚNICA TELA AINDA EM DADO FALSO.
@@ -32,6 +33,7 @@ import { cn } from "@/lib/utils";
  * Quando virar de verdade, o caminho é o WF-03 no n8n, não este arquivo.
  */
 export const Route = createFileRoute("/templates")({
+  beforeLoad: async () => ({ sessao: await exigirAdmin() }),
   head: () => ({
     meta: [
       { title: "Disparos (demo) — Wake Club CRM" },

@@ -16,10 +16,14 @@ export default defineConfig({
         client: {
           excludeFiles: [
             "**/src/server/leads.ts",
+            "**/src/server/meus-leads.ts",
             "**/src/server/conversas.ts",
             "**/src/server/wf02.ts",
             "**/src/server/relatorios.ts",
             "**/src/server/saude.ts",
+            "**/src/server/auth.ts",
+            "**/src/server/push.ts",
+            "**/src/server/followups.ts",
           ],
         },
       },

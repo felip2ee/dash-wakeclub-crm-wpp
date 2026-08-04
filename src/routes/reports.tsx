@@ -28,6 +28,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { dataHoraCompleta, desde, diaCurto } from "@/lib/formato";
 import { cn } from "@/lib/utils";
+import { exigirAdmin } from "@/server/auth";
 import { getRelatorios, type Relatorios } from "@/server/relatorios";
 
 /**
@@ -59,6 +60,7 @@ const TOOLTIP = {
 };
 
 export const Route = createFileRoute("/reports")({
+  beforeLoad: async () => ({ sessao: await exigirAdmin() }),
   head: () => ({
     meta: [
       { title: "Relatórios — Wake Club CRM" },

@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { exigirAdmin } from "@/server/auth";
 import { getLeadsPainel, type LeadCard } from "@/server/leads";
 
 /**
@@ -56,6 +57,7 @@ const FOLLOWUP_ROTULO: Record<string, string> = {
 };
 
 export const Route = createFileRoute("/kanban")({
+  beforeLoad: async () => ({ sessao: await exigirAdmin() }),
   head: () => ({
     meta: [
       { title: "Kanban — Wake Club CRM" },

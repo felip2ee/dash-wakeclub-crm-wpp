@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import {
   MessageSquareText,
   KanbanSquare,
@@ -7,6 +7,11 @@ import {
   Bot,
   Waves,
   Eye,
+  LogOut,
+  ListTodo,
+  ShieldCheck,
+  Smartphone,
+  UsersRound,
 } from "lucide-react";
 import {
   Sidebar,
@@ -21,9 +26,11 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { sair, type Sessao } from "@/server/auth";
 
 /** `demo` marca a tela que ainda roda em dado falso — ver /templates. */
-const nav = [
+const navAdmin = [
   { title: "Conversas", url: "/", icon: MessageSquareText },
   { title: "Kanban de leads", url: "/kanban", icon: KanbanSquare },
   { title: "Motor de IA (WF-02)", url: "/wf02", icon: Bot },
@@ -31,8 +38,30 @@ const nav = [
   { title: "Disparos", url: "/templates", icon: Megaphone, demo: true },
 ] as const;
 
-export function AppSidebar() {
+export function AppSidebar({ sessao }: { sessao: Sessao | null }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+  const router = useRouter();
+  const nav =
+    sessao?.papel === "admin"
+      ? [
+          ...navAdmin,
+          { title: "Followups", url: "/followups" as const, icon: ListTodo },
+          { title: "Meus leads", url: "/meus-leads" as const, icon: UsersRound },
+          { title: "Instalar app", url: "/instalar" as const, icon: Smartphone },
+          { title: "Administração", url: "/admin" as const, icon: ShieldCheck },
+        ]
+      : [
+          { title: "Followups", url: "/followups" as const, icon: ListTodo },
+          { title: "Meus leads", url: "/meus-leads" as const, icon: UsersRound },
+          { title: "Instalar app", url: "/instalar" as const, icon: Smartphone },
+        ];
+
+  async function encerrarSessao() {
+    await sair();
+    await router.invalidate();
+    await navigate({ to: "/login" });
+  }
 
   return (
     <Sidebar collapsible="icon">
@@ -83,10 +112,29 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Sem usuário logado: o painel ainda não tem autenticação — vai ficar
-          atrás do Traefik. Mostrar um nome fixo aqui seria mentira na tela. */}
       <SidebarFooter className="border-t border-sidebar-border">
-        <div className="flex items-center gap-2 px-2 py-2 group-data-[collapsible=icon]:hidden">
+        {sessao && (
+          <div className="flex items-center gap-2 px-2 py-2">
+            <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+              <p className="truncate text-xs font-medium text-sidebar-foreground">{sessao.nome}</p>
+              <p className="truncate text-[10px] capitalize text-sidebar-foreground/55">
+                {sessao.papel}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={() => void encerrarSessao()}
+              aria-label="Sair"
+              title="Sair"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        <div className="flex items-center gap-2 px-2 pb-2 group-data-[collapsible=icon]:hidden">
           <Eye className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/50" />
           <span className="truncate text-[11px] leading-tight text-sidebar-foreground/60">
             Somente leitura. A equipe responde pelo WhatsApp.

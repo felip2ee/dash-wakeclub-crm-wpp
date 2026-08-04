@@ -18,6 +18,7 @@ import { Pool } from "pg";
 
 declare global {
   var __wakeclubPool: Pool | undefined;
+  var __wakeclubPoolRw: Pool | undefined;
 }
 
 function createPool(): Pool {
@@ -48,4 +49,32 @@ export function getPool(): Pool {
     globalThis.__wakeclubPool = createPool();
   }
   return globalThis.__wakeclubPool;
+}
+
+/**
+ * Conexão limitada de ESCRITA do painel.
+ *
+ * Esta role alcança somente sessão, inscrição de push, log de toques e as
+ * colunas administrativas explicitamente liberadas. Nunca use este pool para
+ * escrever no fluxo do CRM (leads, mensagens, followups ou outbox).
+ */
+export function getPoolRw(): Pool {
+  if (!globalThis.__wakeclubPoolRw) {
+    const connectionString = process.env.DATABASE_URL_RW;
+
+    if (!connectionString) {
+      throw new Error(
+        "DATABASE_URL_RW não definida. Configure a role limitada painel_rw antes de usar autenticação.",
+      );
+    }
+
+    globalThis.__wakeclubPoolRw = new Pool({
+      connectionString,
+      max: 4,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+    });
+  }
+
+  return globalThis.__wakeclubPoolRw;
 }

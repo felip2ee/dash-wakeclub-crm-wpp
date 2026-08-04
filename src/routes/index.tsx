@@ -43,6 +43,7 @@ import {
   type Direcao,
   type Mensagem,
 } from "@/server/conversas";
+import { exigirAdmin } from "@/server/auth";
 
 /**
  * Caixa de entrada — ESPELHO, só leitura.
@@ -72,6 +73,7 @@ const FOLLOWUP_ROTULO: Record<string, string> = {
 type Filtro = "todas" | "aguardando" | "followup";
 
 export const Route = createFileRoute("/")({
+  beforeLoad: async () => ({ sessao: await exigirAdmin() }),
   head: () => ({
     meta: [
       { title: "Conversas — Wake Club CRM" },

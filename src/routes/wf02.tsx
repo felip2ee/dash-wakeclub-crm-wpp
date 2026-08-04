@@ -21,6 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataHoraCompleta, desde, iniciais, plural, telefone as fmtTelefone } from "@/lib/formato";
 import { cn } from "@/lib/utils";
+import { exigirAdmin } from "@/server/auth";
 import {
   getPainelWf02,
   type Followup,
@@ -110,6 +111,7 @@ const SITUACAO: Record<
 };
 
 export const Route = createFileRoute("/wf02")({
+  beforeLoad: async () => ({ sessao: await exigirAdmin() }),
   head: () => ({
     meta: [
       { title: "Motor de IA (WF-02) — Wake Club CRM" },

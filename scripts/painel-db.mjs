@@ -3,7 +3,7 @@
  * Wake Club · setup e diagnóstico do banco do painel.
  *
  *   bun run db:check   → conta o que existe no banco e o que o painel enxerga
- *   bun run db:apply   → cria/atualiza a role painel_ro e aplica db/painel-views.sql
+ *   bun run db:apply   → cria/atualiza as roles do painel e aplica as views
  *
  * Por que existe: quando uma tela do painel vem vazia, os dois motivos possíveis
  * — "não tem dado no banco" e "a role não tem permissão nessa view" — são
@@ -13,7 +13,9 @@
  * Lê do .env:
  *   ADMIN_DATABASE_URL   dono do banco. Só este script usa. A aplicação nunca lê.
  *   DATABASE_URL         a role read-only do painel. É esta que a aplicação usa.
+ *   DATABASE_URL_RW      a role limitada de escrita do painel.
  *   PAINEL_RO_PASSWORD   senha da painel_ro (só o `apply` usa).
+ *   PAINEL_RW_PASSWORD   senha da painel_rw (só o `apply` usa).
  */
 
 import { readFileSync } from "node:fs";
@@ -39,6 +41,10 @@ const VIEWS_ESPERADAS = [
   "v_relatorio_funil",
   "v_relatorio_volume_dia",
   "v_relatorio_wf02_dia",
+  "v_sessao_valida",
+  "v_followups_fila",
+  "v_admin_atendentes",
+  "v_admin_resumo",
 ];
 
 const TABELAS = [
@@ -48,6 +54,12 @@ const TABELAS = [
   "crm_outbox",
   "instancia_eventos",
   "instancia_estado",
+  "usuarios",
+  "sessoes",
+  "push_subscriptions",
+  "notificacoes",
+  "followup_toques",
+  "whatsapp_labels",
 ];
 
 // ---------------------------------------------------------------------------
@@ -173,10 +185,12 @@ function diagnosticarConexao(e) {
 async function check() {
   const adminUrl = exigir("ADMIN_DATABASE_URL");
   const painelUrl = exigir("DATABASE_URL");
+  const painelRwUrl = exigir("DATABASE_URL_RW");
 
   titulo("Conexão");
   linha("admin", cor.fraco(mascarar(adminUrl)));
   linha("painel", cor.fraco(mascarar(painelUrl)));
+  linha("painel rw", cor.fraco(mascarar(painelRwUrl)));
 
   const admin = await conectar(adminUrl, "admin");
   let tudoOk = true;
@@ -244,17 +258,19 @@ async function check() {
     // ---- role -----------------------------------------------------------
     titulo("Role do painel");
     const { rows: role } = await admin.query(
-      "select rolcanlogin from pg_roles where rolname = 'painel_ro'",
+      "select rolname, rolcanlogin from pg_roles where rolname in ('painel_ro', 'painel_rw')",
     );
-    if (role.length === 0) {
-      console.log(cor.erro("  ✗ a role `painel_ro` NÃO existe"));
-      console.log(cor.fraco("    Rode: bun run db:apply"));
-      tudoOk = false;
-    } else {
-      console.log(cor.ok("  ✓ a role `painel_ro` existe"));
-      if (!role[0].rolcanlogin) {
-        console.log(cor.erro("  ✗ mas ela não pode fazer login (falta LOGIN)"));
+    for (const nome of ["painel_ro", "painel_rw"]) {
+      const encontrada = role.find((item) => item.rolname === nome);
+      if (!encontrada) {
+        console.log(cor.erro(`  ✗ a role \`${nome}\` NÃO existe`));
+        console.log(cor.fraco("    Rode: bun run db:apply"));
         tudoOk = false;
+      } else if (!encontrada.rolcanlogin) {
+        console.log(cor.erro(`  ✗ a role \`${nome}\` existe, mas não pode fazer login`));
+        tudoOk = false;
+      } else {
+        console.log(cor.ok(`  ✓ a role \`${nome}\` existe e pode fazer login`));
       }
     }
 
@@ -328,11 +344,63 @@ async function check() {
       console.log(cor.erro("  ✗ O PAINEL CONSEGUIU ESCREVER. A role tem permissão demais."));
       tudoOk = false;
     } catch (e) {
-      console.log(cor.ok(`  ✓ escrita bloqueada (${e.code ?? "erro"})`));
+      if (e.code === "42501") {
+        console.log(cor.ok("  ✓ escrita bloqueada (42501)"));
+      } else {
+        console.log(cor.erro(`  ✗ escrita falhou por motivo inesperado (${e.code ?? "erro"})`));
+        tudoOk = false;
+      }
       console.log(cor.fraco(`    ${e.message.split("\n")[0]}`));
     }
   } finally {
     await painel.end();
+  }
+
+  // ---- escrita permitida, pela conexão limitada do painel ----------------
+  titulo("Privilégios da painel_rw");
+  const painelRw = await conectar(painelRwUrl, "painel_rw");
+
+  try {
+    const { rows: usuarios } = await painelRw.query(
+      "select id from wakeclub.usuarios where ativo = true order by criado_em limit 1",
+    );
+
+    if (usuarios.length === 0) {
+      console.log(cor.erro("  ✗ não há usuário ativo para testar uma sessão"));
+      tudoOk = false;
+    } else {
+      const tokenTeste = `db-check-${crypto.randomUUID()}`;
+      try {
+        await painelRw.query(
+          `insert into wakeclub.sessoes (usuario_id, token_hash, expira_em)
+           values ($1::uuid, $2::text, now() + interval '1 minute')`,
+          [usuarios[0].id, tokenTeste],
+        );
+        await painelRw.query("delete from wakeclub.sessoes where token_hash = $1::text", [
+          tokenTeste,
+        ]);
+        console.log(cor.ok("  ✓ INSERT e DELETE de sessão permitidos"));
+      } catch (e) {
+        console.log(cor.erro(`  ✗ sessão de teste falhou: ${e.message.split("\n")[0]}`));
+        tudoOk = false;
+      }
+    }
+
+    try {
+      await painelRw.query("select * from wakeclub.leads limit 1");
+      console.log(cor.erro("  ✗ a painel_rw CONSEGUIU LER leads. A role tem permissão demais."));
+      tudoOk = false;
+    } catch (e) {
+      if (e.code === "42501") {
+        console.log(cor.ok("  ✓ leitura de leads bloqueada (42501)"));
+      } else {
+        console.log(cor.erro(`  ✗ bloqueio de leads retornou ${e.code ?? "erro desconhecido"}`));
+        console.log(cor.fraco(`    ${e.message.split("\n")[0]}`));
+        tudoOk = false;
+      }
+    }
+  } finally {
+    await painelRw.end();
   }
 
   console.log(
@@ -350,6 +418,7 @@ async function check() {
 async function apply() {
   const adminUrl = exigir("ADMIN_DATABASE_URL");
   const senha = exigir("PAINEL_RO_PASSWORD");
+  const senhaRw = exigir("PAINEL_RW_PASSWORD");
 
   const admin = await conectar(adminUrl, "admin");
 
@@ -392,12 +461,55 @@ async function apply() {
     );
     console.log(cor.ok("  ✓ privilégios default revogados"));
 
-    titulo("2. Views (db/painel-views.sql)");
+    titulo("2. Role painel_rw");
+    const { rows: existeRw } = await admin.query(
+      "select 1 from pg_roles where rolname = 'painel_rw'",
+    );
+    const { rows: sqlRw } = await admin.query(
+      `select format(
+          $fmt$%s role painel_rw with login password %L$fmt$,
+          case when $1::boolean then 'alter' else 'create' end,
+          $2::text
+       ) as comando`,
+      [existeRw.length > 0, senhaRw],
+    );
+    await admin.query(sqlRw[0].comando);
+    await admin.query("grant connect on database wakeclub to painel_rw");
+    console.log(
+      existeRw.length > 0
+        ? cor.ok("  ✓ role já existia — senha redefinida")
+        : cor.ok("  ✓ role criada"),
+    );
+
+    titulo("3. Views (db/painel-views.sql)");
     const caminho = resolve(RAIZ_PROJETO, "db", "painel-views.sql");
     const ddl = readFileSync(caminho, "utf8");
     await admin.query(ddl);
     console.log(cor.ok(`  ✓ ${VIEWS_ESPERADAS.length} views aplicadas e liberadas`));
     console.log(cor.fraco(`    ${caminho}`));
+
+    titulo("4. Privilégios limitados da painel_rw");
+    await admin.query("grant usage on schema wakeclub to painel_rw");
+    await admin.query("grant select on wakeclub.usuarios to painel_rw");
+    await admin.query("grant update (ultimo_acesso_em) on wakeclub.usuarios to painel_rw");
+    await admin.query("grant select, insert, update, delete on wakeclub.sessoes to painel_rw");
+    await admin.query(
+      "grant select, insert, update, delete on wakeclub.push_subscriptions to painel_rw",
+    );
+    await admin.query("grant insert on wakeclub.followup_toques to painel_rw");
+    await admin.query(
+      `revoke all on
+         wakeclub.leads,
+         wakeclub.mensagens,
+         wakeclub.followups,
+         wakeclub.crm_outbox,
+         wakeclub.instancia_eventos,
+         wakeclub.instancia_estado,
+         wakeclub.notificacoes,
+         wakeclub.whatsapp_labels
+       from painel_rw`,
+    );
+    console.log(cor.ok("  ✓ GRANTs explícitos aplicados"));
 
     console.log(cor.ok("\n✓ Pronto. Rode `bun run db:check` para conferir.\n"));
   } catch (e) {
@@ -427,6 +539,6 @@ else if (comando === "apply") await apply();
 else {
   console.log("uso: painel-db.mjs <check|apply>");
   console.log("  check  conta o que existe e o que o painel enxerga");
-  console.log("  apply  cria a role painel_ro e aplica db/painel-views.sql");
+  console.log("  apply  cria as roles do painel, aplica views e GRANTs explícitos");
   process.exit(1);
 }

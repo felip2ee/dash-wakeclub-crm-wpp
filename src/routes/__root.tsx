@@ -6,14 +6,17 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useRouterState,
 } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { PwaRegistrar } from "@/components/PwaRegistrar";
 import { Toaster } from "@/components/ui/sonner";
 import { getSaudeNumero, type SaudeNumero } from "@/server/saude";
+import { getSessao, type Sessao } from "@/server/auth";
 
 function NotFoundComponent() {
   return (
@@ -61,7 +64,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
-export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+  sessao?: Sessao | null;
+}>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -76,10 +82,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:description", content: "Espelho somente-leitura do CRM da Wake Club." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "theme-color", content: "#0b1220" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Wake Club" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icons/icon-192.png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -91,7 +103,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   // A saúde do número vive no cabeçalho de todas as telas. O try/catch é
   // deliberado: se o banco cair, o painel ainda tem que conseguir renderizar
   // para que cada rota mostre o próprio erro, que explica melhor o problema.
-  loader: async (): Promise<{ saude: SaudeNumero | null }> => {
+  beforeLoad: async () => ({ sessao: await getSessao() }),
+  loader: async ({ context }): Promise<{ saude: SaudeNumero | null }> => {
+    if (!context.sessao) return { saude: null };
     try {
       return { saude: await getSaudeNumero() };
     } catch {
@@ -120,13 +134,25 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const { sessao } = Route.useRouteContext();
   const { saude } = Route.useLoaderData();
+  const naTelaDeLogin = useRouterState({ select: (s) => s.location.pathname === "/login" });
+
+  if (naTelaDeLogin) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Outlet />
+        <Toaster />
+        <PwaRegistrar />
+      </QueryClientProvider>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarProvider>
         <div className="flex min-h-screen w-full bg-background">
-          <AppSidebar />
+          <AppSidebar sessao={sessao ?? null} />
           <SidebarInset className="flex min-w-0 flex-1 flex-col">
             <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur sm:gap-3 sm:px-4">
               <SidebarTrigger />
@@ -139,6 +165,7 @@ function RootComponent() {
           </SidebarInset>
         </div>
         <Toaster />
+        <PwaRegistrar />
       </SidebarProvider>
     </QueryClientProvider>
   );
