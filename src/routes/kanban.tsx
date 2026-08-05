@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -10,14 +11,25 @@ import {
   RefreshCw,
   Search,
   TriangleAlert,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { dataHoraCompleta, diaRelativo } from "@/lib/formato";
 import { cn } from "@/lib/utils";
 import { exigirAdmin } from "@/server/auth";
+import { getMensagens, type Mensagem } from "@/server/conversas";
 import { getLeadsPainel, type LeadCard } from "@/server/leads";
 
 /**
@@ -173,98 +185,256 @@ function CardDoLead({ lead }: { lead: LeadCard }) {
   const atrasado = (lead.horasEsperando ?? 0) >= 4;
 
   return (
-    <article className="group rounded-xl border border-border bg-card p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold leading-tight">
-            {lead.nome ?? "Sem nome"}
-          </div>
-          <div className="text-[11px] text-muted-foreground">{formatarTelefone(lead.telefone)}</div>
-        </div>
-        {lead.temperatura && (
-          <Badge
-            variant="outline"
-            className={cn(
-              "h-5 shrink-0 rounded-full px-1.5 text-[10px] capitalize",
-              TEMPERATURA_ESTILO[lead.temperatura],
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="group w-full rounded-xl border border-border bg-card p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold leading-tight">
+                {lead.nome ?? "Sem nome"}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {formatarTelefone(lead.telefone)}
+              </div>
+            </div>
+            {lead.temperatura && (
+              <span
+                className={cn(
+                  "shrink-0 text-[10px] font-medium capitalize",
+                  TEMPERATURA_ESTILO[lead.temperatura].split(" ").at(-1),
+                )}
+              >
+                {lead.temperatura}
+              </span>
             )}
-          >
-            {lead.temperatura}
-          </Badge>
-        )}
+          </div>
+
+          <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+            <UserRound className="h-3 w-3 shrink-0 text-primary" />
+            <span className="truncate">{lead.atendenteNome ?? "Sem atendente responsável"}</span>
+          </div>
+
+          {lead.dataAgendada && (
+            <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+              <CalendarClock className="h-3 w-3 shrink-0" />
+              aula {formatarDataHora(lead.dataAgendada)}
+            </div>
+          )}
+
+          <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px]">
+            <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+              <MessageSquareText className="h-3 w-3 shrink-0" />
+              <span className="truncate" suppressHydrationWarning>
+                {lead.ultimaMsgEm ? `última msg ${desde(lead.ultimaMsgEm)}` : "sem mensagens"}
+              </span>
+            </div>
+            {lead.aguardandoEquipe && lead.horasEsperando !== null && (
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-1",
+                  atrasado ? "font-medium text-destructive" : "text-muted-foreground",
+                )}
+              >
+                <Clock className="h-3 w-3" /> {lead.horasEsperando}h
+              </div>
+            )}
+          </div>
+
+          {lead.followupTipo && lead.followupEm && (
+            <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-2 text-[11px] text-muted-foreground">
+              <AlarmClock className="h-3 w-3 shrink-0" />
+              <span className="truncate" suppressHydrationWarning>
+                {FOLLOWUP_ROTULO[lead.followupTipo] ?? lead.followupTipo} {desde(lead.followupEm)}
+              </span>
+            </div>
+          )}
+
+          {lead.nToques > 0 && (
+            <div className="mt-1.5 text-[10px] text-muted-foreground">
+              {lead.nToques} {lead.nToques === 1 ? "toque" : "toques"} sem resposta
+            </div>
+          )}
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{lead.nome ?? "Lead sem nome"}</DialogTitle>
+          <DialogDescription>{formatarTelefone(lead.telefone)}</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-5 text-sm lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <div className="space-y-4">
+            <Detalhe
+              titulo="Atendente responsável"
+              valor={lead.atendenteNome ?? "Sem responsável"}
+            />
+            <Detalhe titulo="Etapa do funil" valor={lead.etiqueta} />
+
+            {lead.resumo && (
+              <section className="rounded-xl border border-border bg-muted/40 p-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Resumo
+                </h4>
+                <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">{lead.resumo}</p>
+              </section>
+            )}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <Detalhe titulo="Temperatura" valor={lead.temperatura} />
+              <Detalhe titulo="Origem" valor={lead.origem} />
+              <Detalhe titulo="Interesse" valor={lead.interesse} />
+              <Detalhe titulo="Objeção" valor={lead.objecao} />
+              <Detalhe titulo="Toques sem resposta" valor={String(lead.nToques)} />
+              <Detalhe
+                titulo="Aula agendada"
+                valor={lead.dataAgendada ? formatarDataHora(lead.dataAgendada) : null}
+              />
+            </div>
+
+            {(lead.optOut || lead.semAtendimento) && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs">
+                {lead.optOut && (
+                  <p className="flex items-center gap-1.5">
+                    <BellOff className="h-3.5 w-3.5" /> Lead em opt-out.
+                  </p>
+                )}
+                {lead.semAtendimento && (
+                  <p>
+                    Não atender
+                    {lead.semAtendimentoMotivo ? ` · ${lead.semAtendimentoMotivo}` : ""}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <HistoricoDoLead leadId={lead.id} />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function HistoricoDoLead({ leadId }: { leadId: string }) {
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ["mensagens", leadId],
+    queryFn: () => getMensagens({ data: { leadId } }),
+    refetchInterval: RECARREGAR_A_CADA_MS,
+  });
+
+  return (
+    <section className="min-w-0 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">Histórico completo</h3>
+          <p className="text-xs text-muted-foreground">
+            {data
+              ? `${data.length} ${data.length === 1 ? "mensagem" : "mensagens"}`
+              : "Conversa do WhatsApp"}
+          </p>
+        </div>
+        <Badge variant="outline" className="shrink-0 gap-1 text-[10px] font-normal">
+          <MessageSquareText className="h-3 w-3" /> somente leitura
+        </Badge>
       </div>
 
-      {(lead.interesse || lead.objecao || lead.optOut) && (
-        <div className="mt-2.5 flex flex-wrap gap-1">
-          {lead.interesse && (
-            <Badge
-              variant="outline"
-              className="h-4 rounded-full border-primary/30 bg-primary/5 px-1.5 text-[10px] text-primary"
-            >
-              {lead.interesse}
-            </Badge>
-          )}
-          {lead.objecao && (
-            <Badge
-              variant="outline"
-              className="h-4 gap-1 rounded-full border-destructive/30 bg-destructive/5 px-1.5 text-[10px] text-destructive"
-            >
-              <TriangleAlert className="h-2.5 w-2.5" />
-              {lead.objecao}
-            </Badge>
-          )}
-          {lead.optOut && (
-            <Badge
-              variant="outline"
-              className="h-4 gap-1 rounded-full px-1.5 text-[10px] text-muted-foreground"
-            >
-              <BellOff className="h-2.5 w-2.5" /> opt-out
-            </Badge>
-          )}
-        </div>
-      )}
-
-      {lead.dataAgendada && (
-        <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground">
-          <CalendarClock className="h-3 w-3 shrink-0" />
-          aula {formatarDataHora(lead.dataAgendada)}
-        </div>
-      )}
-
-      <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px]">
-        <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-          <MessageSquareText className="h-3 w-3 shrink-0" />
-          <span className="truncate" suppressHydrationWarning>
-            {lead.ultimaMsgEm ? `última msg ${desde(lead.ultimaMsgEm)}` : "sem mensagens"}
-          </span>
-        </div>
-        {lead.aguardandoEquipe && lead.horasEsperando !== null && (
-          <div
-            className={cn(
-              "flex shrink-0 items-center gap-1",
-              atrasado ? "font-medium text-destructive" : "text-muted-foreground",
-            )}
-          >
-            <Clock className="h-3 w-3" /> {lead.horasEsperando}h
+      <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-4">
+        {isPending && (
+          <p className="py-10 text-center text-xs text-muted-foreground">
+            Carregando todo o histórico…
+          </p>
+        )}
+        {isError && (
+          <p className="py-10 text-center text-xs text-destructive">{(error as Error).message}</p>
+        )}
+        {data?.length === 0 && (
+          <p className="py-10 text-center text-xs text-muted-foreground">
+            Este lead ainda não tem mensagens registradas.
+          </p>
+        )}
+        {data && data.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {data.map((mensagem, indice) => (
+              <MensagemDoHistorico
+                key={mensagem.id}
+                mensagem={mensagem}
+                anterior={data[indice - 1]}
+              />
+            ))}
           </div>
         )}
       </div>
+    </section>
+  );
+}
 
-      {lead.followupTipo && lead.followupEm && (
-        <div className="mt-2 flex items-center gap-1.5 border-t border-border pt-2 text-[11px] text-muted-foreground">
-          <AlarmClock className="h-3 w-3 shrink-0" />
-          <span className="truncate" suppressHydrationWarning>
-            {FOLLOWUP_ROTULO[lead.followupTipo] ?? lead.followupTipo} {desde(lead.followupEm)}
-          </span>
+function MensagemDoHistorico({ mensagem, anterior }: { mensagem: Mensagem; anterior?: Mensagem }) {
+  const daEquipe = mensagem.direcao !== "lead";
+  const novoDia = !anterior || diaRelativo(mensagem.enviadaEm) !== diaRelativo(anterior.enviadaEm);
+  const autor = mensagem.direcao === "lead" ? "Lead" : mensagem.direcao === "ia" ? "IA" : "Equipe";
+
+  return (
+    <>
+      {novoDia && (
+        <div
+          className="mx-auto my-2 rounded-full bg-muted px-3 py-1 text-[11px] text-muted-foreground"
+          suppressHydrationWarning
+        >
+          {diaRelativo(mensagem.enviadaEm)}
         </div>
       )}
 
-      {lead.nToques > 0 && (
-        <div className="mt-1.5 text-[10px] text-muted-foreground">
-          {lead.nToques} {lead.nToques === 1 ? "toque" : "toques"} sem resposta
+      <div className={cn("flex", daEquipe ? "justify-end" : "justify-start")}>
+        <div
+          className={cn(
+            "max-w-[88%] rounded-2xl px-3.5 py-2 shadow-sm",
+            mensagem.direcao === "lead" && "rounded-bl-sm bg-card",
+            mensagem.direcao === "equipe" && "rounded-br-sm bg-primary text-primary-foreground",
+            mensagem.direcao === "ia" && "rounded-br-sm border border-amber-500/40 bg-amber-500/10",
+          )}
+        >
+          <p
+            className={cn(
+              "mb-1 text-[10px] font-medium",
+              mensagem.direcao === "equipe"
+                ? "text-primary-foreground/75"
+                : "text-muted-foreground",
+            )}
+          >
+            {autor}
+          </p>
+          <p className="whitespace-pre-wrap break-words leading-relaxed">
+            {mensagem.texto ?? <span className="italic opacity-60">(mensagem sem texto)</span>}
+          </p>
+          <p
+            className={cn(
+              "mt-1 text-right text-[10px]",
+              mensagem.direcao === "equipe"
+                ? "text-primary-foreground/70"
+                : "text-muted-foreground",
+            )}
+            title={dataHoraCompleta(mensagem.enviadaEm)}
+            suppressHydrationWarning
+          >
+            {dataHoraCompleta(mensagem.enviadaEm)}
+          </p>
         </div>
-      )}
-    </article>
+      </div>
+    </>
+  );
+}
+
+function Detalhe({ titulo, valor }: { titulo: string; valor: string | null }) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {titulo}
+      </p>
+      <p className="mt-0.5 leading-relaxed">{valor || "Não informado"}</p>
+    </div>
   );
 }
 

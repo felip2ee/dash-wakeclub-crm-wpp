@@ -23,6 +23,11 @@ export type LeadCard = {
   dataAgendada: string | null;
   nToques: number;
   optOut: boolean;
+  atendenteId: string | null;
+  atendenteNome: string | null;
+  atribuidoEm: string | null;
+  semAtendimento: boolean;
+  semAtendimentoMotivo: string | null;
   ultimaMsgEm: string | null;
   aguardandoEquipe: boolean;
   horasEsperando: number | null;
@@ -44,6 +49,11 @@ type Row = {
   data_agendada: Date | null;
   n_toques: number;
   opt_out: boolean;
+  atendente_id: string | null;
+  atendente_nome: string | null;
+  atribuido_em: Date | null;
+  sem_atendimento: boolean;
+  sem_atendimento_motivo: string | null;
   ultima_msg_em: Date | null;
   aguardando_equipe: boolean;
   horas_esperando: number | null;
@@ -77,6 +87,11 @@ export const getLeadsPainel = createServerFn({ method: "GET" }).handler(
       dataAgendada: iso(r.data_agendada),
       nToques: r.n_toques,
       optOut: r.opt_out,
+      atendenteId: r.atendente_id,
+      atendenteNome: r.atendente_nome,
+      atribuidoEm: iso(r.atribuido_em),
+      semAtendimento: r.sem_atendimento,
+      semAtendimentoMotivo: r.sem_atendimento_motivo,
       ultimaMsgEm: iso(r.ultima_msg_em),
       aguardandoEquipe: r.aguardando_equipe,
       horasEsperando: r.horas_esperando,
