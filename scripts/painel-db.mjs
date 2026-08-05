@@ -502,10 +502,13 @@ async function check() {
 
       try {
         await painelRw.query("begin");
-        await painelRw.query("update wakeclub.leads set etiqueta = 'Agendado' where id = $1::uuid", [
-          leadId,
-        ]);
-        console.log(cor.erro("  ✗ a painel_rw ESCREVEU em leads.etiqueta. Quem escreve é o WF-02."));
+        await painelRw.query(
+          "update wakeclub.leads set etiqueta = 'Agendado' where id = $1::uuid",
+          [leadId],
+        );
+        console.log(
+          cor.erro("  ✗ a painel_rw ESCREVEU em leads.etiqueta. Quem escreve é o WF-02."),
+        );
         tudoOk = false;
       } catch (e) {
         if (e.code === "42501") {

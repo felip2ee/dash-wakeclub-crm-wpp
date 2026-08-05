@@ -85,6 +85,17 @@ export type Followup = {
   enviadoEm: string | null;
   vencido: boolean;
   minutosAteDisparo: number;
+  atendenteNome: string | null;
+  resumo: string | null;
+  interesse: string | null;
+  objecao: string | null;
+  origem: string | null;
+  dataAgendada: string | null;
+  nToques: number;
+  ultimaMsgLeadEm: string | null;
+  ultimaMsgEquipeEm: string | null;
+  textoSugerido: string | null;
+  sugeridoEm: string | null;
 };
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -167,11 +178,24 @@ export const getFollowups = createServerFn({ method: "GET" }).handler(
   async (): Promise<Followup[]> => {
     // Pendentes primeiro (é a agenda que importa), depois o histórico.
     const { rows } = await getPool().query(
-      `select *
-         from wakeclub.v_followups_painel
-        order by case when status = 'pendente' then 0 else 1 end,
-                 case when status = 'pendente' then agendado_para end asc,
-                 atualizado_em desc
+      `select f.*,
+              l.atendente_nome,
+              l.resumo,
+              l.interesse,
+              l.objecao,
+              l.origem,
+              l.data_agendada,
+              l.n_toques,
+              l.ultima_msg_lead_em,
+              l.ultima_msg_equipe_em,
+              fila.texto_sugerido,
+              fila.sugerido_em
+         from wakeclub.v_followups_painel f
+         left join wakeclub.v_leads_painel l on l.id = f.lead_id
+         left join wakeclub.v_followups_fila fila on fila.followup_id = f.id
+        order by case when f.status = 'pendente' then 0 else 1 end,
+                 case when f.status = 'pendente' then f.agendado_para end asc,
+                 f.atualizado_em desc
         limit 500`,
     );
 
@@ -193,6 +217,17 @@ export const getFollowups = createServerFn({ method: "GET" }).handler(
       enviadoEm: iso(r.enviado_em),
       vencido: r.vencido,
       minutosAteDisparo: r.minutos_ate_disparo,
+      atendenteNome: r.atendente_nome,
+      resumo: r.resumo,
+      interesse: r.interesse,
+      objecao: r.objecao,
+      origem: r.origem,
+      dataAgendada: iso(r.data_agendada),
+      nToques: Number(r.n_toques ?? 0),
+      ultimaMsgLeadEm: iso(r.ultima_msg_lead_em),
+      ultimaMsgEquipeEm: iso(r.ultima_msg_equipe_em),
+      textoSugerido: r.texto_sugerido,
+      sugeridoEm: iso(r.sugerido_em),
     }));
   },
 );

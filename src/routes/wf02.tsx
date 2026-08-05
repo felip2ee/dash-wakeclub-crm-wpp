@@ -13,11 +13,20 @@ import {
   RefreshCw,
   Sparkles,
   TriangleAlert,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataHoraCompleta, desde, iniciais, plural, telefone as fmtTelefone } from "@/lib/formato";
@@ -745,60 +754,158 @@ function AbaFollowups({ itens }: { itens: Followup[] }) {
 
 function CardFollowup({ f }: { f: Followup }) {
   return (
-    <article
-      className={cn(
-        "rounded-xl border bg-card p-3",
-        f.vencido ? "border-amber-500/40" : "border-border",
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        <Badge
-          variant="outline"
-          className={cn("h-5 shrink-0 rounded-full px-2 text-[10px]", STATUS_ESTILO[f.status])}
-        >
-          {f.status}
-        </Badge>
-        <Badge variant="secondary" className="h-5 shrink-0 rounded-full px-2 text-[10px]">
-          {FOLLOWUP_ROTULO[f.tipo] ?? f.tipo}
-        </Badge>
-
-        <Link
-          to="/"
-          search={{ lead: f.leadId }}
-          className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
-        >
-          {f.nome ?? fmtTelefone(f.telefone)}
-        </Link>
-
-        <span className="shrink-0 text-[11px] text-muted-foreground" suppressHydrationWarning>
-          {dataHoraCompleta(f.agendadoPara)}
-          {f.vencido && (
-            <span className="ml-1 font-medium text-amber-600 dark:text-amber-400">vencido</span>
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "w-full rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/30 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            f.vencido ? "border-amber-500/40" : "border-border",
           )}
-        </span>
-      </div>
+        >
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <Badge
+              variant="outline"
+              className={cn("h-5 shrink-0 rounded-full px-2 text-[10px]", STATUS_ESTILO[f.status])}
+            >
+              {f.status}
+            </Badge>
+            <Badge variant="secondary" className="h-5 shrink-0 rounded-full px-2 text-[10px]">
+              {FOLLOWUP_ROTULO[f.tipo] ?? f.tipo}
+            </Badge>
 
-      {f.motivo && (
-        <p className="mt-2 border-l-2 border-border pl-2.5 text-xs leading-relaxed text-muted-foreground">
-          <span className="text-foreground/60">motivo:</span> {f.motivo}
-        </p>
-      )}
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+              {f.nome ?? fmtTelefone(f.telefone)}
+            </span>
 
-      {f.motivoCancelamento && (
-        <p className="mt-1.5 border-l-2 border-destructive/40 pl-2.5 text-xs leading-relaxed text-muted-foreground">
-          <span className="text-foreground/60">
-            {f.status === "abortado" ? "o Porteiro barrou:" : "cancelado porque:"}
-          </span>{" "}
-          {f.motivoCancelamento}
-        </p>
-      )}
+            <span className="shrink-0 text-[11px] text-muted-foreground" suppressHydrationWarning>
+              {dataHoraCompleta(f.agendadoPara)}
+              {f.vencido && (
+                <span className="ml-1 font-medium text-amber-600 dark:text-amber-400">vencido</span>
+              )}
+            </span>
+          </div>
 
-      {f.textoEnviado && (
-        <p className="mt-2 rounded-lg bg-muted/60 p-2.5 text-xs leading-relaxed">
-          {f.textoEnviado}
-        </p>
-      )}
-    </article>
+          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <UserRound className="h-3 w-3 shrink-0 text-primary" />
+            <span className="truncate">{f.atendenteNome ?? "Sem atendente responsável"}</span>
+            <span className="ml-auto shrink-0">Ver detalhes</span>
+          </div>
+        </button>
+      </DialogTrigger>
+
+      <DialogContent className="max-h-[88dvh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{f.nome ?? "Lead sem nome"}</DialogTitle>
+          <DialogDescription>
+            {fmtTelefone(f.telefone)} · followup {FOLLOWUP_ROTULO[f.tipo] ?? f.tipo}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 text-sm">
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className={cn("rounded-full", STATUS_ESTILO[f.status])}>
+              {f.status}
+            </Badge>
+            <Badge variant="secondary" className="rounded-full">
+              {f.etiqueta}
+            </Badge>
+            {f.temperatura && (
+              <Badge variant="outline" className="rounded-full capitalize">
+                {f.temperatura}
+              </Badge>
+            )}
+          </div>
+
+          <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-primary">
+              Mensagem programada
+            </h4>
+            <p className="mt-2 whitespace-pre-wrap leading-relaxed">
+              {f.textoSugerido ?? f.textoEnviado ?? "A mensagem ainda não foi redigida."}
+            </p>
+            {f.sugeridoEm && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Redigida em {dataHoraCompleta(f.sugeridoEm)}
+              </p>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Por que este followup foi criado
+            </h4>
+            <p className="rounded-xl border border-border p-3 leading-relaxed">
+              {f.motivo || "Motivo não informado pela automação."}
+            </p>
+            {f.resumo && (
+              <div className="rounded-xl border border-border bg-muted/40 p-3">
+                <p className="text-xs font-medium text-muted-foreground">Resumo do lead no CRM</p>
+                <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">{f.resumo}</p>
+              </div>
+            )}
+          </section>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <DetalheFollowup
+              titulo="Atendente responsável"
+              valor={f.atendenteNome ?? "Sem responsável"}
+            />
+            <DetalheFollowup titulo="Programado para" valor={dataHoraCompleta(f.agendadoPara)} />
+            <DetalheFollowup titulo="Criado em" valor={dataHoraCompleta(f.criadoEm)} />
+            <DetalheFollowup titulo="Última atualização" valor={dataHoraCompleta(f.atualizadoEm)} />
+            <DetalheFollowup titulo="Interesse" valor={f.interesse} />
+            <DetalheFollowup titulo="Objeção" valor={f.objecao} />
+            <DetalheFollowup titulo="Origem" valor={f.origem} />
+            <DetalheFollowup titulo="Toques sem resposta" valor={String(f.nToques)} />
+            <DetalheFollowup
+              titulo="Aula agendada"
+              valor={f.dataAgendada ? dataHoraCompleta(f.dataAgendada) : null}
+            />
+            <DetalheFollowup
+              titulo="Última mensagem do lead"
+              valor={f.ultimaMsgLeadEm ? dataHoraCompleta(f.ultimaMsgLeadEm) : null}
+            />
+            <DetalheFollowup
+              titulo="Última mensagem da equipe"
+              valor={f.ultimaMsgEquipeEm ? dataHoraCompleta(f.ultimaMsgEquipeEm) : null}
+            />
+            <DetalheFollowup
+              titulo="Envio confirmado"
+              valor={f.enviadoEm ? dataHoraCompleta(f.enviadoEm) : null}
+            />
+          </div>
+
+          {f.motivoCancelamento && (
+            <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+              <h4 className="text-xs font-semibold text-destructive">
+                {f.status === "abortado" ? "Barrado pelo Porteiro" : "Motivo do cancelamento"}
+              </h4>
+              <p className="mt-1.5 leading-relaxed">{f.motivoCancelamento}</p>
+            </section>
+          )}
+
+          <Link
+            to="/"
+            search={{ lead: f.leadId }}
+            className="inline-flex text-sm font-medium text-primary hover:underline"
+          >
+            Abrir conversa completa do lead
+          </Link>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DetalheFollowup({ titulo, valor }: { titulo: string; valor: string | null }) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {titulo}
+      </p>
+      <p className="mt-0.5 leading-relaxed">{valor || "Não informado"}</p>
+    </div>
   );
 }
 
