@@ -443,18 +443,85 @@ async function check() {
       tudoOk = false;
     }
 
-    try {
-      await painelRw.query("select * from wakeclub.leads limit 1");
-      console.log(cor.erro("  ✗ a painel_rw CONSEGUIU LER leads. A role tem permissão demais."));
-      tudoOk = false;
-    } catch (e) {
-      if (e.code === "42501") {
-        console.log(cor.ok("  ✓ leitura de leads bloqueada (42501)"));
-      } else {
-        console.log(cor.erro(`  ✗ bloqueio de leads retornou ${e.code ?? "erro desconhecido"}`));
-        console.log(cor.fraco(`    ${e.message.split("\n")[0]}`));
+    // ---- a exceção nomeada de leads é ESTREITA (05/08/2026) ---------------
+    //
+    // A painel_rw ganhou sem_atendimento e mais nada em `leads`. Um teste só de
+    // "não consegue ler leads" passaria por acidente — `select *` expande pras
+    // colunas sem grant e falha de qualquer jeito. Então checa os DOIS lados:
+    // o que tem que passar, e o que tem que continuar barrado.
+
+    const deveBarrar = async (rotulo, sql) => {
+      try {
+        await painelRw.query(sql);
+        console.log(cor.erro(`  ✗ ${rotulo}: PASSOU, e devia estar barrado`));
         tudoOk = false;
+      } catch (e) {
+        if (e.code === "42501") {
+          console.log(cor.ok(`  ✓ ${rotulo} barrado (42501)`));
+        } else {
+          console.log(cor.erro(`  ✗ ${rotulo} retornou ${e.code ?? "erro desconhecido"}`));
+          console.log(cor.fraco(`    ${e.message.split("\n")[0]}`));
+          tudoOk = false;
+        }
       }
+    };
+
+    await deveBarrar("select * em leads", "select * from wakeclub.leads limit 1");
+    await deveBarrar("leitura de leads.telefone", "select telefone from wakeclub.leads limit 1");
+
+    let leadId = null;
+    try {
+      const { rows } = await painelRw.query(
+        "select id from wakeclub.leads where sem_atendimento = false limit 1",
+      );
+      leadId = rows[0]?.id ?? null;
+      console.log(cor.ok("  ✓ leitura de leads.sem_atendimento permitida"));
+    } catch (e) {
+      console.log(cor.erro(`  ✗ a exceção de sem_atendimento não está aplicada: ${e.code}`));
+      console.log(cor.fraco("    rode `bun run db:apply` — o grant vive no apply, não no .sql"));
+      tudoOk = false;
+    }
+
+    // Escrita: testada dentro de transação e revertida. Nada persiste.
+    if (leadId === null) {
+      console.log(cor.aviso("  ~ sem lead para testar a escrita de sem_atendimento"));
+    } else {
+      try {
+        await painelRw.query("begin");
+        await painelRw.query(
+          "update wakeclub.leads set sem_atendimento = true where id = $1::uuid",
+          [leadId],
+        );
+        console.log(cor.ok("  ✓ UPDATE de sem_atendimento permitido (revertido)"));
+      } catch (e) {
+        console.log(cor.erro(`  ✗ UPDATE de sem_atendimento falhou: ${e.code ?? e.message}`));
+        tudoOk = false;
+      } finally {
+        await painelRw.query("rollback");
+      }
+
+      try {
+        await painelRw.query("begin");
+        await painelRw.query("update wakeclub.leads set etiqueta = 'Agendado' where id = $1::uuid", [
+          leadId,
+        ]);
+        console.log(cor.erro("  ✗ a painel_rw ESCREVEU em leads.etiqueta. Quem escreve é o WF-02."));
+        tudoOk = false;
+      } catch (e) {
+        if (e.code === "42501") {
+          console.log(cor.ok("  ✓ UPDATE de leads.etiqueta barrado (42501)"));
+        } else {
+          console.log(cor.erro(`  ✗ bloqueio de etiqueta retornou ${e.code ?? "?"}`));
+          tudoOk = false;
+        }
+      } finally {
+        await painelRw.query("rollback");
+      }
+
+      await deveBarrar(
+        "UPDATE de leads.atendente_id",
+        `update wakeclub.leads set atendente_id = null where id = '${leadId}'::uuid`,
+      );
     }
   } finally {
     await painelRw.end();
@@ -571,6 +638,29 @@ async function apply() {
          wakeclub.notificacoes,
          wakeclub.whatsapp_labels
        from painel_rw`,
+    );
+
+    // Segunda exceção nomeada à regra de espelho (05/08/2026): sem_atendimento.
+    //
+    // ORDEM IMPORTA: vem DEPOIS do revoke acima, que alcança wakeclub.leads.
+    // Grant antes dele seria apagado na mesma execução.
+    //
+    // `sem_atendimento` é filtro duro do §7.1 e vinha da label do Fernando no
+    // WhatsApp. As labels ficaram fora de alcance (§15, medido em 04/08/2026),
+    // então o fato passou a ser marcado por uma pessoa, no painel.
+    //
+    // ESCOPADO POR COLUNA de propósito: a painel_rw continua sem alcançar
+    // `etiqueta` (do WF-02) nem `atendente_id` (do WF-08). Se o painel também
+    // escrevesse nelas, brigaria com os workflows pelo mesmo registro (§14).
+    await admin.query(
+      `grant update (sem_atendimento, sem_atendimento_motivo)
+         on wakeclub.leads to painel_rw`,
+    );
+    // UPDATE sem SELECT não serve: a tela precisa ler o estado atual pra
+    // mostrar o botão marcado, e a chave pro WHERE.
+    await admin.query(
+      `grant select (id, sem_atendimento, sem_atendimento_motivo)
+         on wakeclub.leads to painel_rw`,
     );
     console.log(cor.ok("  ✓ GRANTs explícitos aplicados"));
 
