@@ -34,6 +34,7 @@ const navAdmin = [
   { title: "Todos os leads", url: "/kanban", icon: KanbanSquare },
   { title: "IA e followups", url: "/wf02", icon: Bot },
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
+  { title: "Instalar app", url: "/instalar", icon: Smartphone },
 ] as const;
 
 export function AppSidebar({ sessao }: { sessao: Sessao | null }) {
