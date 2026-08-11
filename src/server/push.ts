@@ -50,7 +50,7 @@ export const testarMinhaNotificacao = createServerFn({ method: "POST" }).handler
     usuarioId: sessao.usuarioId,
     titulo: "Notificações ativadas",
     corpo: `Tudo certo, ${sessao.nome}. Este aparelho está pronto para receber avisos.`,
-    url: "/followups",
+    url: "/minha-fila",
     tag: `teste-${sessao.usuarioId}`,
   });
 });

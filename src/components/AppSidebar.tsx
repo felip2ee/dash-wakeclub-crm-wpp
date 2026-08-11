@@ -10,7 +10,6 @@ import {
   ListTodo,
   ShieldCheck,
   Smartphone,
-  UsersRound,
 } from "lucide-react";
 import {
   Sidebar,
@@ -45,8 +44,7 @@ export function AppSidebar({ sessao }: { sessao: Sessao | null }) {
     sessao?.papel === "admin"
       ? navAdmin
       : [
-          { title: "Followups", url: "/followups" as const, icon: ListTodo },
-          { title: "Meus leads", url: "/meus-leads" as const, icon: UsersRound },
+          { title: "Minha fila", url: "/minha-fila" as const, icon: ListTodo },
           { title: "Instalar app", url: "/instalar" as const, icon: Smartphone },
         ];
 

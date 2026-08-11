@@ -11,7 +11,7 @@ import { entrar, getSessao } from "@/server/auth";
 export const Route = createFileRoute("/login")({
   beforeLoad: async () => {
     const sessao = await getSessao();
-    if (sessao) throw redirect({ to: sessao.papel === "admin" ? "/admin" : "/followups" });
+    if (sessao) throw redirect({ to: sessao.papel === "admin" ? "/admin" : "/minha-fila" });
   },
   head: () => ({ meta: [{ title: "Entrar — Wake Club" }] }),
   component: LoginPage,
@@ -43,7 +43,7 @@ function LoginPage() {
 
       await router.invalidate();
       await navigate({
-        to: resultado.sessao.papel === "admin" ? "/admin" : "/followups",
+        to: resultado.sessao.papel === "admin" ? "/admin" : "/minha-fila",
       });
     } catch {
       setErro("Não foi possível entrar agora. Tente novamente em instantes.");

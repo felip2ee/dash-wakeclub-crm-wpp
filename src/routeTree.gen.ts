@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as Wf02RouteImport } from './routes/wf02'
 import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as MinhaFilaRouteImport } from './routes/minha-fila'
 import { Route as MeusLeadsRouteImport } from './routes/meus-leads'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as KanbanRouteImport } from './routes/kanban'
@@ -34,6 +35,11 @@ const TemplatesRoute = TemplatesRouteImport.update({
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MinhaFilaRoute = MinhaFilaRouteImport.update({
+  id: '/minha-fila',
+  path: '/minha-fila',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MeusLeadsRoute = MeusLeadsRouteImport.update({
@@ -85,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/kanban': typeof KanbanRoute
   '/login': typeof LoginRoute
   '/meus-leads': typeof MeusLeadsRoute
+  '/minha-fila': typeof MinhaFilaRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/kanban': typeof KanbanRoute
   '/login': typeof LoginRoute
   '/meus-leads': typeof MeusLeadsRoute
+  '/minha-fila': typeof MinhaFilaRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
@@ -112,6 +120,7 @@ export interface FileRoutesById {
   '/kanban': typeof KanbanRoute
   '/login': typeof LoginRoute
   '/meus-leads': typeof MeusLeadsRoute
+  '/minha-fila': typeof MinhaFilaRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
@@ -127,6 +136,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/login'
     | '/meus-leads'
+    | '/minha-fila'
     | '/reports'
     | '/templates'
     | '/wf02'
@@ -140,6 +150,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/login'
     | '/meus-leads'
+    | '/minha-fila'
     | '/reports'
     | '/templates'
     | '/wf02'
@@ -153,6 +164,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/login'
     | '/meus-leads'
+    | '/minha-fila'
     | '/reports'
     | '/templates'
     | '/wf02'
@@ -167,6 +179,7 @@ export interface RootRouteChildren {
   KanbanRoute: typeof KanbanRoute
   LoginRoute: typeof LoginRoute
   MeusLeadsRoute: typeof MeusLeadsRoute
+  MinhaFilaRoute: typeof MinhaFilaRoute
   ReportsRoute: typeof ReportsRoute
   TemplatesRoute: typeof TemplatesRoute
   Wf02Route: typeof Wf02Route
@@ -194,6 +207,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/minha-fila': {
+      id: '/minha-fila'
+      path: '/minha-fila'
+      fullPath: '/minha-fila'
+      preLoaderRoute: typeof MinhaFilaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/meus-leads': {
@@ -263,6 +283,7 @@ const rootRouteChildren: RootRouteChildren = {
   KanbanRoute: KanbanRoute,
   LoginRoute: LoginRoute,
   MeusLeadsRoute: MeusLeadsRoute,
+  MinhaFilaRoute: MinhaFilaRoute,
   ReportsRoute: ReportsRoute,
   TemplatesRoute: TemplatesRoute,
   Wf02Route: Wf02Route,

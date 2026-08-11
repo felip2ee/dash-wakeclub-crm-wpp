@@ -239,7 +239,7 @@ export const testarNotificacaoDaAtendente = createServerFn({ method: "POST" })
       usuarioId: data.usuarioId,
       titulo: "Teste da Wake Club",
       corpo: `${admin.nome} enviou uma notificação de teste para ${rows[0].nome}.`,
-      url: "/followups",
+      url: "/minha-fila",
       tag: `teste-admin-${data.usuarioId}`,
     });
   });

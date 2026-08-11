@@ -1,7 +1,7 @@
 {
   "name": "Wake Club · Atendimento",
   "short_name": "Wake Club",
-  "start_url": "/followups",
+  "start_url": "/minha-fila",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0b1220",

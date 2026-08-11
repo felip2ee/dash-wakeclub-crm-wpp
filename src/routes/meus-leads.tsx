@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Clock3, MessageCircle, Search, UsersRound } from "lucide-react";
+import { z } from "zod";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { exigirSessao } from "@/server/auth";
 import { listarMensagensDoMeuLead, listarMeusLeads, type MeuLead } from "@/server/meus-leads";
 
 export const Route = createFileRoute("/meus-leads")({
+  validateSearch: z.object({ lead: z.string().uuid().optional() }),
   beforeLoad: async () => {
     const sessao = await exigirSessao();
     if (sessao.papel === "admin") throw redirect({ to: "/kanban" });
@@ -25,8 +27,10 @@ export const Route = createFileRoute("/meus-leads")({
 
 function MeusLeadsPage() {
   const leads = Route.useLoaderData();
+  const navigate = useNavigate();
+  const { lead: leadId } = Route.useSearch();
   const [busca, setBusca] = useState("");
-  const [selecionado, setSelecionado] = useState<MeuLead | null>(null);
+  const selecionado = leads.find((lead) => lead.id === leadId) ?? null;
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLocaleLowerCase("pt-BR").replace(/\D/g, "");
@@ -40,7 +44,12 @@ function MeusLeadsPage() {
   }, [busca, leads]);
 
   if (selecionado) {
-    return <Conversa lead={selecionado} voltar={() => setSelecionado(null)} />;
+    return (
+      <Conversa
+        lead={selecionado}
+        voltar={() => void navigate({ to: "/meus-leads", search: {} })}
+      />
+    );
   }
 
   const grupos = Array.from(
@@ -95,7 +104,7 @@ function MeusLeadsPage() {
                   <button
                     key={lead.id}
                     className="block w-full text-left"
-                    onClick={() => setSelecionado(lead)}
+                    onClick={() => void navigate({ to: "/meus-leads", search: { lead: lead.id } })}
                   >
                     <Card className="transition-colors hover:border-primary/40 active:bg-muted/50">
                       <CardContent className="p-4">

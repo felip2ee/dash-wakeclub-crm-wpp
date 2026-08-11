@@ -16,8 +16,14 @@ Estado atual da refatoração:
 - **Fases 1 e 2 implementadas localmente:** o Kanban abre o `OpportunityWorkspace`,
   que recebe mensagens, atividade do WF-02, followups e timeline por uma única
   `getOpportunityWorkspace`; ainda requer validação visual com login real;
-- próxima fase elegível: **Fase 3 — auditoria das IAs**, dependente de contrato e
-  implementação coordenada em banco/n8n antes de qualquer leitura nova no painel;
+- **Fase 7 implementada localmente por autorização explícita fora da ordem:**
+  `/minha-fila` unifica carteira e followup atual pelas views existentes, prioriza e
+  explica cada card; `/followups` e `/meus-leads` continuam disponíveis;
+- as **Fases 3–6 não devem ser presumidas concluídas**: banco/n8n seguem sob trabalho de
+  outro agente e a integração só avança após o relatório dessa entrega;
+- a Fase 7 ainda requer validação visual com login real e teste do retorno do WhatsApp
+  em aparelho; “Feitos hoje” enxerga somente toques ainda presentes em
+  `v_followups_fila`, pois não existe view histórica própria para a atendente;
 - nenhuma mudança funcional pertenceu à Fase 0.
 
 Execute uma fase por vez. Não avance automaticamente para a próxima fase quando houver

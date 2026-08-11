@@ -116,7 +116,7 @@ function InstalarPage() {
         <div>
           <h1 className="font-display text-2xl font-semibold">Instalar o app</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Coloque a Wake Club na Tela de Início para abrir direto nos followups.
+            Coloque a Wake Club na Tela de Início para abrir direto na sua fila.
           </p>
         </div>
       </div>

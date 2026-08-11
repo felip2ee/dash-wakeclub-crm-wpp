@@ -49,7 +49,8 @@ export async function entregarPush(payload: PayloadPush): Promise<ResultadoPush>
   const corpo = JSON.stringify({
     titulo: payload.titulo,
     corpo: payload.corpo ?? "",
-    url: payload.url ?? "/followups",
+    // Compatibilidade enquanto o WF-09 ainda publica a rota antiga.
+    url: payload.url === "/followups" ? "/minha-fila" : (payload.url ?? "/minha-fila"),
     tag: payload.tag,
   });
 

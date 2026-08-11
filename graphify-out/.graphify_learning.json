@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-08-11T17:18:29.162254+00:00",
+  "generated_at": "2026-08-11T19:53:38.829451+00:00",
   "nodes": {
+    "plan_2_fase_3_criar_auditoria_das_ias": {
+      "code_fingerprint": "12189567b70a608e16ad3e41954839d79d22f5320352ecce87a785598d00a00d",
+      "label": "FASE 3 — CRIAR AUDITORIA DAS IAs",
+      "last": "2026-08-11T17:21:20.225930+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T17:21:20.225930+00:00",
+          "outcome": "useful",
+          "q": "O que precisa ser feito no n8n para a Fase 3?"
+        }
+      ],
+      "score": 0.997559158,
+      "source_file": "plan(2).md",
+      "status": "tentative",
+      "uses": 1
+    },
     "src_features_opportunities_opportunityworkspace_opportunityworkspace": {
       "code_fingerprint": "c8c6a347139b986bb0466f45048c63437ac68cd23ed8f2c2799a626d88a2e34e",
       "label": "OpportunityWorkspace()",
@@ -17,7 +33,7 @@
           "q": "Como implementar a Fase 1 OpportunityWorkspace reutilizando os dados atuais?"
         }
       ],
-      "score": 1.998418738,
+      "score": 1.99344972,
       "source_file": "src/features/opportunities/OpportunityWorkspace.tsx",
       "status": "preferred",
       "uses": 2
@@ -38,7 +54,7 @@
           "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
         }
       ],
-      "score": 1.996090907,
+      "score": 1.991127676,
       "source_file": "src/routes/admin.tsx",
       "status": "preferred",
       "uses": 2
@@ -59,7 +75,7 @@
           "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
         }
       ],
-      "score": 1.996090907,
+      "score": 1.991127676,
       "source_file": "src/routes/followups.tsx",
       "status": "preferred",
       "uses": 2
@@ -75,7 +91,7 @@
           "q": "Como implementar a Fase 1 OpportunityWorkspace reutilizando os dados atuais?"
         }
       ],
-      "score": 0.998440781,
+      "score": 0.995958183,
       "source_file": "src/routes/kanban.tsx",
       "status": "tentative",
       "uses": 1
@@ -96,7 +112,7 @@
           "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
         }
       ],
-      "score": 1.996090907,
+      "score": 1.991127676,
       "source_file": "src/server/admin.ts",
       "status": "preferred",
       "uses": 2
@@ -117,7 +133,7 @@
           "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
         }
       ],
-      "score": 1.996090907,
+      "score": 1.991127676,
       "source_file": "src/server/conversas.ts",
       "status": "preferred",
       "uses": 2
@@ -133,7 +149,7 @@
           "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
         }
       ],
-      "score": 0.998282044,
+      "score": 0.995799841,
       "source_file": "src/server/db.ts",
       "status": "tentative",
       "uses": 1
@@ -149,7 +165,7 @@
           "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
         }
       ],
-      "score": 0.998282044,
+      "score": 0.995799841,
       "source_file": "src/server/db.ts",
       "status": "tentative",
       "uses": 1
@@ -170,7 +186,7 @@
           "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
         }
       ],
-      "score": 1.996090907,
+      "score": 1.991127676,
       "source_file": "src/server/followups.ts",
       "status": "preferred",
       "uses": 2
@@ -186,7 +202,7 @@
           "q": "Continuar a refatoracao pela Fase 2 e unificar o carregamento do OpportunityWorkspace"
         }
       ],
-      "score": 0.999977957,
+      "score": 0.997491537,
       "source_file": "src/server/opportunities.ts",
       "status": "tentative",
       "uses": 1
@@ -202,7 +218,7 @@
           "q": "Continuar a refatoracao pela Fase 2 e unificar o carregamento do OpportunityWorkspace"
         }
       ],
-      "score": 0.999977957,
+      "score": 0.997491537,
       "source_file": "src/server/opportunities.ts",
       "status": "tentative",
       "uses": 1
@@ -218,7 +234,7 @@
           "q": "Como implementar a Fase 1 OpportunityWorkspace reutilizando os dados atuais?"
         }
       ],
-      "score": 0.998440781,
+      "score": 0.995958183,
       "source_file": "src/server/wf02.ts",
       "status": "tentative",
       "uses": 1
@@ -234,7 +250,7 @@
           "q": "Como implementar a Fase 1 OpportunityWorkspace reutilizando os dados atuais?"
         }
       ],
-      "score": 0.998440781,
+      "score": 0.995958183,
       "source_file": "src/server/wf02.ts",
       "status": "tentative",
       "uses": 1
