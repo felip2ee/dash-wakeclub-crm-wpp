@@ -1,10 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import {
   AlarmClock,
-  BellOff,
   CalendarClock,
   Clock,
   MessageSquareText,
@@ -16,20 +12,13 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { dataHoraCompleta, diaRelativo } from "@/lib/formato";
+import { OpportunityWorkspace } from "@/features/opportunities/OpportunityWorkspace";
+import { dataHora, desde, telefone } from "@/lib/formato";
 import { cn } from "@/lib/utils";
 import { exigirAdmin } from "@/server/auth";
-import { getMensagens, type Mensagem } from "@/server/conversas";
 import { getLeadsPainel, type LeadCard } from "@/server/leads";
 
 /**
@@ -196,9 +185,7 @@ function CardDoLead({ lead }: { lead: LeadCard }) {
               <div className="truncate text-sm font-semibold leading-tight">
                 {lead.nome ?? "Sem nome"}
               </div>
-              <div className="text-[11px] text-muted-foreground">
-                {formatarTelefone(lead.telefone)}
-              </div>
+              <div className="text-[11px] text-muted-foreground">{telefone(lead.telefone)}</div>
             </div>
             {lead.temperatura && (
               <span
@@ -220,7 +207,7 @@ function CardDoLead({ lead }: { lead: LeadCard }) {
           {lead.dataAgendada && (
             <div className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground">
               <CalendarClock className="h-3 w-3 shrink-0" />
-              aula {formatarDataHora(lead.dataAgendada)}
+              aula {dataHora(lead.dataAgendada)}
             </div>
           )}
 
@@ -259,182 +246,8 @@ function CardDoLead({ lead }: { lead: LeadCard }) {
           )}
         </button>
       </DialogTrigger>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>{lead.nome ?? "Lead sem nome"}</DialogTitle>
-          <DialogDescription>{formatarTelefone(lead.telefone)}</DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-5 text-sm lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <div className="space-y-4">
-            <Detalhe
-              titulo="Atendente responsável"
-              valor={lead.atendenteNome ?? "Sem responsável"}
-            />
-            <Detalhe titulo="Etapa do funil" valor={lead.etiqueta} />
-
-            {lead.resumo && (
-              <section className="rounded-xl border border-border bg-muted/40 p-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Resumo
-                </h4>
-                <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">{lead.resumo}</p>
-              </section>
-            )}
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              <Detalhe titulo="Temperatura" valor={lead.temperatura} />
-              <Detalhe titulo="Origem" valor={lead.origem} />
-              <Detalhe titulo="Interesse" valor={lead.interesse} />
-              <Detalhe titulo="Objeção" valor={lead.objecao} />
-              <Detalhe titulo="Toques sem resposta" valor={String(lead.nToques)} />
-              <Detalhe
-                titulo="Aula agendada"
-                valor={lead.dataAgendada ? formatarDataHora(lead.dataAgendada) : null}
-              />
-            </div>
-
-            {(lead.optOut || lead.semAtendimento) && (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs">
-                {lead.optOut && (
-                  <p className="flex items-center gap-1.5">
-                    <BellOff className="h-3.5 w-3.5" /> Lead em opt-out.
-                  </p>
-                )}
-                {lead.semAtendimento && (
-                  <p>
-                    Não atender
-                    {lead.semAtendimentoMotivo ? ` · ${lead.semAtendimentoMotivo}` : ""}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <HistoricoDoLead leadId={lead.id} />
-        </div>
-      </DialogContent>
+      <OpportunityWorkspace lead={lead} />
     </Dialog>
-  );
-}
-
-function HistoricoDoLead({ leadId }: { leadId: string }) {
-  const { data, isPending, isError, error } = useQuery({
-    queryKey: ["mensagens", leadId],
-    queryFn: () => getMensagens({ data: { leadId } }),
-    refetchInterval: RECARREGAR_A_CADA_MS,
-  });
-
-  return (
-    <section className="min-w-0 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">Histórico completo</h3>
-          <p className="text-xs text-muted-foreground">
-            {data
-              ? `${data.length} ${data.length === 1 ? "mensagem" : "mensagens"}`
-              : "Conversa do WhatsApp"}
-          </p>
-        </div>
-        <Badge variant="outline" className="shrink-0 gap-1 text-[10px] font-normal">
-          <MessageSquareText className="h-3 w-3" /> somente leitura
-        </Badge>
-      </div>
-
-      <div className="rounded-xl border border-border bg-muted/20 p-3 sm:p-4">
-        {isPending && (
-          <p className="py-10 text-center text-xs text-muted-foreground">
-            Carregando todo o histórico…
-          </p>
-        )}
-        {isError && (
-          <p className="py-10 text-center text-xs text-destructive">{(error as Error).message}</p>
-        )}
-        {data?.length === 0 && (
-          <p className="py-10 text-center text-xs text-muted-foreground">
-            Este lead ainda não tem mensagens registradas.
-          </p>
-        )}
-        {data && data.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {data.map((mensagem, indice) => (
-              <MensagemDoHistorico
-                key={mensagem.id}
-                mensagem={mensagem}
-                anterior={data[indice - 1]}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function MensagemDoHistorico({ mensagem, anterior }: { mensagem: Mensagem; anterior?: Mensagem }) {
-  const daEquipe = mensagem.direcao !== "lead";
-  const novoDia = !anterior || diaRelativo(mensagem.enviadaEm) !== diaRelativo(anterior.enviadaEm);
-  const autor = mensagem.direcao === "lead" ? "Lead" : mensagem.direcao === "ia" ? "IA" : "Equipe";
-
-  return (
-    <>
-      {novoDia && (
-        <div
-          className="mx-auto my-2 rounded-full bg-muted px-3 py-1 text-[11px] text-muted-foreground"
-          suppressHydrationWarning
-        >
-          {diaRelativo(mensagem.enviadaEm)}
-        </div>
-      )}
-
-      <div className={cn("flex", daEquipe ? "justify-end" : "justify-start")}>
-        <div
-          className={cn(
-            "max-w-[88%] rounded-2xl px-3.5 py-2 shadow-sm",
-            mensagem.direcao === "lead" && "rounded-bl-sm bg-card",
-            mensagem.direcao === "equipe" && "rounded-br-sm bg-primary text-primary-foreground",
-            mensagem.direcao === "ia" && "rounded-br-sm border border-amber-500/40 bg-amber-500/10",
-          )}
-        >
-          <p
-            className={cn(
-              "mb-1 text-[10px] font-medium",
-              mensagem.direcao === "equipe"
-                ? "text-primary-foreground/75"
-                : "text-muted-foreground",
-            )}
-          >
-            {autor}
-          </p>
-          <p className="whitespace-pre-wrap break-words leading-relaxed">
-            {mensagem.texto ?? <span className="italic opacity-60">(mensagem sem texto)</span>}
-          </p>
-          <p
-            className={cn(
-              "mt-1 text-right text-[10px]",
-              mensagem.direcao === "equipe"
-                ? "text-primary-foreground/70"
-                : "text-muted-foreground",
-            )}
-            title={dataHoraCompleta(mensagem.enviadaEm)}
-            suppressHydrationWarning
-          >
-            {dataHoraCompleta(mensagem.enviadaEm)}
-          </p>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function Detalhe({ titulo, valor }: { titulo: string; valor: string | null }) {
-  return (
-    <div>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {titulo}
-      </p>
-      <p className="mt-0.5 leading-relaxed">{valor || "Não informado"}</p>
-    </div>
   );
 }
 
@@ -453,24 +266,4 @@ function ErroDeConexao({ error }: { error: Error }) {
       </div>
     </div>
   );
-}
-
-/** +5563981119636 → +55 63 98111-9636 */
-function formatarTelefone(e164: string): string {
-  const m = /^\+55(\d{2})(\d{4,5})(\d{4})$/.exec(e164);
-  return m ? `+55 ${m[1]} ${m[2]}-${m[3]}` : e164;
-}
-
-function desde(isoDate: string): string {
-  return formatDistanceToNow(new Date(isoDate), { addSuffix: true, locale: ptBR });
-}
-
-function formatarDataHora(isoDate: string): string {
-  return new Date(isoDate).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Sao_Paulo",
-  });
 }

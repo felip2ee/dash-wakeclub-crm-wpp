@@ -1,0 +1,1206 @@
+{
+  "communities": {
+    "0": [
+      "src_components_ui_avatar",
+      "src_components_ui_avatar_avatar",
+      "src_components_ui_avatar_avatarfallback",
+      "src_components_ui_avatar_avatarimage",
+      "src_components_ui_badge",
+      "src_components_ui_badge_badge",
+      "src_components_ui_badge_badgeprops",
+      "src_components_ui_badge_badgevariants",
+      "src_components_ui_separator",
+      "src_components_ui_separator_separator",
+      "src_lib_formato",
+      "src_lib_formato_datahora",
+      "src_lib_formato_datahoracompleta",
+      "src_lib_formato_desde",
+      "src_lib_formato_diarelativo",
+      "src_lib_formato_hora",
+      "src_lib_formato_iniciais",
+      "src_lib_formato_plural",
+      "src_lib_formato_telefone",
+      "src_routes_followups_followupcard",
+      "src_routes_index",
+      "src_routes_index_bolha",
+      "src_routes_index_campo",
+      "src_routes_index_detalhesdolead",
+      "src_routes_index_entrega",
+      "src_routes_index_errodeconexao",
+      "src_routes_index_filtro",
+      "src_routes_index_followup_rotulo",
+      "src_routes_index_inboxpage",
+      "src_routes_index_itemdalista",
+      "src_routes_index_route",
+      "src_routes_index_semconversas",
+      "src_routes_index_temperatura_estilo",
+      "src_routes_index_thread",
+      "src_routes_kanban_historicodolead",
+      "src_routes_kanban_mensagemdohistorico",
+      "src_routes_meus_leads",
+      "src_routes_meus_leads_conversa",
+      "src_routes_meus_leads_meusleadspage",
+      "src_routes_wf02",
+      "src_routes_wf02_aba",
+      "src_routes_wf02_abafila",
+      "src_routes_wf02_abafollowups",
+      "src_routes_wf02_abaporlead",
+      "src_routes_wf02_abatimeline",
+      "src_routes_wf02_cardfollowup",
+      "src_routes_wf02_cardqualificacao",
+      "src_routes_wf02_detalhefollowup",
+      "src_routes_wf02_errodeconexao",
+      "src_routes_wf02_explicacao",
+      "src_routes_wf02_followup_rotulo",
+      "src_routes_wf02_linhadomotor",
+      "src_routes_wf02_route",
+      "src_routes_wf02_situacao",
+      "src_routes_wf02_status_estilo",
+      "src_routes_wf02_temperatura_estilo",
+      "src_routes_wf02_transicao",
+      "src_routes_wf02_vazio",
+      "src_routes_wf02_wf02page",
+      "src_server_conversas",
+      "src_server_conversas_conversa",
+      "src_server_conversas_direcao",
+      "src_server_conversas_getconversas",
+      "src_server_conversas_getmensagens",
+      "src_server_conversas_iso",
+      "src_server_conversas_linhaconversa",
+      "src_server_conversas_linhamensagem",
+      "src_server_conversas_mensagem",
+      "src_server_meus_leads_meulead",
+      "src_server_wf02",
+      "src_server_wf02_followup",
+      "src_server_wf02_getfollowups",
+      "src_server_wf02_getpainelwf02",
+      "src_server_wf02_getwf02atividade",
+      "src_server_wf02_getwf02motor",
+      "src_server_wf02_iso",
+      "src_server_wf02_leadnomotor",
+      "src_server_wf02_painelwf02",
+      "src_server_wf02_qualificacaoia",
+      "src_server_wf02_situacaomotor"
+    ],
+    "1": [
+      "src_components_ui_card",
+      "src_components_ui_card_card",
+      "src_components_ui_card_cardcontent",
+      "src_components_ui_card_carddescription",
+      "src_components_ui_card_cardfooter",
+      "src_components_ui_card_cardheader",
+      "src_components_ui_card_cardtitle",
+      "src_lib_push",
+      "src_lib_push_apelidodoaparelho",
+      "src_lib_push_ativarpush",
+      "src_lib_push_base64urlparauint8array",
+      "src_routes_followups",
+      "src_routes_followups_chave_fila",
+      "src_routes_followups_followupspage",
+      "src_routes_followups_grupo",
+      "src_routes_followups_route",
+      "src_routes_instalar",
+      "src_routes_instalar_estadoitem",
+      "src_routes_instalar_estadopwa",
+      "src_routes_instalar_eventoinstalacao",
+      "src_routes_instalar_instalarpage",
+      "src_routes_instalar_instrucoesandroid",
+      "src_routes_instalar_instrucoesios",
+      "src_routes_instalar_passo",
+      "src_routes_instalar_rotulopermissao",
+      "src_routes_meus_leads_route",
+      "src_server_auth",
+      "src_server_auth_cookieseguro",
+      "src_server_auth_entrar",
+      "src_server_auth_establoqueado",
+      "src_server_auth_exigiratendente",
+      "src_server_auth_exigirsessao",
+      "src_server_auth_getsessao",
+      "src_server_auth_hashtoken",
+      "src_server_auth_papel",
+      "src_server_auth_registrarfalha",
+      "src_server_auth_sair",
+      "src_server_auth_tentativas",
+      "src_server_db",
+      "src_server_db_createpool",
+      "src_server_db_getpool",
+      "src_server_db_getpoolrw",
+      "src_server_followups",
+      "src_server_followups_followupfila",
+      "src_server_followups_iso",
+      "src_server_followups_listarminhafila",
+      "src_server_followups_registrartoque",
+      "src_server_meus_leads",
+      "src_server_meus_leads_linhalead",
+      "src_server_meus_leads_linhamensagem",
+      "src_server_meus_leads_listarmensagensdomeulead",
+      "src_server_meus_leads_listarmeusleads",
+      "src_server_meus_leads_mensagemdomeulead",
+      "src_server_push",
+      "src_server_push_getchavepublicapush",
+      "src_server_push_inscricaoschema",
+      "src_server_push_salvarinscricao",
+      "src_server_push_testarminhanotificacao"
+    ],
+    "2": [
+      "src_router",
+      "src_router_getrouter",
+      "src_routes_admin_route",
+      "src_routes_api_push_enviar",
+      "src_routes_api_push_enviar_payloadschema",
+      "src_routes_api_push_enviar_route",
+      "src_routes_api_push_enviar_segredovalido",
+      "src_routes_instalar_route",
+      "src_routes_login_route",
+      "src_routes_root_route",
+      "src_routes_templates_route",
+      "src_routetree_gen",
+      "src_routetree_gen_adminroute",
+      "src_routetree_gen_apipushenviarroute",
+      "src_routetree_gen_fileroutesbyfullpath",
+      "src_routetree_gen_fileroutesbyid",
+      "src_routetree_gen_fileroutesbypath",
+      "src_routetree_gen_fileroutesbyto",
+      "src_routetree_gen_fileroutetypes",
+      "src_routetree_gen_followupsroute",
+      "src_routetree_gen_indexroute",
+      "src_routetree_gen_instalarroute",
+      "src_routetree_gen_kanbanroute",
+      "src_routetree_gen_loginroute",
+      "src_routetree_gen_meusleadsroute",
+      "src_routetree_gen_register",
+      "src_routetree_gen_reportsroute",
+      "src_routetree_gen_rootroutechildren",
+      "src_routetree_gen_routetree",
+      "src_routetree_gen_tanstack_react_router",
+      "src_routetree_gen_tanstack_react_start",
+      "src_routetree_gen_templatesroute",
+      "src_routetree_gen_wf02route",
+      "src_server_push_dispatch",
+      "src_server_push_dispatch_entregarpush",
+      "src_server_push_dispatch_inscricao",
+      "src_server_push_dispatch_mensagemdoerro",
+      "src_server_push_dispatch_payloadpush",
+      "src_server_push_dispatch_resultadopush",
+      "src_server_push_dispatch_statusdoerro",
+      "src_start_startinstance"
+    ],
+    "3": [
+      "src_components_ui_alert_dialog",
+      "src_components_ui_alert_dialog_alertdialogaction",
+      "src_components_ui_alert_dialog_alertdialogcancel",
+      "src_components_ui_alert_dialog_alertdialogcontent",
+      "src_components_ui_alert_dialog_alertdialogdescription",
+      "src_components_ui_alert_dialog_alertdialogfooter",
+      "src_components_ui_alert_dialog_alertdialogheader",
+      "src_components_ui_alert_dialog_alertdialogoverlay",
+      "src_components_ui_alert_dialog_alertdialogtitle",
+      "src_routes_admin",
+      "src_routes_admin_adminpage",
+      "src_routes_admin_atendentecard",
+      "src_routes_admin_cadastroatendente",
+      "src_routes_admin_duracao",
+      "src_routes_admin_metrica",
+      "src_routes_admin_metricaexplicada",
+      "src_routes_admin_minimetrica",
+      "src_routes_admin_percentual",
+      "src_routes_admin_titulosecao",
+      "src_server_admin",
+      "src_server_admin_alteraratendente",
+      "src_server_admin_alteraratendenteschema",
+      "src_server_admin_aparelhoadmin",
+      "src_server_admin_atendenteadmin",
+      "src_server_admin_criaratendente",
+      "src_server_admin_criaratendenteschema",
+      "src_server_admin_getpaineladmin",
+      "src_server_admin_iso",
+      "src_server_admin_labeldisponiveladmin",
+      "src_server_admin_numeroounulo",
+      "src_server_admin_paineladmin",
+      "src_server_admin_removeraparelho",
+      "src_server_admin_resumoadmin",
+      "src_server_admin_testarnotificacaodaatendente",
+      "src_server_auth_exigiradmin"
+    ],
+    "4": [
+      "src_components_ui_context_menu",
+      "src_components_ui_context_menu_contextmenucheckboxitem",
+      "src_components_ui_context_menu_contextmenucontent",
+      "src_components_ui_context_menu_contextmenuitem",
+      "src_components_ui_context_menu_contextmenulabel",
+      "src_components_ui_context_menu_contextmenuradioitem",
+      "src_components_ui_context_menu_contextmenuseparator",
+      "src_components_ui_context_menu_contextmenushortcut",
+      "src_components_ui_context_menu_contextmenusubcontent",
+      "src_components_ui_context_menu_contextmenusubtrigger",
+      "src_components_ui_dropdown_menu",
+      "src_components_ui_dropdown_menu_dropdownmenucheckboxitem",
+      "src_components_ui_dropdown_menu_dropdownmenucontent",
+      "src_components_ui_dropdown_menu_dropdownmenuitem",
+      "src_components_ui_dropdown_menu_dropdownmenulabel",
+      "src_components_ui_dropdown_menu_dropdownmenuradioitem",
+      "src_components_ui_dropdown_menu_dropdownmenuseparator",
+      "src_components_ui_dropdown_menu_dropdownmenushortcut",
+      "src_components_ui_dropdown_menu_dropdownmenusubcontent",
+      "src_components_ui_dropdown_menu_dropdownmenusubtrigger",
+      "src_components_ui_radio_group",
+      "src_components_ui_radio_group_radiogroup",
+      "src_components_ui_radio_group_radiogroupitem",
+      "src_components_ui_table",
+      "src_components_ui_table_table",
+      "src_components_ui_table_tablebody",
+      "src_components_ui_table_tablecaption",
+      "src_components_ui_table_tablecell",
+      "src_components_ui_table_tablefooter",
+      "src_components_ui_table_tablehead",
+      "src_components_ui_table_tableheader",
+      "src_components_ui_table_tablerow",
+      "src_lib_utils_cn"
+    ],
+    "5": [
+      "ref_dom",
+      "ref_dom_iterable",
+      "ref_es2022",
+      "ref_eslint_config_js",
+      "ref_src_ts",
+      "ref_src_tsx",
+      "ref_vite_client",
+      "ref_vite_config_ts",
+      "tsconfig",
+      "tsconfig_compileroptions",
+      "tsconfig_compileroptions_allowimportingtsextensions",
+      "tsconfig_compileroptions_jsx",
+      "tsconfig_compileroptions_lib",
+      "tsconfig_compileroptions_module",
+      "tsconfig_compileroptions_moduleresolution",
+      "tsconfig_compileroptions_noemit",
+      "tsconfig_compileroptions_nofallthroughcasesinswitch",
+      "tsconfig_compileroptions_nouncheckedsideeffectimports",
+      "tsconfig_compileroptions_nounusedlocals",
+      "tsconfig_compileroptions_nounusedparameters",
+      "tsconfig_compileroptions_paths",
+      "tsconfig_compileroptions_skiplibcheck",
+      "tsconfig_compileroptions_strict",
+      "tsconfig_compileroptions_target",
+      "tsconfig_compileroptions_types",
+      "tsconfig_compileroptions_verbatimmodulesyntax",
+      "tsconfig_include"
+    ],
+    "6": [
+      "src_components_appsidebar",
+      "src_components_appsidebar_navadmin",
+      "src_components_ui_sidebar",
+      "src_components_ui_sidebar_sidebarcontent",
+      "src_components_ui_sidebar_sidebarcontext",
+      "src_components_ui_sidebar_sidebarcontextprops",
+      "src_components_ui_sidebar_sidebarfooter",
+      "src_components_ui_sidebar_sidebargroup",
+      "src_components_ui_sidebar_sidebargroupaction",
+      "src_components_ui_sidebar_sidebargroupcontent",
+      "src_components_ui_sidebar_sidebargrouplabel",
+      "src_components_ui_sidebar_sidebarheader",
+      "src_components_ui_sidebar_sidebarinput",
+      "src_components_ui_sidebar_sidebarmenu",
+      "src_components_ui_sidebar_sidebarmenuaction",
+      "src_components_ui_sidebar_sidebarmenubadge",
+      "src_components_ui_sidebar_sidebarmenuitem",
+      "src_components_ui_sidebar_sidebarmenuskeleton",
+      "src_components_ui_sidebar_sidebarmenusub",
+      "src_components_ui_sidebar_sidebarmenusubbutton",
+      "src_components_ui_sidebar_sidebarmenusubitem",
+      "src_components_ui_sidebar_sidebarseparator",
+      "src_components_ui_skeleton",
+      "src_components_ui_skeleton_skeleton",
+      "src_components_ui_tooltip",
+      "src_components_ui_tooltip_tooltipcontent"
+    ],
+    "7": [
+      "src_components_ui_dialog",
+      "src_components_ui_dialog_dialogdescription",
+      "src_components_ui_dialog_dialogfooter",
+      "src_components_ui_dialog_dialogheader",
+      "src_components_ui_dialog_dialogoverlay",
+      "src_components_ui_dialog_dialogtitle",
+      "src_components_ui_scroll_area",
+      "src_components_ui_scroll_area_scrollarea",
+      "src_components_ui_scroll_area_scrollbar",
+      "src_routes_kanban",
+      "src_routes_kanban_carddolead",
+      "src_routes_kanban_colunas",
+      "src_routes_kanban_desde",
+      "src_routes_kanban_detalhe",
+      "src_routes_kanban_errodeconexao",
+      "src_routes_kanban_followup_rotulo",
+      "src_routes_kanban_formatardatahora",
+      "src_routes_kanban_formatartelefone",
+      "src_routes_kanban_kanbanpage",
+      "src_routes_kanban_route",
+      "src_routes_kanban_temperatura_estilo",
+      "src_server_leads",
+      "src_server_leads_getleadspainel",
+      "src_server_leads_iso",
+      "src_server_leads_leadcard",
+      "src_server_leads_row"
+    ],
+    "8": [
+      "src_components_ui_alert",
+      "src_components_ui_alert_alert",
+      "src_components_ui_alert_alertdescription",
+      "src_components_ui_alert_alerttitle",
+      "src_components_ui_alert_alertvariants",
+      "src_components_ui_form",
+      "src_components_ui_form_formcontrol",
+      "src_components_ui_form_formdescription",
+      "src_components_ui_form_formfield",
+      "src_components_ui_form_formfieldcontext",
+      "src_components_ui_form_formfieldcontextvalue",
+      "src_components_ui_form_formitem",
+      "src_components_ui_form_formitemcontext",
+      "src_components_ui_form_formitemcontextvalue",
+      "src_components_ui_form_formlabel",
+      "src_components_ui_form_formmessage",
+      "src_components_ui_form_useformfield",
+      "src_components_ui_input",
+      "src_components_ui_input_input",
+      "src_components_ui_label",
+      "src_components_ui_label_label",
+      "src_components_ui_label_labelvariants",
+      "src_routes_login",
+      "src_routes_login_loginpage"
+    ],
+    "9": [
+      "src_lib_formato_diacurto",
+      "src_routes_reports",
+      "src_routes_reports_eixo",
+      "src_routes_reports_errodeconexao",
+      "src_routes_reports_kpi",
+      "src_routes_reports_linha",
+      "src_routes_reports_painel",
+      "src_routes_reports_pontolegenda",
+      "src_routes_reports_reportspage",
+      "src_routes_reports_route",
+      "src_routes_reports_serie",
+      "src_routes_reports_somar",
+      "src_routes_reports_termometro",
+      "src_routes_reports_tooltip",
+      "src_server_relatorios",
+      "src_server_relatorios_atividadedia",
+      "src_server_relatorios_etapafunil",
+      "src_server_relatorios_getrelatorios",
+      "src_server_relatorios_relatorios",
+      "src_server_relatorios_resumocrm",
+      "src_server_relatorios_sodata",
+      "src_server_relatorios_volumedia"
+    ],
+    "10": [
+      "src_components_ui_checkbox",
+      "src_components_ui_checkbox_checkbox",
+      "src_components_ui_hover_card",
+      "src_components_ui_hover_card_hovercardcontent",
+      "src_components_ui_input_otp",
+      "src_components_ui_input_otp_inputotp",
+      "src_components_ui_input_otp_inputotpgroup",
+      "src_components_ui_input_otp_inputotpseparator",
+      "src_components_ui_input_otp_inputotpslot",
+      "src_components_ui_popover",
+      "src_components_ui_popover_popovercontent",
+      "src_components_ui_resizable",
+      "src_components_ui_resizable_resizablehandle",
+      "src_components_ui_resizable_resizablepanelgroup",
+      "src_components_ui_slider",
+      "src_components_ui_slider_slider",
+      "src_components_ui_switch",
+      "src_components_ui_switch_switch",
+      "src_components_ui_textarea",
+      "src_components_ui_textarea_textarea",
+      "src_lib_utils"
+    ],
+    "11": [
+      "src_components_appsidebar_appsidebar",
+      "src_components_pwaregistrar",
+      "src_components_pwaregistrar_pwaregistrar",
+      "src_components_ui_sidebar_sidebarinset",
+      "src_components_ui_sonner",
+      "src_components_ui_sonner_toaster",
+      "src_components_ui_sonner_toasterprops",
+      "src_routes_root",
+      "src_routes_root_alerta_estilo",
+      "src_routes_root_errorcomponent",
+      "src_routes_root_notfoundcomponent",
+      "src_routes_root_rootcomponent",
+      "src_routes_root_rootshell",
+      "src_routes_root_saudedonumero",
+      "src_server_auth_sessao",
+      "src_server_saude",
+      "src_server_saude_alerta",
+      "src_server_saude_getsaudenumero",
+      "src_server_saude_iso",
+      "src_server_saude_saudenumero"
+    ],
+    "12": [
+      "components",
+      "components_aliases",
+      "components_aliases_components",
+      "components_aliases_hooks",
+      "components_aliases_lib",
+      "components_aliases_ui",
+      "components_aliases_utils",
+      "components_iconlibrary",
+      "components_registries",
+      "components_rsc",
+      "components_rtl",
+      "components_schema",
+      "components_style",
+      "components_tailwind",
+      "components_tailwind_basecolor",
+      "components_tailwind_css",
+      "components_tailwind_cssvariables",
+      "components_tailwind_prefix",
+      "components_tsx"
+    ],
+    "13": [
+      "src_components_ui_progress",
+      "src_components_ui_progress_progress",
+      "src_components_ui_tabs",
+      "src_components_ui_tabs_tabscontent",
+      "src_components_ui_tabs_tabslist",
+      "src_components_ui_tabs_tabstrigger",
+      "src_lib_mock_data",
+      "src_lib_mock_data_campaign",
+      "src_lib_mock_data_campaigns",
+      "src_lib_mock_data_template",
+      "src_lib_mock_data_templates",
+      "src_routes_templates",
+      "src_routes_templates_campaignsboard",
+      "src_routes_templates_campaignstatus",
+      "src_routes_templates_row",
+      "src_routes_templates_statcard",
+      "src_routes_templates_statusbadge",
+      "src_routes_templates_templatesgrid",
+      "src_routes_templates_templatespage"
+    ],
+    "14": [
+      "src_components_ui_menubar",
+      "src_components_ui_menubar_menubar",
+      "src_components_ui_menubar_menubarcheckboxitem",
+      "src_components_ui_menubar_menubarcontent",
+      "src_components_ui_menubar_menubargroup",
+      "src_components_ui_menubar_menubaritem",
+      "src_components_ui_menubar_menubarlabel",
+      "src_components_ui_menubar_menubarmenu",
+      "src_components_ui_menubar_menubarportal",
+      "src_components_ui_menubar_menubarradiogroup",
+      "src_components_ui_menubar_menubarradioitem",
+      "src_components_ui_menubar_menubarseparator",
+      "src_components_ui_menubar_menubarshortcut",
+      "src_components_ui_menubar_menubarsub",
+      "src_components_ui_menubar_menubarsubcontent",
+      "src_components_ui_menubar_menubarsubtrigger",
+      "src_components_ui_menubar_menubartrigger"
+    ],
+    "15": [
+      "scripts_painel_db",
+      "scripts_painel_db_apply",
+      "scripts_painel_db_aqui",
+      "scripts_painel_db_carregarenv",
+      "scripts_painel_db_check",
+      "scripts_painel_db_conectar",
+      "scripts_painel_db_cor",
+      "scripts_painel_db_diagnosticarconexao",
+      "scripts_painel_db_exigir",
+      "scripts_painel_db_linha",
+      "scripts_painel_db_mascarar",
+      "scripts_painel_db_raiz_painel",
+      "scripts_painel_db_raiz_projeto",
+      "scripts_painel_db_tabelas",
+      "scripts_painel_db_titulo",
+      "scripts_painel_db_views_esperadas"
+    ],
+    "16": [
+      "src_components_ui_button",
+      "src_components_ui_button_button",
+      "src_components_ui_button_buttonprops",
+      "src_components_ui_button_buttonvariants",
+      "src_components_ui_calendar",
+      "src_components_ui_calendar_calendar",
+      "src_components_ui_calendar_calendardaybutton",
+      "src_components_ui_pagination",
+      "src_components_ui_pagination_pagination",
+      "src_components_ui_pagination_paginationcontent",
+      "src_components_ui_pagination_paginationellipsis",
+      "src_components_ui_pagination_paginationitem",
+      "src_components_ui_pagination_paginationlink",
+      "src_components_ui_pagination_paginationlinkprops",
+      "src_components_ui_pagination_paginationnext",
+      "src_components_ui_pagination_paginationprevious"
+    ],
+    "17": [
+      "server_entry",
+      "src_lib_error_capture",
+      "src_lib_error_capture_consumelastcapturederror",
+      "src_lib_error_capture_record",
+      "src_lib_error_page",
+      "src_lib_error_page_rendererrorpage",
+      "src_server",
+      "src_server_fetch",
+      "src_server_getserverentry",
+      "src_server_ish3swallowederrorbody",
+      "src_server_normalizecatastrophicssrresponse",
+      "src_server_serverentry",
+      "src_start",
+      "src_start_errormiddleware"
+    ],
+    "18": [
+      "src_components_ui_carousel",
+      "src_components_ui_carousel_carousel",
+      "src_components_ui_carousel_carouselapi",
+      "src_components_ui_carousel_carouselcontent",
+      "src_components_ui_carousel_carouselcontext",
+      "src_components_ui_carousel_carouselcontextprops",
+      "src_components_ui_carousel_carouselitem",
+      "src_components_ui_carousel_carouselnext",
+      "src_components_ui_carousel_carouseloptions",
+      "src_components_ui_carousel_carouselplugin",
+      "src_components_ui_carousel_carouselprevious",
+      "src_components_ui_carousel_carouselprops",
+      "src_components_ui_carousel_usecarousel",
+      "src_components_ui_carousel_usecarouselparameters"
+    ],
+    "19": [
+      "eslint",
+      "eslint_config_prettier",
+      "eslint_plugin_react_hooks",
+      "eslint_plugin_react_refresh",
+      "package_devdependencies",
+      "package_devdependencies_eslint",
+      "package_devdependencies_eslint_config_prettier",
+      "package_devdependencies_eslint_plugin_react_hooks",
+      "package_devdependencies_eslint_plugin_react_refresh",
+      "package_devdependencies_typescript",
+      "package_devdependencies_typescript_eslint",
+      "typescript",
+      "typescript_eslint"
+    ],
+    "20": [
+      "input_otp",
+      "lucide_react",
+      "package_dependencies",
+      "package_dependencies_bcryptjs",
+      "package_dependencies_input_otp",
+      "package_dependencies_lucide_react",
+      "package_dependencies_radix_ui_react_aspect_ratio",
+      "package_dependencies_react_hook_form",
+      "package_dependencies_tailwindcss_vite",
+      "package_json_bcryptjs",
+      "radix_ui_react_aspect_ratio",
+      "react_hook_form",
+      "tailwindcss_vite"
+    ],
+    "21": [
+      "src_components_ui_chart",
+      "src_components_ui_chart_chartconfig",
+      "src_components_ui_chart_chartcontainer",
+      "src_components_ui_chart_chartcontext",
+      "src_components_ui_chart_chartcontextprops",
+      "src_components_ui_chart_chartlegendcontent",
+      "src_components_ui_chart_chartstyle",
+      "src_components_ui_chart_charttooltipcontent",
+      "src_components_ui_chart_getpayloadconfigfrompayload",
+      "src_components_ui_chart_themes",
+      "src_components_ui_chart_usechart"
+    ],
+    "22": [
+      "src_components_ui_command",
+      "src_components_ui_command_command",
+      "src_components_ui_command_commanddialog",
+      "src_components_ui_command_commandempty",
+      "src_components_ui_command_commandgroup",
+      "src_components_ui_command_commandinput",
+      "src_components_ui_command_commanditem",
+      "src_components_ui_command_commandlist",
+      "src_components_ui_command_commandseparator",
+      "src_components_ui_command_commandshortcut",
+      "src_components_ui_dialog_dialogcontent"
+    ],
+    "23": [
+      "package_scripts",
+      "package_scripts_build",
+      "package_scripts_build_dev",
+      "package_scripts_db_apply",
+      "package_scripts_db_check",
+      "package_scripts_dev",
+      "package_scripts_format",
+      "package_scripts_lint",
+      "package_scripts_preview",
+      "package_scripts_start"
+    ],
+    "24": [
+      "src_components_ui_sheet",
+      "src_components_ui_sheet_sheetcontent",
+      "src_components_ui_sheet_sheetcontentprops",
+      "src_components_ui_sheet_sheetdescription",
+      "src_components_ui_sheet_sheetfooter",
+      "src_components_ui_sheet_sheetheader",
+      "src_components_ui_sheet_sheetoverlay",
+      "src_components_ui_sheet_sheettitle",
+      "src_components_ui_sheet_sheetvariants"
+    ],
+    "25": [
+      "src_components_ui_breadcrumb",
+      "src_components_ui_breadcrumb_breadcrumb",
+      "src_components_ui_breadcrumb_breadcrumbellipsis",
+      "src_components_ui_breadcrumb_breadcrumbitem",
+      "src_components_ui_breadcrumb_breadcrumblink",
+      "src_components_ui_breadcrumb_breadcrumblist",
+      "src_components_ui_breadcrumb_breadcrumbpage",
+      "src_components_ui_breadcrumb_breadcrumbseparator"
+    ],
+    "26": [
+      "src_components_ui_drawer",
+      "src_components_ui_drawer_drawer",
+      "src_components_ui_drawer_drawercontent",
+      "src_components_ui_drawer_drawerdescription",
+      "src_components_ui_drawer_drawerfooter",
+      "src_components_ui_drawer_drawerheader",
+      "src_components_ui_drawer_draweroverlay",
+      "src_components_ui_drawer_drawertitle"
+    ],
+    "27": [
+      "src_components_ui_navigation_menu",
+      "src_components_ui_navigation_menu_navigationmenu",
+      "src_components_ui_navigation_menu_navigationmenucontent",
+      "src_components_ui_navigation_menu_navigationmenuindicator",
+      "src_components_ui_navigation_menu_navigationmenulist",
+      "src_components_ui_navigation_menu_navigationmenutrigger",
+      "src_components_ui_navigation_menu_navigationmenutriggerstyle",
+      "src_components_ui_navigation_menu_navigationmenuviewport"
+    ],
+    "28": [
+      "src_components_ui_select",
+      "src_components_ui_select_selectcontent",
+      "src_components_ui_select_selectitem",
+      "src_components_ui_select_selectlabel",
+      "src_components_ui_select_selectscrolldownbutton",
+      "src_components_ui_select_selectscrollupbutton",
+      "src_components_ui_select_selectseparator",
+      "src_components_ui_select_selecttrigger"
+    ],
+    "29": [
+      "src_components_ui_toggle",
+      "src_components_ui_toggle_group",
+      "src_components_ui_toggle_group_togglegroup",
+      "src_components_ui_toggle_group_togglegroupcontext",
+      "src_components_ui_toggle_group_togglegroupitem",
+      "src_components_ui_toggle_toggle",
+      "src_components_ui_toggle_togglevariants"
+    ],
+    "30": [
+      "src_components_ui_sidebar_sidebar",
+      "src_components_ui_sidebar_sidebarmenubutton",
+      "src_components_ui_sidebar_sidebarmenubuttonvariants",
+      "src_components_ui_sidebar_sidebarrail",
+      "src_components_ui_sidebar_sidebartrigger",
+      "src_components_ui_sidebar_usesidebar"
+    ],
+    "31": [
+      "package",
+      "package_name",
+      "package_private",
+      "package_sideeffects",
+      "package_type"
+    ],
+    "32": [
+      "src_components_ui_accordion",
+      "src_components_ui_accordion_accordioncontent",
+      "src_components_ui_accordion_accordionitem",
+      "src_components_ui_accordion_accordiontrigger"
+    ],
+    "33": [
+      "src_components_ui_sidebar_sidebarprovider",
+      "src_hooks_use_mobile",
+      "src_hooks_use_mobile_useismobile"
+    ],
+    "34": [
+      "class_variance_authority",
+      "package_dependencies_class_variance_authority"
+    ],
+    "35": [
+      "clsx",
+      "package_dependencies_clsx"
+    ],
+    "36": [
+      "cmdk",
+      "package_dependencies_cmdk"
+    ],
+    "37": [
+      "date_fns",
+      "package_dependencies_date_fns"
+    ],
+    "38": [
+      "embla_carousel_react",
+      "package_dependencies_embla_carousel_react"
+    ],
+    "39": [
+      "eslint_js",
+      "package_devdependencies_eslint_js"
+    ],
+    "40": [
+      "eslint_plugin_prettier",
+      "package_devdependencies_eslint_plugin_prettier"
+    ],
+    "41": [
+      "globals",
+      "package_devdependencies_globals"
+    ],
+    "42": [
+      "hookform_resolvers",
+      "package_dependencies_hookform_resolvers"
+    ],
+    "43": [
+      "nitro",
+      "package_devdependencies_nitro"
+    ],
+    "44": [
+      "package_dependencies_pg",
+      "pg"
+    ],
+    "45": [
+      "package_dependencies_radix_ui_react_accordion",
+      "radix_ui_react_accordion"
+    ],
+    "46": [
+      "package_dependencies_radix_ui_react_alert_dialog",
+      "radix_ui_react_alert_dialog"
+    ],
+    "47": [
+      "package_dependencies_radix_ui_react_avatar",
+      "radix_ui_react_avatar"
+    ],
+    "48": [
+      "package_dependencies_radix_ui_react_checkbox",
+      "radix_ui_react_checkbox"
+    ],
+    "49": [
+      "package_dependencies_radix_ui_react_collapsible",
+      "radix_ui_react_collapsible"
+    ],
+    "50": [
+      "package_dependencies_radix_ui_react_context_menu",
+      "radix_ui_react_context_menu"
+    ],
+    "51": [
+      "package_dependencies_radix_ui_react_dialog",
+      "radix_ui_react_dialog"
+    ],
+    "52": [
+      "package_dependencies_radix_ui_react_dropdown_menu",
+      "radix_ui_react_dropdown_menu"
+    ],
+    "53": [
+      "package_dependencies_radix_ui_react_hover_card",
+      "radix_ui_react_hover_card"
+    ],
+    "54": [
+      "package_dependencies_radix_ui_react_label",
+      "radix_ui_react_label"
+    ],
+    "55": [
+      "package_dependencies_radix_ui_react_menubar",
+      "radix_ui_react_menubar"
+    ],
+    "56": [
+      "package_dependencies_radix_ui_react_navigation_menu",
+      "radix_ui_react_navigation_menu"
+    ],
+    "57": [
+      "package_dependencies_radix_ui_react_popover",
+      "radix_ui_react_popover"
+    ],
+    "58": [
+      "package_dependencies_radix_ui_react_progress",
+      "radix_ui_react_progress"
+    ],
+    "59": [
+      "package_dependencies_radix_ui_react_radio_group",
+      "radix_ui_react_radio_group"
+    ],
+    "60": [
+      "package_dependencies_radix_ui_react_scroll_area",
+      "radix_ui_react_scroll_area"
+    ],
+    "61": [
+      "package_dependencies_radix_ui_react_select",
+      "radix_ui_react_select"
+    ],
+    "62": [
+      "package_dependencies_radix_ui_react_separator",
+      "radix_ui_react_separator"
+    ],
+    "63": [
+      "package_dependencies_radix_ui_react_slider",
+      "radix_ui_react_slider"
+    ],
+    "64": [
+      "package_dependencies_radix_ui_react_slot",
+      "radix_ui_react_slot"
+    ],
+    "65": [
+      "package_dependencies_radix_ui_react_switch",
+      "radix_ui_react_switch"
+    ],
+    "66": [
+      "package_dependencies_radix_ui_react_tabs",
+      "radix_ui_react_tabs"
+    ],
+    "67": [
+      "package_dependencies_radix_ui_react_toggle",
+      "radix_ui_react_toggle"
+    ],
+    "68": [
+      "package_dependencies_radix_ui_react_toggle_group",
+      "radix_ui_react_toggle_group"
+    ],
+    "69": [
+      "package_dependencies_radix_ui_react_tooltip",
+      "radix_ui_react_tooltip"
+    ],
+    "70": [
+      "package_dependencies_react",
+      "react"
+    ],
+    "71": [
+      "package_dependencies_react_day_picker",
+      "react_day_picker"
+    ],
+    "72": [
+      "package_dependencies_react_dom",
+      "react_dom"
+    ],
+    "73": [
+      "package_dependencies_react_resizable_panels",
+      "react_resizable_panels"
+    ],
+    "74": [
+      "package_dependencies_recharts",
+      "recharts"
+    ],
+    "75": [
+      "package_dependencies_sonner",
+      "sonner"
+    ],
+    "76": [
+      "package_dependencies_tailwind_merge",
+      "tailwind_merge"
+    ],
+    "77": [
+      "package_dependencies_tailwindcss",
+      "tailwindcss"
+    ],
+    "78": [
+      "package_dependencies_tanstack_react_query",
+      "tanstack_react_query"
+    ],
+    "79": [
+      "package_dependencies_tanstack_react_router",
+      "tanstack_react_router"
+    ],
+    "80": [
+      "package_dependencies_tanstack_react_start",
+      "tanstack_react_start"
+    ],
+    "81": [
+      "package_dependencies_tanstack_router_plugin",
+      "tanstack_router_plugin"
+    ],
+    "82": [
+      "package_dependencies_tw_animate_css",
+      "tw_animate_css"
+    ],
+    "83": [
+      "package_dependencies_vaul",
+      "vaul"
+    ],
+    "84": [
+      "package_dependencies_web_push",
+      "package_json_web_push"
+    ],
+    "85": [
+      "package_dependencies_zod",
+      "zod"
+    ],
+    "86": [
+      "package_devdependencies_prettier",
+      "prettier"
+    ],
+    "87": [
+      "package_devdependencies_types_bcryptjs",
+      "types_bcryptjs"
+    ],
+    "88": [
+      "package_devdependencies_types_node",
+      "types_node"
+    ],
+    "89": [
+      "package_devdependencies_types_pg",
+      "types_pg"
+    ],
+    "90": [
+      "package_devdependencies_types_react",
+      "types_react"
+    ],
+    "91": [
+      "package_devdependencies_types_react_dom",
+      "types_react_dom"
+    ],
+    "92": [
+      "package_devdependencies_types_web_push",
+      "types_web_push"
+    ],
+    "93": [
+      "package_devdependencies_vite",
+      "vite"
+    ],
+    "94": [
+      "package_devdependencies_vitejs_plugin_react",
+      "vitejs_plugin_react"
+    ],
+    "95": [
+      "bcryptjs_bcryptjs"
+    ],
+    "96": [
+      "eslint_config"
+    ],
+    "97": [
+      "public_sw"
+    ],
+    "98": [
+      "src_components_ui_aspect_ratio"
+    ],
+    "99": [
+      "src_components_ui_collapsible"
+    ],
+    "100": [
+      "vite_config"
+    ],
+    "101": [
+      "web_push_web_push"
+    ]
+  },
+  "cohesion": {
+    "0": 0.050949367088607596,
+    "1": 0.07864488808227466,
+    "2": 0.06951219512195123,
+    "3": 0.10756302521008404,
+    "4": 0.11363636363636363,
+    "5": 0.07407407407407407,
+    "6": 0.1076923076923077,
+    "7": 0.11384615384615385,
+    "8": 0.12318840579710146,
+    "9": 0.11688311688311688,
+    "10": 0.09523809523809523,
+    "11": 0.12631578947368421,
+    "12": 0.10526315789473684,
+    "13": 0.14619883040935672,
+    "14": 0.11764705882352941,
+    "15": 0.21666666666666667,
+    "16": 0.19166666666666668,
+    "17": 0.25274725274725274,
+    "18": 0.18681318681318682,
+    "19": 0.15384615384615385,
+    "20": 0.15384615384615385,
+    "21": 0.2545454545454545,
+    "22": 0.18181818181818182,
+    "23": 0.2,
+    "24": 0.25,
+    "25": 0.25,
+    "26": 0.25,
+    "27": 0.2857142857142857,
+    "28": 0.25,
+    "29": 0.42857142857142855,
+    "30": 0.3333333333333333,
+    "31": 0.4,
+    "32": 0.5,
+    "33": 0.6666666666666666,
+    "34": 1.0,
+    "35": 1.0,
+    "36": 1.0,
+    "37": 1.0,
+    "38": 1.0,
+    "39": 1.0,
+    "40": 1.0,
+    "41": 1.0,
+    "42": 1.0,
+    "43": 1.0,
+    "44": 1.0,
+    "45": 1.0,
+    "46": 1.0,
+    "47": 1.0,
+    "48": 1.0,
+    "49": 1.0,
+    "50": 1.0,
+    "51": 1.0,
+    "52": 1.0,
+    "53": 1.0,
+    "54": 1.0,
+    "55": 1.0,
+    "56": 1.0,
+    "57": 1.0,
+    "58": 1.0,
+    "59": 1.0,
+    "60": 1.0,
+    "61": 1.0,
+    "62": 1.0,
+    "63": 1.0,
+    "64": 1.0,
+    "65": 1.0,
+    "66": 1.0,
+    "67": 1.0,
+    "68": 1.0,
+    "69": 1.0,
+    "70": 1.0,
+    "71": 1.0,
+    "72": 1.0,
+    "73": 1.0,
+    "74": 1.0,
+    "75": 1.0,
+    "76": 1.0,
+    "77": 1.0,
+    "78": 1.0,
+    "79": 1.0,
+    "80": 1.0,
+    "81": 1.0,
+    "82": 1.0,
+    "83": 1.0,
+    "84": 1.0,
+    "85": 1.0,
+    "86": 1.0,
+    "87": 1.0,
+    "88": 1.0,
+    "89": 1.0,
+    "90": 1.0,
+    "91": 1.0,
+    "92": 1.0,
+    "93": 1.0,
+    "94": 1.0,
+    "95": 1.0,
+    "96": 1.0,
+    "97": 1.0,
+    "98": 1.0,
+    "99": 1.0,
+    "100": 1.0,
+    "101": 1.0
+  },
+  "gods": [
+    {
+      "id": "src_lib_utils_cn",
+      "label": "cn()",
+      "degree": 252
+    },
+    {
+      "id": "src_server_db_getpool",
+      "label": "getPool()",
+      "degree": 26
+    },
+    {
+      "id": "src_server_auth_exigiradmin",
+      "label": "exigirAdmin",
+      "degree": 20
+    },
+    {
+      "id": "src_server_db_getpoolrw",
+      "label": "getPoolRw()",
+      "degree": 17
+    },
+    {
+      "id": "tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 17
+    },
+    {
+      "id": "src_lib_formato_plural",
+      "label": "plural()",
+      "degree": 16
+    },
+    {
+      "id": "src_components_ui_button_button",
+      "label": "Button",
+      "degree": 14
+    },
+    {
+      "id": "src_lib_formato_telefone",
+      "label": "telefone()",
+      "degree": 13
+    },
+    {
+      "id": "src_routetree_gen_fileroutesbypath",
+      "label": "FileRoutesByPath",
+      "degree": 13
+    },
+    {
+      "id": "src_components_ui_badge_badge",
+      "label": "Badge()",
+      "degree": 12
+    }
+  ],
+  "surprises": [
+    {
+      "source": "AccordionItem",
+      "target": "cn()",
+      "source_files": [
+        "src/components/ui/accordion.tsx",
+        "src/lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities; peripheral node `AccordionItem` unexpectedly reaches hub `cn()`"
+    },
+    {
+      "source": "AccordionTrigger",
+      "target": "cn()",
+      "source_files": [
+        "src/components/ui/accordion.tsx",
+        "src/lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities; peripheral node `AccordionTrigger` unexpectedly reaches hub `cn()`"
+    },
+    {
+      "source": "AccordionContent",
+      "target": "cn()",
+      "source_files": [
+        "src/components/ui/accordion.tsx",
+        "src/lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities; peripheral node `AccordionContent` unexpectedly reaches hub `cn()`"
+    },
+    {
+      "source": "AlertDialogOverlay",
+      "target": "cn()",
+      "source_files": [
+        "src/components/ui/alert-dialog.tsx",
+        "src/lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities; peripheral node `AlertDialogOverlay` unexpectedly reaches hub `cn()`"
+    },
+    {
+      "source": "AlertTitle",
+      "target": "cn()",
+      "source_files": [
+        "src/components/ui/alert.tsx",
+        "src/lib/utils.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities; peripheral node `AlertTitle` unexpectedly reaches hub `cn()`"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}

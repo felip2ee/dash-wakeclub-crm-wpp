@@ -25,6 +25,7 @@ export default defineConfig({
             "**/src/server/push.ts",
             "**/src/server/followups.ts",
             "**/src/server/admin.ts",
+            "**/src/server/opportunities.ts",
           ],
         },
       },

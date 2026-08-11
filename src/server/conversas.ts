@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { exigirAdmin } from "./auth";
 import { getPool } from "./db";
 
 /**
@@ -95,6 +96,8 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 export const getConversas = createServerFn({ method: "GET" }).handler(
   async (): Promise<Conversa[]> => {
+    await exigirAdmin();
+
     const { rows } = await getPool().query<LinhaConversa>(
       `select *
          from wakeclub.v_conversas_painel
@@ -138,10 +141,12 @@ export const getConversas = createServerFn({ method: "GET" }).handler(
 export const getMensagens = createServerFn({ method: "GET" })
   .validator(z.object({ leadId: z.string().uuid() }))
   .handler(async ({ data }): Promise<Mensagem[]> => {
+    await exigirAdmin();
+
     const { rows } = await getPool().query<LinhaMensagem>(
       `select id, lead_id, direcao, texto, enviada_em, entrega_nivel, entrega_em
          from wakeclub.v_mensagens_painel
-        where lead_id = $1
+        where lead_id = $1::uuid
         order by enviada_em asc, criado_em asc`,
       [data.leadId],
     );

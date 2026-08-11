@@ -1,0 +1,244 @@
+{
+  "generated_at": "2026-08-11T17:18:29.162254+00:00",
+  "nodes": {
+    "src_features_opportunities_opportunityworkspace_opportunityworkspace": {
+      "code_fingerprint": "c8c6a347139b986bb0466f45048c63437ac68cd23ed8f2c2799a626d88a2e34e",
+      "label": "OpportunityWorkspace()",
+      "last": "2026-08-11T17:17:06.733503+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T17:17:06.733503+00:00",
+          "outcome": "useful",
+          "q": "Continuar a refatoracao pela Fase 2 e unificar o carregamento do OpportunityWorkspace"
+        },
+        {
+          "date": "2026-08-11T15:41:13.966321+00:00",
+          "outcome": "useful",
+          "q": "Como implementar a Fase 1 OpportunityWorkspace reutilizando os dados atuais?"
+        }
+      ],
+      "score": 1.998418738,
+      "source_file": "src/features/opportunities/OpportunityWorkspace.tsx",
+      "status": "preferred",
+      "uses": 2
+    },
+    "src_routes_admin_adminpage": {
+      "code_fingerprint": "508de8e82cee8192fd41a211f07aaee78445c9b80846a44cd31ab18bd7d5c24f",
+      "label": "AdminPage()",
+      "last": "2026-08-11T15:31:19.401046+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:31:19.401046+00:00",
+          "outcome": "useful",
+          "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
+        },
+        {
+          "date": "2026-08-11T15:01:46.489966+00:00",
+          "outcome": "useful",
+          "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
+        }
+      ],
+      "score": 1.996090907,
+      "source_file": "src/routes/admin.tsx",
+      "status": "preferred",
+      "uses": 2
+    },
+    "src_routes_followups_followupspage": {
+      "code_fingerprint": "abc8f349f41b0749bcc36705e3e19ab6c0b378c2235314a1bf5ed349136120be",
+      "label": "FollowupsPage()",
+      "last": "2026-08-11T15:31:19.401046+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:31:19.401046+00:00",
+          "outcome": "useful",
+          "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
+        },
+        {
+          "date": "2026-08-11T15:01:46.489966+00:00",
+          "outcome": "useful",
+          "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
+        }
+      ],
+      "score": 1.996090907,
+      "source_file": "src/routes/followups.tsx",
+      "status": "preferred",
+      "uses": 2
+    },
+    "src_routes_kanban_carddolead": {
+      "code_fingerprint": "7705ec5dfccee02e04de72ea28281b469566d4c7d3004c8f241596a6eeae007b",
+      "label": "CardDoLead()",
+      "last": "2026-08-11T15:41:13.966321+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:41:13.966321+00:00",
+          "outcome": "useful",
+          "q": "Como implementar a Fase 1 OpportunityWorkspace reutilizando os dados atuais?"
+        }
+      ],
+      "score": 0.998440781,
+      "source_file": "src/routes/kanban.tsx",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_server_admin_getpaineladmin": {
+      "code_fingerprint": "4c837988e5612972828d3f7c1e8d9c43f936b7583f009a03684a2982f5a02a65",
+      "label": "getPainelAdmin",
+      "last": "2026-08-11T15:31:19.401046+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:31:19.401046+00:00",
+          "outcome": "useful",
+          "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
+        },
+        {
+          "date": "2026-08-11T15:01:46.489966+00:00",
+          "outcome": "useful",
+          "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
+        }
+      ],
+      "score": 1.996090907,
+      "source_file": "src/server/admin.ts",
+      "status": "preferred",
+      "uses": 2
+    },
+    "src_server_conversas_getmensagens": {
+      "code_fingerprint": "f471d5a33d742a5f6155d265220e6d84fde4f981e90d38eb95ce8a8a8ec52352",
+      "label": "getMensagens",
+      "last": "2026-08-11T15:31:19.401046+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:31:19.401046+00:00",
+          "outcome": "useful",
+          "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
+        },
+        {
+          "date": "2026-08-11T15:01:46.489966+00:00",
+          "outcome": "useful",
+          "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
+        }
+      ],
+      "score": 1.996090907,
+      "source_file": "src/server/conversas.ts",
+      "status": "preferred",
+      "uses": 2
+    },
+    "src_server_db_getpool": {
+      "code_fingerprint": "4c3ed66c7745ed2f289c463e327ffe8e86bf9c4ce998fcf41a2f4db201b1142c",
+      "label": "getPool()",
+      "last": "2026-08-11T15:31:19.401046+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:31:19.401046+00:00",
+          "outcome": "useful",
+          "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
+        }
+      ],
+      "score": 0.998282044,
+      "source_file": "src/server/db.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_server_db_getpoolrw": {
+      "code_fingerprint": "4c3ed66c7745ed2f289c463e327ffe8e86bf9c4ce998fcf41a2f4db201b1142c",
+      "label": "getPoolRw()",
+      "last": "2026-08-11T15:31:19.401046+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:31:19.401046+00:00",
+          "outcome": "useful",
+          "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
+        }
+      ],
+      "score": 0.998282044,
+      "source_file": "src/server/db.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_server_followups_listarminhafila": {
+      "code_fingerprint": "18691a91dfffffe210d2c2396de694f9dd70cfcfb6d7323706480838df46c551",
+      "label": "listarMinhaFila",
+      "last": "2026-08-11T15:31:19.401046+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:31:19.401046+00:00",
+          "outcome": "useful",
+          "q": "Ligar o megabrain e comecar as operacoes da refatoracao pela Fase 0"
+        },
+        {
+          "date": "2026-08-11T15:01:46.489966+00:00",
+          "outcome": "useful",
+          "q": "Analisar o contexto geral do app para iniciar a refatoração do plan(2).md pela Fase 0"
+        }
+      ],
+      "score": 1.996090907,
+      "source_file": "src/server/followups.ts",
+      "status": "preferred",
+      "uses": 2
+    },
+    "src_server_opportunities_getopportunityworkspace": {
+      "code_fingerprint": "1e4376903caa3e087520179a54b4b44a456e15df45a7f4bde1e9fc62bdf0b638",
+      "label": "getOpportunityWorkspace",
+      "last": "2026-08-11T17:17:06.733503+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T17:17:06.733503+00:00",
+          "outcome": "useful",
+          "q": "Continuar a refatoracao pela Fase 2 e unificar o carregamento do OpportunityWorkspace"
+        }
+      ],
+      "score": 0.999977957,
+      "source_file": "src/server/opportunities.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_server_opportunities_montartimeline": {
+      "code_fingerprint": "1e4376903caa3e087520179a54b4b44a456e15df45a7f4bde1e9fc62bdf0b638",
+      "label": "montarTimeline()",
+      "last": "2026-08-11T17:17:06.733503+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T17:17:06.733503+00:00",
+          "outcome": "useful",
+          "q": "Continuar a refatoracao pela Fase 2 e unificar o carregamento do OpportunityWorkspace"
+        }
+      ],
+      "score": 0.999977957,
+      "source_file": "src/server/opportunities.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_server_wf02_getfollowups": {
+      "code_fingerprint": "4f6e206474b14b42246144b3d132f537d86a06baf76b50309334695d10baad6f",
+      "label": "getFollowups",
+      "last": "2026-08-11T15:41:13.966321+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:41:13.966321+00:00",
+          "outcome": "useful",
+          "q": "Como implementar a Fase 1 OpportunityWorkspace reutilizando os dados atuais?"
+        }
+      ],
+      "score": 0.998440781,
+      "source_file": "src/server/wf02.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_server_wf02_getwf02atividade": {
+      "code_fingerprint": "4f6e206474b14b42246144b3d132f537d86a06baf76b50309334695d10baad6f",
+      "label": "getWf02Atividade",
+      "last": "2026-08-11T15:41:13.966321+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-11T15:41:13.966321+00:00",
+          "outcome": "useful",
+          "q": "Como implementar a Fase 1 OpportunityWorkspace reutilizando os dados atuais?"
+        }
+      ],
+      "score": 0.998440781,
+      "source_file": "src/server/wf02.ts",
+      "status": "tentative",
+      "uses": 1
+    }
+  },
+  "version": 1
+}

@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { exigirAdmin } from "./auth";
 import { getPool } from "./db";
 
 /**
@@ -102,6 +103,8 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 export const getWf02Atividade = createServerFn({ method: "GET" }).handler(
   async (): Promise<QualificacaoIA[]> => {
+    await exigirAdmin();
+
     const { rows } = await getPool().query(
       `select *
          from wakeclub.v_wf02_atividade
@@ -140,6 +143,8 @@ export const getWf02Atividade = createServerFn({ method: "GET" }).handler(
 
 export const getWf02Motor = createServerFn({ method: "GET" }).handler(
   async (): Promise<LeadNoMotor[]> => {
+    await exigirAdmin();
+
     // A ordem põe o que exige atenção primeiro: falha, órfão, vencido, fila.
     const { rows } = await getPool().query(
       `select *
@@ -176,6 +181,8 @@ export const getWf02Motor = createServerFn({ method: "GET" }).handler(
 
 export const getFollowups = createServerFn({ method: "GET" }).handler(
   async (): Promise<Followup[]> => {
+    await exigirAdmin();
+
     // Pendentes primeiro (é a agenda que importa), depois o histórico.
     const { rows } = await getPool().query(
       `select f.*,

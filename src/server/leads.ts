@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { exigirAdmin } from "./auth";
 import { getPool } from "./db";
 
 /**
@@ -65,6 +66,8 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 export const getLeadsPainel = createServerFn({ method: "GET" }).handler(
   async (): Promise<LeadCard[]> => {
+    await exigirAdmin();
+
     // `select *` de propósito: a view já é a lista de colunas permitidas, e
     // repetir os nomes aqui só cria um segundo lugar para esquecer de atualizar.
     const { rows } = await getPool().query<Row>(
