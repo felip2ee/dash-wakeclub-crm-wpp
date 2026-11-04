@@ -38,6 +38,25 @@ assert_eq 1 "$( (checar_par_vapid "" priv) >/dev/null 2>&1; echo $?)" "só a pri
 assert_eq 0 "$( (checar_par_vapid "" "") >/dev/null 2>&1; echo $?)" "nenhuma salva: segue (gera)"
 assert_eq 0 "$( (checar_par_vapid pub priv) >/dev/null 2>&1; echo $?)" "par completo: segue"
 
+# Peças puras do passo do banco e do admin.
+assert_eq 0003 "$(migracao_anterior 0004)" "migração anterior a 0004"
+assert_eq 0009 "$(migracao_anterior 0010)" "migração anterior a 0010 (não é octal)"
+LISTA="$(printf 'ana\tAna Souza\nbia\tBia\n')"
+assert_eq "Ana Souza" "$(nome_admin "$LISTA" ana)" "nome do admin pelo usuário"
+assert_eq "" "$(nome_admin "$LISTA" an)" "usuário parcial não casa"
+COPY="$(printf 'SET x = 1;\nCOPY wakeclub.migracoes (nome, aplicada_em) FROM stdin;\n0002_motor.sql\t2026-11-04 10:00:00+00\n0001_base.sql\t2026-11-04 09:00:00+00\n\\.\n\nSELECT 1;\n')"
+assert_eq "$(printf '0001_base.sql\n0002_motor.sql')" "$(printf '%s\n' "$COPY" | nomes_copy)" "nomes do COPY do dump, ordenados"
+assert_eq "" "$(printf 'SET x = 1;\n' | nomes_copy)" "dump sem migracoes: vazio"
+TOC="$(printf '%s\n' ';' '; Archive created at x' '6; 2615 16860 SCHEMA - wakeclub postgres' \
+  '5; 2615 2200 SCHEMA - public postgres' '3711; 0 0 ACL - SCHEMA wakeclub postgres' \
+  '3700; 0 0 COMMENT - SCHEMA public postgres' '230; 1259 16900 TABLE wakeclub leads postgres' \
+  '3600; 0 16900 TABLE DATA wakeclub leads postgres' '231; 1259 17000 TABLE public wakeclub postgres' \
+  '3712; 0 0 ACL wakeclub TABLE leads postgres')"
+assert_eq "$(printf '%s\n' '6; 2615 16860 SCHEMA - wakeclub postgres' '3711; 0 0 ACL - SCHEMA wakeclub postgres' \
+  '230; 1259 16900 TABLE wakeclub leads postgres' '3600; 0 16900 TABLE DATA wakeclub leads postgres' \
+  '3712; 0 0 ACL wakeclub TABLE leads postgres')" "$(printf '%s\n' "$TOC" | toc_wakeclub)" \
+  "lista do pg_restore só com o schema wakeclub (com SCHEMA e ACL dele)"
+
 # Guard do main (o trecho real do fim do instalar.sh): roda quando executado,
 # inclusive por /dev/fd como em `bash <(curl ...)`, e não quando carregado com `.`.
 GUARD="$(tail -n 3 "$AQUI/instalar.sh" | sed 's/main "\$@"/echo main/')"

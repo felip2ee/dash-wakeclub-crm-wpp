@@ -12,12 +12,19 @@
 #   WAKECRM_DOMINIO, WAKECRM_INSTANCIA  respostas das perguntas
 #   WAKECRM_SIM=1                       aceita sugestões e confirma sozinho
 #   WAKECRM_REF                         ref do GitHub de onde baixar lib.sh (padrão main)
-#   WAKECRM_DIR                         pasta das credenciais (padrão /root/wakecrm)
+#   WAKECRM_DIR                         pasta das credenciais e backups (padrão /root/wakecrm)
+#   WAKECRM_IMAGEM                      imagem do app (padrão a do GHCR; teste usa uma local)
+#   WAKECRM_ADMIN_USUARIO, WAKECRM_ADMIN_SENHA, WAKECRM_ADMIN_NOME
+#                                       admin do CRM com WAKECRM_SIM=1 (sem eles: pula se já
+#                                       houver admin, para se não houver)
+#   WAKECRM_FALHAR_MIGRACAO=NNNN        só teste: aplica até a anterior e falha (exercita a volta)
 set -euo pipefail
 
-IMAGEM="ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest"
+IMAGEM="${WAKECRM_IMAGEM:-ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest}"
 DIR_WAKECRM="${WAKECRM_DIR:-/root/wakecrm}"
 CREDENCIAIS="$DIR_WAKECRM/credenciais.env"
+DIR_BACKUPS="$DIR_WAKECRM/backups"
+SERVICO_APP="wakecrm_wakecrm"
 SIM="${WAKECRM_SIM:-}"
 
 # Tudo que é temporário (inclusive arquivos com segredo) mora aqui e sai no fim.
@@ -251,6 +258,159 @@ rodar_no_app() {
   docker run --rm --network "$REDE" --env-file "$env" "$IMAGEM" "$@"
 }
 
+# rodar_no_pg ENVFILE CMD...: contêiner temporário postgres:PG_MAJOR (mesma versão do
+# servidor, para pg_dump/pg_restore) na REDE, com DIR_BACKUPS em /backups.
+rodar_no_pg() {
+  local env="$1"
+  shift
+  (umask 077 && mkdir -p "$DIR_BACKUPS")
+  docker run --rm --network "$REDE" --env-file "$env" -v "$DIR_BACKUPS:/backups" \
+    "postgres:${PG_MAJOR}" "$@"
+}
+
+# env_pg [BANCO]: arquivo de ambiente libpq do superusuário (padrão: banco wakeclub).
+env_pg() {
+  # shellcheck disable=SC2034 # lidas por nome em arquivo_env
+  local PGHOST="$PG_HOST" PGUSER="$PG_USUARIO" PGPASSWORD="$PG_SENHA" PGDATABASE="${1:-wakeclub}" \
+    PGOPTIONS="-c client_min_messages=warning"
+  arquivo_env PGHOST PGUSER PGPASSWORD PGDATABASE PGOPTIONS
+}
+
+# sql_pg SQL: uma consulta no banco wakeclub, saída crua (-At); erro => código != 0.
+sql_pg() {
+  rodar_no_pg "$(env_pg)" psql -X -q -v ON_ERROR_STOP=1 -At -c "$1"
+}
+
+# checar_banco: o banco wakeclub precisa existir; o instalador não cria o banco do CRM.
+checar_banco() {
+  local existe
+  existe="$(rodar_no_pg "$(env_pg postgres)" psql -X -At -c "select 1 from pg_database where datname = 'wakeclub'")" ||
+    morrer "Não consegui conectar ao Postgres em $PG_HOST com o usuário $PG_USUARIO. Nada foi alterado."
+  [ "$existe" = 1 ] ||
+    morrer "O banco wakeclub não existe em $PG_SERVICO. O instalador não cria o banco do CRM: crie-o (ou restaure um dump) e rode de novo. Nada foi alterado."
+}
+
+# migracoes_no_banco: nomes em wakeclub.migracoes, ordem C; vazio se a tabela não existe.
+migracoes_no_banco() {
+  local existe
+  existe="$(sql_pg "select to_regclass('wakeclub.migracoes') is not null")" || return 1
+  [ "$existe" = t ] || return 0
+  sql_pg "select nome from wakeclub.migracoes" | LC_ALL=C sort
+}
+
+# nomes_copy: lê a saída de `pg_restore -a -t migracoes -f -` e imprime a 1ª coluna
+# das linhas de dados do COPY, ordem C.
+nomes_copy() {
+  sed -n '/^COPY /,/^\\\.$/p' | sed '1d;$d' | cut -f1 | LC_ALL=C sort
+}
+
+# toc_wakeclub: filtra a saída de `pg_restore -l` para o schema wakeclub, com a própria
+# entrada SCHEMA e o ACL dele (que `pg_restore -n wakeclub` deixaria de fora).
+toc_wakeclub() {
+  grep -E '^[0-9]+; [0-9]+ [0-9]+ [A-Z ]+ (- (SCHEMA )?)?wakeclub '
+}
+
+# migracao_anterior NNNN: número da migração anterior, com 4 dígitos (0004 -> 0003).
+migracao_anterior() {
+  printf '%04d\n' $((10#$1 - 1))
+}
+
+# parar_app: escala o CRM para 0 antes do backup, para nada gravar entre o dump e uma
+# eventual restauração. Guarda REPLICAS_ANTES (vazio se o serviço não existe).
+parar_app() {
+  REPLICAS_ANTES=""
+  servico_existe "$SERVICO_APP" || return 0
+  REPLICAS_ANTES="$(docker service inspect --format '{{.Spec.Mode.Replicated.Replicas}}' "$SERVICO_APP")"
+  docker service scale "$SERVICO_APP=0" >/dev/null ||
+    morrer "Não consegui escalar $SERVICO_APP para 0. Nada foi alterado no banco."
+  ok "$SERVICO_APP parado (estava com $REPLICAS_ANTES réplica(s))"
+}
+
+# religar_app: volta o CRM às réplicas de antes (quando o banco ficou como estava).
+religar_app() {
+  [ -n "${REPLICAS_ANTES:-}" ] || return 0
+  if docker service scale "$SERVICO_APP=$REPLICAS_ANTES" >/dev/null; then
+    ok "$SERVICO_APP de volta com $REPLICAS_ANTES réplica(s)"
+  else
+    aviso "Não consegui religar o CRM: docker service scale $SERVICO_APP=$REPLICAS_ANTES"
+  fi
+}
+
+# fazer_backup: pg_dump -Fc do banco wakeclub em DIR_BACKUPS, conferido com
+# pg_restore --list. Sucesso grava o caminho em BACKUP; falha => código 1.
+fazer_backup() {
+  local nome lista
+  nome="wakeclub-$(date +%Y%m%d-%H%M%S).dump"
+  # shellcheck disable=SC2016 # $1 expande dentro do contêiner
+  if ! rodar_no_pg "$(env_pg)" sh -c 'umask 077 && pg_dump -Fc -f "$1"' sh "/backups/$nome"; then
+    falha "pg_dump falhou."
+    return 1
+  fi
+  chmod 600 "$DIR_BACKUPS/$nome"
+  lista="$(rodar_no_pg "$(env_pg)" pg_restore --list "/backups/$nome")" || lista=""
+  if [ -z "$lista" ]; then
+    falha "O backup $DIR_BACKUPS/$nome não passou no pg_restore --list."
+    return 1
+  fi
+  BACKUP="$DIR_BACKUPS/$nome"
+  ok "backup: $BACKUP"
+}
+
+# restaurar BACKUP: recria o schema wakeclub a partir do dump (donos e grants do dump) e
+# confere que wakeclub.migracoes tem os mesmos nomes do backup.
+restaurar() {
+  local dump="/backups/${1##*/}" lista="$1.lista" esperado obtido
+  aviso "Restaurando o banco a partir de $1..."
+  if esperado="$(rodar_no_pg "$(env_pg)" pg_restore -a -n wakeclub -t migracoes -f - "$dump" | nomes_copy)" &&
+    rodar_no_pg "$(env_pg)" pg_restore -l "$dump" | toc_wakeclub >"$lista" &&
+    sql_pg "drop schema if exists wakeclub cascade" >/dev/null &&
+    rodar_no_pg "$(env_pg)" pg_restore -1 --exit-on-error -L "/backups/${lista##*/}" -d wakeclub "$dump" &&
+    obtido="$(migracoes_no_banco)" && [ "$obtido" = "$esperado" ]; then
+    ok "banco restaurado"
+  else
+    # A lista fica para o comando manual abaixo.
+    falha "A restauração falhou. O dump continua em $1. Para restaurar à mão (pede a senha do $PG_USUARIO duas vezes):"
+    echo "  docker run --rm -it --network $REDE -v $DIR_BACKUPS:/backups postgres:$PG_MAJOR sh -c \\"
+    echo "    'psql -h $PG_HOST -U $PG_USUARIO -d wakeclub -c \"drop schema if exists wakeclub cascade\" &&"
+    echo "     pg_restore -h $PG_HOST -U $PG_USUARIO -1 -L /backups/${lista##*/} -d wakeclub $dump'"
+    return 1
+  fi
+  rm -f "$lista"
+}
+
+# aplicar_banco: migrar.mjs (pendentes e a role wakecrm_motor) e painel-db.mjs apply
+# (roles painel_ro/painel_rw e views). Idempotente; falha => código != 0.
+aplicar_banco() {
+  local env
+  env="$(arquivo_env ADMIN_DATABASE_URL WAKECRM_MOTOR_PASSWORD PAINEL_RO_PASSWORD PAINEL_RW_PASSWORD \
+    DATABASE_URL DATABASE_URL_RW)"
+  if [ -n "${WAKECRM_FALHAR_MIGRACAO:-}" ]; then
+    # Só teste: para no meio do caminho para exercitar a volta automática.
+    rodar_no_app "$env" bun scripts/migrar.mjs --ate "$(migracao_anterior "$WAKECRM_FALHAR_MIGRACAO")" || return 1
+    falha "falha simulada antes da migração $WAKECRM_FALHAR_MIGRACAO (WAKECRM_FALHAR_MIGRACAO)"
+    return 1
+  fi
+  rodar_no_app "$env" bun scripts/migrar.mjs || return 1
+  rodar_no_app "$env" bun scripts/painel-db.mjs apply
+}
+
+# nome_admin LISTA USUARIO: nome do admin USUARIO na saída de `admin-crm.mjs listar`.
+nome_admin() {
+  printf '%s\n' "$1" | awk -F '\t' -v u="$2" '$1 == u { print $2; exit }'
+}
+
+# definir_admin: cria ou atualiza ADMIN_USUARIO com ADMIN_NOME/ADMIN_SENHA (por env-file).
+definir_admin() {
+  local env r
+  env="$(arquivo_env ADMIN_DATABASE_URL ADMIN_NOME ADMIN_USUARIO ADMIN_SENHA)"
+  r="$(rodar_no_app "$env" bun scripts/admin-crm.mjs definir)" || {
+    rm -f "$env"
+    return 1
+  }
+  rm -f "$env"
+  ok "admin $ADMIN_USUARIO $r"
+}
+
 # checar_par_vapid PUBLICA PRIVADA: o par é uma unidade; metade salva para o instalador.
 checar_par_vapid() {
   if [ -n "$1" ] && [ -z "$2" ]; then
@@ -459,11 +619,21 @@ gerar() {
 
 # Migrações pendentes, só leitura. Saída vazia = nada pendente; erro = para.
 listar_pendentes() {
-  local env
+  local env n
+  checar_banco
   env="$(arquivo_env ADMIN_DATABASE_URL)"
   PENDENTES="$(rodar_no_app "$env" bun scripts/migrar.mjs --pendentes)" ||
     morrer "Não consegui listar as migrações pendentes (o banco wakeclub existe em $PG_SERVICO?). Nada foi alterado."
   rm -f "$env"
+  # Pré-checagem do runbook: nenhum follow-up no meio de um envio antes de migrar.
+  [ -n "$PENDENTES" ] || return 0
+  n="$(sql_pg "select to_regclass('wakeclub.followups') is not null")" ||
+    morrer "Não consegui consultar o banco wakeclub. Nada foi alterado."
+  [ "$n" = t ] || return 0
+  n="$(sql_pg "select count(*) from wakeclub.followups where status = 'enviando'")" ||
+    morrer "Não consegui consultar wakeclub.followups. Nada foi alterado."
+  [ "$n" = 0 ] ||
+    morrer "Há $n follow-up(s) com status 'enviando'. Espere o envio terminar (ou resolva à mão) e rode de novo. Nada foi alterado."
 }
 
 confirmar() {
@@ -523,6 +693,86 @@ gravar_credenciais() {
   ok "credenciais em $CREDENCIAIS"
 }
 
+# Banco: com migração pendente, para o CRM, faz backup, migra e, se algo falhar,
+# restaura. Sem pendente, só reaplica roles e views (nada destrutivo, sem backup).
+banco() {
+  passo 6 "Banco"
+  BACKUP=""
+  REPLICAS_ANTES=""
+  if [ -n "$PENDENTES" ]; then
+    parar_app
+    if ! fazer_backup; then
+      religar_app
+      morrer "Sem backup não migro. O banco não foi alterado."
+    fi
+  fi
+  if aplicar_banco; then
+    ok "banco migrado, roles e views aplicadas"
+    return 0
+  fi
+  [ -n "$BACKUP" ] || morrer "Falhou ao aplicar roles e views. Nenhuma migração rodou; nada a restaurar."
+  if restaurar "$BACKUP"; then
+    religar_app
+    morrer "A migração falhou (mensagem acima); banco restaurado do backup $BACKUP."
+  fi
+  morrer "A migração falhou e a restauração também. O CRM fica parado; restaure com o comando acima."
+}
+
+# Admin do CRM: cria o primeiro, ou oferece redefinir a senha de um existente.
+# A senha só vai por env-file ao contêiner, nunca por argumento nem para a tela.
+admin() {
+  passo 7 "Admin do CRM"
+  local env lista novo="" s2
+  env="$(arquivo_env ADMIN_DATABASE_URL)"
+  lista="$(rodar_no_app "$env" bun scripts/admin-crm.mjs listar)" || morrer "Não consegui listar os admins do CRM."
+  rm -f "$env"
+  [ -n "$lista" ] || novo=1
+
+  if [ -n "$SIM" ]; then
+    if [ -z "${WAKECRM_ADMIN_USUARIO:-}" ] || [ -z "${WAKECRM_ADMIN_SENHA:-}" ]; then
+      [ -z "$novo" ] || morrer "Não há admin no CRM: defina WAKECRM_ADMIN_USUARIO e WAKECRM_ADMIN_SENHA."
+      aviso "Admins existentes mantidos (sem WAKECRM_ADMIN_USUARIO)."
+      return 0
+    fi
+    ADMIN_USUARIO="$WAKECRM_ADMIN_USUARIO"
+    ADMIN_SENHA="$WAKECRM_ADMIN_SENHA"
+    ADMIN_NOME="${WAKECRM_ADMIN_NOME:-$(nome_admin "$lista" "$ADMIN_USUARIO")}"
+    ADMIN_NOME="${ADMIN_NOME:-$ADMIN_USUARIO}"
+    definir_admin || morrer "Não consegui definir o admin $ADMIN_USUARIO."
+    ADMIN_SENHA=""
+    return 0
+  fi
+
+  if [ -z "$novo" ]; then
+    echo "Admins ativos:"
+    printf '%s\n' "$lista" | awk -F '\t' '{ printf "  %s (%s)\n", $1, $2 }'
+    while :; do
+      perguntar ADMIN_USUARIO "Redefinir a senha de algum? [usuário/Enter pula]" ""
+      [ -n "$ADMIN_USUARIO" ] || return 0
+      ADMIN_NOME="$(nome_admin "$lista" "$ADMIN_USUARIO")"
+      [ -n "$ADMIN_NOME" ] && break
+      aviso "\"$ADMIN_USUARIO\" não está na lista."
+    done
+  else
+    aviso "Não há admin no CRM; vamos criar o primeiro."
+  fi
+  while :; do
+    if [ -n "$novo" ]; then
+      perguntar ADMIN_NOME "Nome do admin" "${ADMIN_NOME:-}"
+      perguntar ADMIN_USUARIO "Usuário (3+ caracteres, minúsculas, sem espaços)" "${ADMIN_USUARIO:-}"
+    fi
+    perguntar ADMIN_SENHA "Senha de $ADMIN_USUARIO (8+ caracteres)" "" -s
+    perguntar s2 "Repita a senha" "" -s
+    if [ "$ADMIN_SENHA" != "$s2" ]; then
+      aviso "As senhas não conferem."
+      continue
+    fi
+    definir_admin && break
+    aviso "Tente de novo."
+  done
+  ADMIN_SENHA=""
+}
+
 main() {
   precondicoes
   detectar
@@ -530,7 +780,9 @@ main() {
   gerar
   confirmar
   gravar_credenciais
-  # Task 6: banco (backup se houver PENDENTES, migrar, aplicar, restaurar em falha, admin).
+  banco
+  admin
+  # Task 7 religa o CRM (REPLICAS_ANTES) e mostra BACKUP no resumo.
   # Task 7: publicar a stack, conferir /login e o webhook, resumo final.
 }
 
