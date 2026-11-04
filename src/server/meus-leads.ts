@@ -3,8 +3,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { exigirAtendente } from "./auth";
-import { type Autoria, autoria } from "./conversas";
-import { getPool } from "./db";
+import { type Autoria, autoria, leadsComSugestao } from "./conversas";
+import { getPool, getPoolMotor } from "./db";
 
 export type MeuLead = {
   id: string;
@@ -17,6 +17,10 @@ export type MeuLead = {
   ultimaMsgEm: string | null;
   aguardandoEquipe: boolean;
   horasEsperando: number | null;
+  ultimaTexto: string | null;
+  msgsLeadSemResposta: number;
+  /** Há follow-up `aguardando_aprovacao` (sugestão da IA esperando a atendente). */
+  followupAguardando: boolean;
 };
 
 export type MensagemDoMeuLead = {
@@ -24,6 +28,8 @@ export type MensagemDoMeuLead = {
   direcao: "lead" | "equipe" | "ia";
   texto: string | null;
   enviadaEm: string;
+  /** 0 erro · 1 pendente · 2 servidor · 3 entregue · 4 lido · 5 reproduzido */
+  entregaNivel: number | null;
   autoria: Autoria;
 };
 
@@ -38,6 +44,8 @@ type LinhaLead = {
   ultima_msg_em: Date | null;
   aguardando_equipe: boolean;
   horas_esperando: number | null;
+  ultima_texto: string | null;
+  msgs_lead_sem_resposta: number | null;
 };
 
 type LinhaMensagem = {
@@ -45,6 +53,7 @@ type LinhaMensagem = {
   direcao: MensagemDoMeuLead["direcao"];
   texto: string | null;
   enviada_em: Date;
+  entrega_nivel: number | null;
   enviada_por: string | null;
   autor_nome: string | null;
 };
@@ -52,14 +61,20 @@ type LinhaMensagem = {
 export const listarMeusLeads = createServerFn({ method: "GET" }).handler(
   async (): Promise<MeuLead[]> => {
     const sessao = await exigirAtendente();
-    const { rows } = await getPool().query<LinhaLead>(
-      `select id, nome, telefone, etiqueta, etiqueta_ordem, temperatura, resumo,
-              ultima_msg_em, aguardando_equipe, horas_esperando
-         from wakeclub.v_leads_painel
-        where atendente_id = $1::uuid
-        order by etiqueta_ordem, ultima_msg_em desc nulls last`,
-      [sessao.usuarioId],
-    );
+    // A última mensagem e o contador vêm da view da caixa de entrada (a mesma de `/`).
+    const [{ rows }, sugestoes] = await Promise.all([
+      getPool().query<LinhaLead>(
+        `select l.id, l.nome, l.telefone, l.etiqueta, l.etiqueta_ordem, l.temperatura,
+                l.resumo, l.ultima_msg_em, l.aguardando_equipe, l.horas_esperando,
+                c.ultima_texto, c.msgs_lead_sem_resposta
+           from wakeclub.v_leads_painel l
+           left join wakeclub.v_conversas_painel c on c.id = l.id
+          where l.atendente_id = $1::uuid
+          order by l.ultima_msg_em desc nulls last`,
+        [sessao.usuarioId],
+      ),
+      leadsComSugestao(getPoolMotor(), sessao.usuarioId),
+    ]);
 
     return rows.map((linha) => ({
       id: linha.id,
@@ -72,6 +87,9 @@ export const listarMeusLeads = createServerFn({ method: "GET" }).handler(
       ultimaMsgEm: linha.ultima_msg_em?.toISOString() ?? null,
       aguardandoEquipe: linha.aguardando_equipe,
       horasEsperando: linha.horas_esperando === null ? null : Number(linha.horas_esperando),
+      ultimaTexto: linha.ultima_texto,
+      msgsLeadSemResposta: Number(linha.msgs_lead_sem_resposta ?? 0),
+      followupAguardando: sugestoes.has(linha.id),
     }));
   },
 );
@@ -93,7 +111,7 @@ export const listarMensagensDoMeuLead = createServerFn({ method: "GET" })
     if (!pertence.rows[0]?.existe) throw new Error("Lead não encontrado.");
 
     const { rows } = await getPool().query<LinhaMensagem>(
-      `select m.id, m.direcao, m.texto, m.enviada_em, a.enviada_por, a.autor_nome
+      `select m.id, m.direcao, m.texto, m.enviada_em, m.entrega_nivel, a.enviada_por, a.autor_nome
          from wakeclub.v_mensagens_painel m
          left join wakeclub.v_mensagens_autoria a on a.mensagem_id = m.id
         where m.lead_id = $1::uuid
@@ -106,6 +124,7 @@ export const listarMensagensDoMeuLead = createServerFn({ method: "GET" })
       direcao: linha.direcao,
       texto: linha.texto,
       enviadaEm: linha.enviada_em.toISOString(),
+      entregaNivel: linha.entrega_nivel,
       autoria: autoria(linha.enviada_por, linha.autor_nome),
     }));
   });
