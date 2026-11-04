@@ -26,7 +26,6 @@ import pg from "pg";
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const RAIZ_PAINEL = resolve(AQUI, "..");
-const RAIZ_PROJETO = resolve(RAIZ_PAINEL, "..");
 
 /** As views que o painel precisa conseguir ler. Espelha db/painel-views.sql. */
 const VIEWS_ESPERADAS = [
@@ -610,7 +609,7 @@ async function apply() {
     );
 
     titulo("3. Views (db/painel-views.sql)");
-    const caminho = resolve(RAIZ_PROJETO, "db", "painel-views.sql");
+    const caminho = resolve(RAIZ_PAINEL, "db", "painel-views.sql");
     const ddl = readFileSync(caminho, "utf8");
     await admin.query(ddl);
     console.log(cor.ok(`  ✓ painel-views.sql aplicado e liberado`));

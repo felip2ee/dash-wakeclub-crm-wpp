@@ -17,7 +17,8 @@ nomes técnicos exigidos por bibliotecas, APIs e pelo plano ficam como estão.
   `docs/quality.md`. Ferramentas e evidência do setup: `docs/setup.md`.
 - `../CLAUDE.md`, `../db/` e `../n8n/`, citados em documentos antigos, **não existem
   neste checkout**. Os workflows n8n exportados estão em `docs/n8n-legado/` (só fonte,
-  nunca reativar). Migrações do schema: `db/migrations/`.
+  nunca reativar). Migrações do schema: `db/migrations/`; views e GRANTs do painel:
+  `db/painel-views.sql` (aplicado por `db:apply`).
 
 Se uma tarefa exigir nova escrita, nova fonte de estado ou mudança de responsabilidade
 que nenhum documento acima autoriza, pare e proponha a menor decisão explícita.

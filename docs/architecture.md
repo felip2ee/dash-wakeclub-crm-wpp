@@ -620,8 +620,10 @@ Criada por `scripts/migrar.mjs` quando `WAKECRM_MOTOR_PASSWORD` está definida; 
 - nenhuma leitura geral de `leads`, nenhum UPDATE de `etiqueta` ou `atendente_id`, nenhum
   acesso a dinheiro, `mensagens`, `followups`, `crm_outbox`, `notificacoes` ou saúde.
 
-`scripts/painel-db.mjs` é a implementação executada por `db:apply` e `db:check`;
-`../db/painel-role.sql` documenta a superfície, mas não é aplicado diretamente pelo script.
+`scripts/painel-db.mjs` é a implementação executada por `db:apply` e `db:check`. As views do
+painel e os GRANTs de `painel_ro`/`painel_rw` vêm de `db/painel-views.sql`, exportado do catálogo
+de produção em 2026-11-04 (antes em `../db/`, fora do repositório). `v_mensagens_autoria` fica
+na migração `0002`. `../db/painel-role.sql` não existe neste checkout.
 
 ## Workflows n8n (legado, parados)
 
