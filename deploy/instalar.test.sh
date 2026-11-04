@@ -57,6 +57,27 @@ assert_eq "$(printf '%s\n' '6; 2615 16860 SCHEMA - wakeclub postgres' '3711; 0 0
   '3712; 0 0 ACL wakeclub TABLE leads postgres')" "$(printf '%s\n' "$TOC" | toc_wakeclub)" \
   "lista do pg_restore só com o schema wakeclub (com SCHEMA e ACL dele)"
 
+# pula_resposta: Enter, n e N pulam a redefinição de senha; um usuário segue.
+for r in "" n N; do
+  assert_eq 0 "$(pula_resposta "$r"; echo $?)" "resposta [$r] pula"
+done
+assert_eq 1 "$(pula_resposta dono; echo $?)" "usuário não pula"
+assert_eq 1 "$(pula_resposta no; echo $?)" "\"no\" é tratado como usuário"
+
+# comando_restaurar: o manual usa o mesmo script atômico, com lista e dump nessa ordem.
+# shellcheck disable=SC2034 # lidas dentro de comando_restaurar
+REDE=r1 DIR_BACKUPS=/root/wakecrm/backups PG_HOST=pg PG_USUARIO=postgres PG_MAJOR=14
+CMD="$(comando_restaurar /root/wakecrm/backups/w.dump /root/wakecrm/backups/w.dump.lista)"
+case "$CMD" in
+  *"-e PGHOST=pg -e PGUSER=postgres postgres:14 sh -c '$SCRIPT_RESTAURAR' sh /backups/w.dump.lista /backups/w.dump") r=ok ;;
+  *) r="$CMD" ;;
+esac
+assert_eq ok "$r" "comando manual de restauração"
+case "$SCRIPT_RESTAURAR" in *"drop schema"*"psql -X -q -1 -v ON_ERROR_STOP=1"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "drop e restauração na mesma transação (psql -1)"
+case "$CMD" in *PGPASSWORD* | *teste*) r=vazou ;; *) r=ok ;; esac
+assert_eq ok "$r" "comando manual sem senha"
+
 # Guard do main (o trecho real do fim do instalar.sh): roda quando executado,
 # inclusive por /dev/fd como em `bash <(curl ...)`, e não quando carregado com `.`.
 GUARD="$(tail -n 3 "$AQUI/instalar.sh" | sed 's/main "\$@"/echo main/')"

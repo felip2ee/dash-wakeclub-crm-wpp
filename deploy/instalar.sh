@@ -30,8 +30,27 @@ SIM="${WAKECRM_SIM:-}"
 # Tudo que é temporário (inclusive arquivos com segredo) mora aqui e sai no fim.
 TMP="$(mktemp -d)"
 chmod 700 "$TMP"
-trap 'rm -rf "$TMP"' EXIT
-trap 'exit 130' INT TERM
+MIGRANDO=""
+
+# Saída (normal, erro ou sinal): interrompido no meio da migração, tenta a volta
+# automática antes de apagar TMP. Os traps são desfeitos e os sinais ignorados
+# (inclusive pelos filhos) para não reentrar nem cortar a restauração.
+ao_sair() {
+  local rc=$?
+  trap - EXIT
+  trap '' INT TERM HUP
+  set +e
+  if [ -n "$MIGRANDO" ]; then
+    MIGRANDO=""
+    falha "Instalação interrompida durante a migração."
+    if restaurar "$BACKUP"; then religar_app; fi
+    echo "Backup: $BACKUP"
+  fi
+  rm -rf "$TMP"
+  exit "$rc"
+}
+trap ao_sair EXIT
+trap 'exit 130' INT TERM HUP
 
 # ---------------------------------------------------------------------------
 # Carregar lib.sh: do repositório quando houver, senão da mesma ref no GitHub.
@@ -356,23 +375,31 @@ fazer_backup() {
   ok "backup: $BACKUP"
 }
 
-# restaurar BACKUP: recria o schema wakeclub a partir do dump (donos e grants do dump) e
-# confere que wakeclub.migracoes tem os mesmos nomes do backup.
+# Roda dentro do contêiner postgres (sh -c, $1 = lista, $2 = dump): gera o SQL do schema
+# wakeclub e aplica o drop e a recriação numa transação só (psql -1). Qualquer falha
+# deixa o banco como estava antes da tentativa.
+# shellcheck disable=SC2016 # expande dentro do contêiner
+SCRIPT_RESTAURAR='pg_restore -L "$1" -f /tmp/r.sql "$2" && { echo "drop schema if exists wakeclub cascade;"; cat /tmp/r.sql; } | psql -X -q -1 -v ON_ERROR_STOP=1 -o /dev/null -d wakeclub'
+
+# comando_restaurar DUMP LISTA: comando manual equivalente (pede a senha do superusuário).
+comando_restaurar() {
+  printf '%s\n' "docker run --rm -it --network $REDE -v $DIR_BACKUPS:/backups -e PGHOST=$PG_HOST -e PGUSER=$PG_USUARIO postgres:$PG_MAJOR sh -c '$SCRIPT_RESTAURAR' sh /backups/${2##*/} /backups/${1##*/}"
+}
+
+# restaurar BACKUP: recria o schema wakeclub a partir do dump (donos e grants do dump),
+# atômico, e confere que wakeclub.migracoes tem os mesmos nomes do backup.
 restaurar() {
   local dump="/backups/${1##*/}" lista="$1.lista" esperado obtido
   aviso "Restaurando o banco a partir de $1..."
   if esperado="$(rodar_no_pg "$(env_pg)" pg_restore -a -n wakeclub -t migracoes -f - "$dump" | nomes_copy)" &&
     rodar_no_pg "$(env_pg)" pg_restore -l "$dump" | toc_wakeclub >"$lista" &&
-    sql_pg "drop schema if exists wakeclub cascade" >/dev/null &&
-    rodar_no_pg "$(env_pg)" pg_restore -1 --exit-on-error -L "/backups/${lista##*/}" -d wakeclub "$dump" &&
+    rodar_no_pg "$(env_pg)" sh -c "$SCRIPT_RESTAURAR" sh "/backups/${lista##*/}" "$dump" &&
     obtido="$(migracoes_no_banco)" && [ "$obtido" = "$esperado" ]; then
     ok "banco restaurado"
   else
     # A lista fica para o comando manual abaixo.
-    falha "A restauração falhou. O dump continua em $1. Para restaurar à mão (pede a senha do $PG_USUARIO duas vezes):"
-    echo "  docker run --rm -it --network $REDE -v $DIR_BACKUPS:/backups postgres:$PG_MAJOR sh -c \\"
-    echo "    'psql -h $PG_HOST -U $PG_USUARIO -d wakeclub -c \"drop schema if exists wakeclub cascade\" &&"
-    echo "     pg_restore -h $PG_HOST -U $PG_USUARIO -1 -L /backups/${lista##*/} -d wakeclub $dump'"
+    falha "A restauração falhou. O dump continua em $1. Para restaurar à mão (pede a senha do $PG_USUARIO):"
+    echo "  $(comando_restaurar "$1" "$lista")"
     return 1
   fi
   rm -f "$lista"
@@ -392,6 +419,11 @@ aplicar_banco() {
   fi
   rodar_no_app "$env" bun scripts/migrar.mjs || return 1
   rodar_no_app "$env" bun scripts/painel-db.mjs apply
+}
+
+# pula_resposta RESP: Enter, n ou N recusam (0); qualquer outra coisa segue (1).
+pula_resposta() {
+  case "$1" in "" | n | N) return 0 ;; *) return 1 ;; esac
 }
 
 # nome_admin LISTA USUARIO: nome do admin USUARIO na saída de `admin-crm.mjs listar`.
@@ -706,10 +738,14 @@ banco() {
       morrer "Sem backup não migro. O banco não foi alterado."
     fi
   fi
+  # Com backup, uma interrupção daqui até o fim de aplicar_banco restaura (ao_sair).
+  [ -z "$BACKUP" ] || MIGRANDO=1
   if aplicar_banco; then
+    MIGRANDO=""
     ok "banco migrado, roles e views aplicadas"
     return 0
   fi
+  MIGRANDO=""
   [ -n "$BACKUP" ] || morrer "Falhou ao aplicar roles e views. Nenhuma migração rodou; nada a restaurar."
   if restaurar "$BACKUP"; then
     religar_app
@@ -748,7 +784,7 @@ admin() {
     printf '%s\n' "$lista" | awk -F '\t' '{ printf "  %s (%s)\n", $1, $2 }'
     while :; do
       perguntar ADMIN_USUARIO "Redefinir a senha de algum? [usuário/Enter pula]" ""
-      [ -n "$ADMIN_USUARIO" ] || return 0
+      if pula_resposta "$ADMIN_USUARIO"; then return 0; fi
       ADMIN_NOME="$(nome_admin "$lista" "$ADMIN_USUARIO")"
       [ -n "$ADMIN_NOME" ] && break
       aviso "\"$ADMIN_USUARIO\" não está na lista."
