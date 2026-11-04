@@ -103,3 +103,10 @@ export function rotuloAutoria(a: Autoria): string {
   if (a === null) return "Equipe";
   return a.tipo === "app" ? a.nome : "enviado pelo ADM";
 }
+
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+/** 1234.5 → R$ 1.234,50 */
+export function moeda(valor: number): string {
+  return BRL.format(valor);
+}
