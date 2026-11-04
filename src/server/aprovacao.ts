@@ -97,7 +97,7 @@ export async function listarFila(
             l.n_toques, f.texto_sugerido, f.sugerido_em,
             (select e.metadados->>'modo' from wakeclub.eventos_automacao e
               where e.entidade_tipo = 'followup' and e.entidade_id = f.id
-                and e.tipo_evento = 'message_generated'
+                and e.lead_id = l.id and e.tipo_evento = 'message_generated'
               order by e.ocorrido_em desc limit 1) as modo,
             (select (c.valor #>> '{}') from wakeclub.configuracoes c
               where c.chave = 'preco_hora') as preco_hora,
@@ -183,6 +183,7 @@ export async function decidir(db: PoolClient, sessao: Sessao, entrada: EntradaDe
   }
   const enviar = entrada.decisao === "enviar";
   const textoEnviado = enviar ? (entrada.texto ?? f.texto_sugerido) : null;
+  if (enviar && !textoEnviado?.trim()) throw new Error("Follow-up sem texto para enviar.");
   if (enviar) {
     await db.query(
       `update wakeclub.followups

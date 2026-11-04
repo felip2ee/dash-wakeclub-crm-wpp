@@ -219,6 +219,17 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
     expect((await followup(followupId)).texto_enviado).toBe("Oi, ainda quer agendar a aula?");
   });
 
+  test("enviar sem texto e sem sugerido falha", async () => {
+    const { dono, followupId } = await cenario();
+    await db().query("update wakeclub.followups set texto_sugerido = null where id = $1::uuid", [
+      followupId,
+    ]);
+    await expect(
+      comTransacao((c) => decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] })),
+    ).rejects.toThrow("sem texto");
+    expect((await followup(followupId)).status).toBe("aguardando_aprovacao");
+  });
+
   test("recusar grava abortado e followup_human_rejected", async () => {
     const { dono, followupId } = await cenario();
     await comTransacao((c) =>
