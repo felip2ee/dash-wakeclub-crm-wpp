@@ -34,11 +34,11 @@ async function lead(id: string) {
   return rows[0];
 }
 
-async function criarFollowup(leadId: string) {
+async function criarFollowup(leadId: string, status = "pendente") {
   const { rows } = await db().query(
-    `insert into wakeclub.followups (lead_id, agendado_para, tipo)
-     values ($1::uuid, now() + interval '1 day', 'reengajar') returning id`,
-    [leadId],
+    `insert into wakeclub.followups (lead_id, agendado_para, tipo, status)
+     values ($1::uuid, now() + interval '1 day', 'reengajar', $2::text) returning id`,
+    [leadId, status],
   );
   return rows[0].id as string;
 }
@@ -170,6 +170,75 @@ describe.skipIf(!bancoTesteAtivo)("entrada de mensagens", () => {
       status: "cancelado",
       motivo_cancelamento: "conversa viva: houve movimento",
     });
+  });
+
+  test("conversa viva cancela aguardando_aprovacao e aprovado", async () => {
+    for (const status of ["aguardando_aprovacao", "aprovado"]) {
+      const telefone = telefoneUnico();
+      const { leadId } = await registrar(msg({ telefone }));
+      const f = await criarFollowup(leadId, status);
+      const { rows } = await db().query<{ id: string }>(
+        `insert into wakeclub.notificacoes (tipo, titulo, url, followup_id)
+         values ('followup', 'Follow-up pronto: teste', '/aprovar', $1::uuid) returning id`,
+        [f],
+      );
+      await registrar(msg({ telefone, texto: "oi, voltei" }));
+      expect(await followup(f)).toEqual({
+        status: "cancelado",
+        motivo_cancelamento: "conversa viva: houve movimento",
+      });
+      const ev = await db().query(
+        `select estado_anterior from wakeclub.eventos_automacao
+          where entidade_id = $1::uuid and tipo_evento = 'followup_cancelled'`,
+        [f],
+      );
+      expect(ev.rows).toMatchObject([{ estado_anterior: { status } }]);
+      const n = await db().query("select status from wakeclub.notificacoes where id = $1::bigint", [
+        rows[0].id,
+      ]);
+      expect(n.rows[0].status).toBe("cancelada");
+    }
+  });
+
+  test("nao cancela enviando", async () => {
+    const telefone = telefoneUnico();
+    const { leadId } = await registrar(msg({ telefone }));
+    const f = await criarFollowup(leadId, "enviando");
+    await registrar(msg({ telefone, texto: "oi, voltei" }));
+    expect((await followup(f)).status).toBe("enviando");
+  });
+
+  test("envio de follow-up grava followup_id na mensagem", async () => {
+    const telefone = telefoneUnico();
+    const { leadId } = await registrar(msg({ telefone }));
+    const f = await criarFollowup(leadId, "enviando");
+    const vendedor = await criarVendedor("Aprovadora");
+    const r = await comTransacao((c) =>
+      registrarMensagem(c, msg({ telefone, daEquipe: true, nome: null }), {
+        usuarioId: vendedor,
+        followupId: f,
+      }),
+    );
+    const { rows } = await db().query(
+      "select followup_id, usuario_id, enviada_por from wakeclub.mensagens where id = $1::uuid",
+      [r.mensagemId],
+    );
+    expect(rows[0]).toEqual({ followup_id: f, usuario_id: vendedor, enviada_por: "app" });
+  });
+
+  test("eco antes do envio ganha followup_id", async () => {
+    const telefone = telefoneUnico();
+    const { leadId } = await registrar(msg({ telefone }));
+    const f = await criarFollowup(leadId, "enviando");
+    const vendedor = await criarVendedor("Aprovadora");
+    const eco = msg({ telefone, daEquipe: true, nome: null });
+    await registrar(eco);
+    await comTransacao((c) => registrarMensagem(c, eco, { usuarioId: vendedor, followupId: f }));
+    const { rows } = await db().query(
+      "select followup_id, enviada_por from wakeclub.mensagens where evolution_msg_id = $1::text",
+      [eco.evolutionMsgId],
+    );
+    expect(rows[0]).toEqual({ followup_id: f, enviada_por: "app" });
   });
 
   test("mensagem do lead zera n_toques e agenda +2 min", async () => {

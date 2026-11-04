@@ -15,7 +15,8 @@ import { enfileirarMensagemNova } from "./notificacoes";
 import { aplicarAck, aplicarConexao } from "./saude";
 import { ehOptOut } from "./telefone";
 
-export type Autoria = { usuarioId: string };
+/** Autor do envio pelo app; `followupId` quando a mensagem é o envio de um follow-up. */
+export type Autoria = { usuarioId: string; followupId?: string };
 
 export type ResultadoMensagem = { leadId: string; mensagemId: string | null; nova: boolean };
 
@@ -41,17 +42,18 @@ async function gravarMensagem(
   // Envio pelo app: se o eco chegou antes, a linha já existe como "celular" e passa a
   // ser do app, com o autor. Eco depois do envio: conflito, nada muda.
   const conflito = autoria
-    ? "do update set usuario_id = excluded.usuario_id, enviada_por = 'app'"
+    ? `do update set usuario_id = excluded.usuario_id, enviada_por = 'app',
+                     followup_id = coalesce(excluded.followup_id, wakeclub.mensagens.followup_id)`
     : "do nothing";
   const { rows } = await db.query<{ id: string; nova: boolean }>(
     `insert into wakeclub.mensagens
        (lead_id, direcao, texto, enviada_em, evolution_msg_id, tipo, transcricao_status,
-        usuario_id, enviada_por)
+        usuario_id, enviada_por, followup_id)
      values ($1::uuid, $2::text, nullif($3::text, ''), $4::timestamptz, nullif($5::text, ''),
              $6::text,
              case when $6::text = 'audio' and nullif($5::text, '') is not null
                   then 'pendente' end,
-             $7::uuid, $8::text)
+             $7::uuid, $8::text, $9::uuid)
      on conflict (evolution_msg_id) ${conflito}
      returning id, (xmax = 0) as nova`,
     [
@@ -63,6 +65,7 @@ async function gravarMensagem(
       m.tipoMidia,
       autoria?.usuarioId ?? null,
       enviadaPor,
+      autoria?.followupId ?? null,
     ],
   );
   return rows[0] ?? null;
@@ -93,14 +96,26 @@ async function registrarMovimento(db: PoolClient, leadId: string, m: EventoMensa
         where l.id = $1::uuid
        returning l.id, l.opt_out, l.etiqueta
      ),
+     -- Cancela o que ainda não saiu (spec §5); 'enviando' e 'enviado' ficam como estão.
+     -- O self-join devolve o status de antes do update para o evento.
      cancelados as (
        update wakeclub.followups f
           set status = 'cancelado',
               motivo_cancelamento = case
                 when $4::boolean then 'opt-out: o lead pediu para parar'
                 else 'conversa viva: houve movimento' end
-        where f.lead_id = $1::uuid and f.status = 'pendente'
-       returning f.id, f.lead_id, f.tipo, f.agendado_para, f.motivo_cancelamento
+         from wakeclub.followups a
+        where a.id = f.id and f.lead_id = $1::uuid
+          and f.status in ('pendente', 'aguardando_aprovacao', 'aprovado')
+       returning f.id, f.lead_id, f.tipo, f.agendado_para, f.motivo_cancelamento,
+                 a.status as status_antes
+     ),
+     notificacoes_canceladas as (
+       update wakeclub.notificacoes n
+          set status = 'cancelada', erro = c.motivo_cancelamento
+         from cancelados c
+        where n.followup_id = c.id and n.status = 'pendente'
+       returning n.id
      ),
      outbox as (
        insert into wakeclub.crm_outbox (lead_id, tipo, payload)
@@ -162,7 +177,7 @@ async function registrarMovimento(db: PoolClient, leadId: string, m: EventoMensa
             case when $4::boolean then 'cancelado por opt-out'
                  else 'cancelado por conversa viva' end,
             c.motivo_cancelamento,
-            jsonb_build_object('status', 'pendente', 'tipo', c.tipo,
+            jsonb_build_object('status', c.status_antes, 'tipo', c.tipo,
                                'agendado_para', c.agendado_para),
             jsonb_build_object('status', 'cancelado'),
             jsonb_build_object('direcao', $2::text),

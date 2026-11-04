@@ -130,7 +130,6 @@ async function estado(id: string) {
   return rows[0];
 }
 
-// Usa o stub de wakeclub.v_followups_fila do banco de teste (a view real vive em produção).
 describe.skipIf(!bancoTesteAtivo)("push pendente", () => {
   test("reivindica a pendente e marca enviando", async () => {
     await esvaziarFila();
@@ -156,5 +155,39 @@ describe.skipIf(!bancoTesteAtivo)("push pendente", () => {
       return { enviados: 1, removidos: 0, falhas: 0 };
     });
     expect(await estado(id)).toEqual({ status: "falhou", erro: "provedor fora" });
+  });
+});
+
+/** Aviso de follow-up para um lead com dono e follow-up no status dado. */
+async function avisoDeFollowup(status: string) {
+  const dono = await criarVendedor("Dono Followup");
+  const leadId = await leadCom(`Lead ${randomUUID()}`, dono);
+  const db = getPoolMotor();
+  const f = await db.query<{ id: string }>(
+    `insert into wakeclub.followups (lead_id, agendado_para, tipo, status)
+     values ($1::uuid, now(), 'reengajar', $2::text) returning id`,
+    [leadId, status],
+  );
+  const { rows } = await db.query<{ id: string }>(
+    `insert into wakeclub.notificacoes (usuario_id, tipo, titulo, url, followup_id)
+     values ($1::uuid, 'followup', 'Follow-up pronto: teste', '/aprovar', $2::uuid)
+     returning id`,
+    [dono, f.rows[0].id],
+  );
+  return rows[0].id;
+}
+
+describe.skipIf(!bancoTesteAtivo)("obsoletas", () => {
+  test("obsoletas usa status do followup", async () => {
+    await esvaziarFila();
+    const pronto = await avisoDeFollowup("aguardando_aprovacao");
+    const semTexto = await avisoDeFollowup("pendente");
+    const r = await comTransacao(reivindicarNotificacoes);
+    expect(r.find((n) => n.id === pronto)).toMatchObject({ tipo: "followup", filaTotal: 1 });
+    expect((await estado(pronto)).status).toBe("enviando");
+    expect(await estado(semTexto)).toEqual({
+      status: "cancelada",
+      erro: "followup ja nao esta na fila quando o push ia sair",
+    });
   });
 });

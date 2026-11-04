@@ -6,12 +6,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { rotaInicial } from "@/components/shell/navegacao";
 import { entrar, getSessao } from "@/server/auth";
 
 export const Route = createFileRoute("/login")({
   beforeLoad: async () => {
     const sessao = await getSessao();
-    if (sessao) throw redirect({ to: sessao.papel === "admin" ? "/admin" : "/minha-fila" });
+    if (sessao) throw redirect({ to: rotaInicial(sessao.papel) });
   },
   head: () => ({ meta: [{ title: "Entrar — Wake Club" }] }),
   component: LoginPage,
@@ -43,7 +44,7 @@ function LoginPage() {
 
       await router.invalidate();
       await navigate({
-        to: resultado.sessao.papel === "admin" ? "/admin" : "/minha-fila",
+        to: rotaInicial(resultado.sessao.papel),
       });
     } catch {
       setErro("Não foi possível entrar agora. Tente novamente em instantes.");

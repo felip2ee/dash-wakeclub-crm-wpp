@@ -11,14 +11,21 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
+import { Route as EquipeRouteImport } from './routes/equipe'
 import { Route as FollowupsRouteImport } from './routes/followups'
+import { Route as InicioRouteImport } from './routes/inicio'
 import { Route as InstalarRouteImport } from './routes/instalar'
 import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MeusLeadsRouteImport } from './routes/meus-leads'
 import { Route as MinhaFilaRouteImport } from './routes/minha-fila'
+import { Route as PerfilRouteImport } from './routes/perfil'
+import { Route as PipelineRouteImport } from './routes/pipeline'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as TemplatesRouteImport } from './routes/templates'
+import { Route as VendasRouteImport } from './routes/vendas'
+import { Route as VisaoGeralRouteImport } from './routes/visao-geral'
 import { Route as Wf02RouteImport } from './routes/wf02'
 import { Route as ApiPushEnviarRouteImport } from './routes/api/push/enviar'
 import { Route as ApiWebhooksEvolutionRouteImport } from './routes/api/webhooks/evolution'
@@ -34,9 +41,24 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EquipeRoute = EquipeRouteImport.update({
+  id: '/equipe',
+  path: '/equipe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FollowupsRoute = FollowupsRouteImport.update({
   id: '/followups',
   path: '/followups',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InicioRoute = InicioRouteImport.update({
+  id: '/inicio',
+  path: '/inicio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InstalarRoute = InstalarRouteImport.update({
@@ -64,6 +86,16 @@ const MinhaFilaRoute = MinhaFilaRouteImport.update({
   path: '/minha-fila',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PerfilRoute = PerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PipelineRoute = PipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -72,6 +104,16 @@ const ReportsRoute = ReportsRouteImport.update({
 const TemplatesRoute = TemplatesRouteImport.update({
   id: '/templates',
   path: '/templates',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VendasRoute = VendasRouteImport.update({
+  id: '/vendas',
+  path: '/vendas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VisaoGeralRoute = VisaoGeralRouteImport.update({
+  id: '/visao-geral',
+  path: '/visao-geral',
   getParentRoute: () => rootRouteImport,
 } as any)
 const Wf02Route = Wf02RouteImport.update({
@@ -98,14 +140,21 @@ const ApiWebhooksVendasRoute = ApiWebhooksVendasRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/equipe': typeof EquipeRoute
   '/followups': typeof FollowupsRoute
+  '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
   '/kanban': typeof KanbanRoute
   '/login': typeof LoginRoute
   '/meus-leads': typeof MeusLeadsRoute
   '/minha-fila': typeof MinhaFilaRoute
+  '/perfil': typeof PerfilRoute
+  '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
+  '/vendas': typeof VendasRoute
+  '/visao-geral': typeof VisaoGeralRoute
   '/wf02': typeof Wf02Route
   '/api/push/enviar': typeof ApiPushEnviarRoute
   '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
@@ -114,14 +163,21 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/equipe': typeof EquipeRoute
   '/followups': typeof FollowupsRoute
+  '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
   '/kanban': typeof KanbanRoute
   '/login': typeof LoginRoute
   '/meus-leads': typeof MeusLeadsRoute
   '/minha-fila': typeof MinhaFilaRoute
+  '/perfil': typeof PerfilRoute
+  '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
+  '/vendas': typeof VendasRoute
+  '/visao-geral': typeof VisaoGeralRoute
   '/wf02': typeof Wf02Route
   '/api/push/enviar': typeof ApiPushEnviarRoute
   '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
@@ -131,14 +187,21 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/configuracoes': typeof ConfiguracoesRoute
+  '/equipe': typeof EquipeRoute
   '/followups': typeof FollowupsRoute
+  '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
   '/kanban': typeof KanbanRoute
   '/login': typeof LoginRoute
   '/meus-leads': typeof MeusLeadsRoute
   '/minha-fila': typeof MinhaFilaRoute
+  '/perfil': typeof PerfilRoute
+  '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
   '/templates': typeof TemplatesRoute
+  '/vendas': typeof VendasRoute
+  '/visao-geral': typeof VisaoGeralRoute
   '/wf02': typeof Wf02Route
   '/api/push/enviar': typeof ApiPushEnviarRoute
   '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
@@ -149,14 +212,21 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/configuracoes'
+    | '/equipe'
     | '/followups'
+    | '/inicio'
     | '/instalar'
     | '/kanban'
     | '/login'
     | '/meus-leads'
     | '/minha-fila'
+    | '/perfil'
+    | '/pipeline'
     | '/reports'
     | '/templates'
+    | '/vendas'
+    | '/visao-geral'
     | '/wf02'
     | '/api/push/enviar'
     | '/api/webhooks/evolution'
@@ -165,14 +235,21 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/configuracoes'
+    | '/equipe'
     | '/followups'
+    | '/inicio'
     | '/instalar'
     | '/kanban'
     | '/login'
     | '/meus-leads'
     | '/minha-fila'
+    | '/perfil'
+    | '/pipeline'
     | '/reports'
     | '/templates'
+    | '/vendas'
+    | '/visao-geral'
     | '/wf02'
     | '/api/push/enviar'
     | '/api/webhooks/evolution'
@@ -181,14 +258,21 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/configuracoes'
+    | '/equipe'
     | '/followups'
+    | '/inicio'
     | '/instalar'
     | '/kanban'
     | '/login'
     | '/meus-leads'
     | '/minha-fila'
+    | '/perfil'
+    | '/pipeline'
     | '/reports'
     | '/templates'
+    | '/vendas'
+    | '/visao-geral'
     | '/wf02'
     | '/api/push/enviar'
     | '/api/webhooks/evolution'
@@ -198,14 +282,21 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  ConfiguracoesRoute: typeof ConfiguracoesRoute
+  EquipeRoute: typeof EquipeRoute
   FollowupsRoute: typeof FollowupsRoute
+  InicioRoute: typeof InicioRoute
   InstalarRoute: typeof InstalarRoute
   KanbanRoute: typeof KanbanRoute
   LoginRoute: typeof LoginRoute
   MeusLeadsRoute: typeof MeusLeadsRoute
   MinhaFilaRoute: typeof MinhaFilaRoute
+  PerfilRoute: typeof PerfilRoute
+  PipelineRoute: typeof PipelineRoute
   ReportsRoute: typeof ReportsRoute
   TemplatesRoute: typeof TemplatesRoute
+  VendasRoute: typeof VendasRoute
+  VisaoGeralRoute: typeof VisaoGeralRoute
   Wf02Route: typeof Wf02Route
   ApiPushEnviarRoute: typeof ApiPushEnviarRoute
   ApiWebhooksEvolutionRoute: typeof ApiWebhooksEvolutionRoute
@@ -228,11 +319,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/configuracoes': {
+      id: '/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/configuracoes'
+      preLoaderRoute: typeof ConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/equipe': {
+      id: '/equipe'
+      path: '/equipe'
+      fullPath: '/equipe'
+      preLoaderRoute: typeof EquipeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/followups': {
       id: '/followups'
       path: '/followups'
       fullPath: '/followups'
       preLoaderRoute: typeof FollowupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inicio': {
+      id: '/inicio'
+      path: '/inicio'
+      fullPath: '/inicio'
+      preLoaderRoute: typeof InicioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/instalar': {
@@ -270,6 +382,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MinhaFilaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/perfil': {
+      id: '/perfil'
+      path: '/perfil'
+      fullPath: '/perfil'
+      preLoaderRoute: typeof PerfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pipeline': {
+      id: '/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof PipelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reports': {
       id: '/reports'
       path: '/reports'
@@ -282,6 +408,20 @@ declare module '@tanstack/react-router' {
       path: '/templates'
       fullPath: '/templates'
       preLoaderRoute: typeof TemplatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vendas': {
+      id: '/vendas'
+      path: '/vendas'
+      fullPath: '/vendas'
+      preLoaderRoute: typeof VendasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/visao-geral': {
+      id: '/visao-geral'
+      path: '/visao-geral'
+      fullPath: '/visao-geral'
+      preLoaderRoute: typeof VisaoGeralRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/wf02': {
@@ -318,14 +458,21 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  ConfiguracoesRoute: ConfiguracoesRoute,
+  EquipeRoute: EquipeRoute,
   FollowupsRoute: FollowupsRoute,
+  InicioRoute: InicioRoute,
   InstalarRoute: InstalarRoute,
   KanbanRoute: KanbanRoute,
   LoginRoute: LoginRoute,
   MeusLeadsRoute: MeusLeadsRoute,
   MinhaFilaRoute: MinhaFilaRoute,
+  PerfilRoute: PerfilRoute,
+  PipelineRoute: PipelineRoute,
   ReportsRoute: ReportsRoute,
   TemplatesRoute: TemplatesRoute,
+  VendasRoute: VendasRoute,
+  VisaoGeralRoute: VisaoGeralRoute,
   Wf02Route: Wf02Route,
   ApiPushEnviarRoute: ApiPushEnviarRoute,
   ApiWebhooksEvolutionRoute: ApiWebhooksEvolutionRoute,

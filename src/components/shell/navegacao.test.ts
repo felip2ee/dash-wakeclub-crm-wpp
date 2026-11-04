@@ -1,0 +1,66 @@
+import { describe, expect, test } from "bun:test";
+
+import {
+  abasCelularAdmin,
+  abasCelularAtendente,
+  itensDesktopAdmin,
+  rotaInicial,
+} from "./navegacao";
+
+const urls = (itens: { url: string }[]) => itens.map((i) => i.url);
+const titulos = (itens: { titulo: string }[]) => itens.map((i) => i.titulo);
+
+describe("navegação por papel", () => {
+  test("barra lateral do admin segue a referência 02", () => {
+    expect(titulos(itensDesktopAdmin)).toEqual([
+      "Visão geral",
+      "Pipeline",
+      "Conversas",
+      "Follow-ups",
+      "Vendas e comissões",
+      "Equipe",
+      "Configurações",
+    ]);
+    expect(urls(itensDesktopAdmin)).toEqual([
+      "/visao-geral",
+      "/pipeline",
+      "/",
+      "/aprovar",
+      "/vendas",
+      "/equipe",
+      "/configuracoes",
+    ]);
+  });
+
+  test("celular do admin tem 4 abas", () => {
+    expect(titulos(abasCelularAdmin)).toEqual(["Início", "Conversas", "Pipeline", "Config."]);
+    expect(urls(abasCelularAdmin)).toEqual(["/visao-geral", "/", "/pipeline", "/configuracoes"]);
+  });
+
+  test("celular do atendente tem 4 abas", () => {
+    expect(titulos(abasCelularAtendente)).toEqual(["Início", "Conversas", "Follow-ups", "Perfil"]);
+    expect(urls(abasCelularAtendente)).toEqual(["/inicio", "/meus-leads", "/aprovar", "/perfil"]);
+  });
+
+  test("rotas antigas saem da navegação", () => {
+    const todas = [...itensDesktopAdmin, ...abasCelularAdmin, ...abasCelularAtendente].map(
+      (i) => i.url,
+    );
+    for (const antiga of ["/admin", "/kanban", "/wf02", "/reports", "/followups", "/minha-fila"]) {
+      expect(todas).not.toContain(antiga);
+    }
+  });
+
+  test("todo item tem ícone", () => {
+    for (const item of [...itensDesktopAdmin, ...abasCelularAdmin, ...abasCelularAtendente]) {
+      expect(item.icone).toBeDefined();
+    }
+  });
+});
+
+describe("rotaInicial", () => {
+  test("admin vai para a visão geral, atendente para o início", () => {
+    expect(rotaInicial("admin")).toBe("/visao-geral");
+    expect(rotaInicial("atendente")).toBe("/inicio");
+  });
+});

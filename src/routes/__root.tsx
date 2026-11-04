@@ -6,18 +6,23 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  ScriptOnce,
   useRouterState,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/AppSidebar";
+import { AppShell } from "@/components/shell/AppShell";
 import { PwaRegistrar } from "@/components/PwaRegistrar";
 import { Toaster } from "@/components/ui/sonner";
 import { getSaudeNumero, type SaudeNumero } from "@/server/saude";
 import { getSessao, type Sessao } from "@/server/auth";
+import {
+  SCRIPT_INLINE,
+  aplicarNoDocumento,
+  lerPreferencias,
+} from "@/features/preferencias/preferencias";
 
 function NotFoundComponent() {
   return (
@@ -120,9 +125,22 @@ export const Route = createRootRouteWithContext<{
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  // O script inline já aplicou as preferências antes da hidratação; aqui só se
+  // reaplica e se acompanha a troca claro/escuro do sistema (modo "sistema").
+  useEffect(() => {
+    const aplicar = () => aplicarNoDocumento(lerPreferencias());
+    aplicar();
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener("change", aplicar);
+    return () => mq.removeEventListener("change", aplicar);
+  }, []);
+
   return (
-    <html lang="pt-BR">
+    // suppressHydrationWarning: o script inline muda data-tema, data-densidade e
+    // a classe `dark` do <html> antes de o React hidratar.
+    <html lang="pt-BR" suppressHydrationWarning>
       <head>
+        <ScriptOnce>{SCRIPT_INLINE}</ScriptOnce>
         <HeadContent />
       </head>
       <body>
@@ -139,7 +157,7 @@ function RootComponent() {
   const saude = Route.useLoaderData()?.saude ?? null;
   const naTelaDeLogin = useRouterState({ select: (s) => s.location.pathname === "/login" });
 
-  if (naTelaDeLogin) {
+  if (naTelaDeLogin || !sessao) {
     return (
       <QueryClientProvider client={queryClient}>
         <Outlet />
@@ -151,23 +169,11 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SidebarProvider>
-        <div className="flex min-h-screen w-full bg-background">
-          <AppSidebar sessao={sessao ?? null} />
-          <SidebarInset className="flex min-w-0 flex-1 flex-col">
-            <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-3 backdrop-blur sm:gap-3 sm:px-4">
-              <SidebarTrigger />
-              <div className="hidden h-5 w-px bg-border sm:block" />
-              <SaudeDoNumero saude={saude} />
-            </header>
-            <main className="min-h-0 flex-1">
-              <Outlet />
-            </main>
-          </SidebarInset>
-        </div>
-        <Toaster />
-        <PwaRegistrar />
-      </SidebarProvider>
+      <AppShell sessao={sessao} cabecalho={<SaudeDoNumero saude={saude} />}>
+        <Outlet />
+      </AppShell>
+      <Toaster />
+      <PwaRegistrar />
     </QueryClientProvider>
   );
 }

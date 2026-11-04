@@ -87,8 +87,8 @@ export function agruparNotificacoes(pendentes: NotificacaoPendente[]): GrupoPush
 }
 
 /**
- * SQL do nó "Reivindicar notificacoes". Depende de `v_followups_fila`, que só existe em
- * produção (o banco de teste cria um stub com as colunas lidas aqui).
+ * SQL do nó "Reivindicar notificacoes". Aviso de follow-up só sai enquanto o follow-up
+ * está `aguardando_aprovacao` (spec §6); antes lia `v_followups_fila`, do fluxo wa.me.
  */
 export async function reivindicarNotificacoes(db: PoolClient): Promise<NotificacaoPendente[]> {
   const { rows } = await db.query<{ pendentes: Array<Record<string, unknown>> }>(
@@ -106,7 +106,8 @@ export async function reivindicarNotificacoes(db: PoolClient): Promise<Notificac
         where n.status = 'pendente'
           and n.followup_id is not null
           and not exists (
-                select 1 from wakeclub.v_followups_fila q where q.followup_id = n.followup_id
+                select 1 from wakeclub.followups f
+                 where f.id = n.followup_id and f.status = 'aguardando_aprovacao'
           )
        returning 1
      ),
@@ -116,7 +117,8 @@ export async function reivindicarNotificacoes(db: PoolClient): Promise<Notificac
         where n.status = 'pendente'
           and (n.followup_id is null
                or exists (
-                     select 1 from wakeclub.v_followups_fila q where q.followup_id = n.followup_id
+                     select 1 from wakeclub.followups f
+                      where f.id = n.followup_id and f.status = 'aguardando_aprovacao'
                ))
         order by n.criado_em
         limit 50
@@ -136,8 +138,9 @@ export async function reivindicarNotificacoes(db: PoolClient): Promise<Notificac
        from reivindicadas r
        left join lateral (
              select count(*)::int as n
-               from wakeclub.v_followups_fila q
-              where q.atendente_id = r.usuario_id
+               from wakeclub.followups q
+               join wakeclub.leads l on l.id = q.lead_id
+              where q.status = 'aguardando_aprovacao' and l.atendente_id = r.usuario_id
        ) f on true`,
   );
   return rows[0].pendentes.map((p) => ({
