@@ -1,7 +1,13 @@
 # Arquitetura atual do Wake Club Dashboard
 
-> Snapshot da Fase 0 em 11/08/2026. Este documento descreve o sistema existente;
-> não antecipa a arquitetura desejada de `plan(2).md` e não autoriza novas escritas.
+> Snapshot da Fase 0 em 11/08/2026, revisado em 04/11/2026. Descreve o sistema
+> existente; não antecipa a arquitetura desejada e não autoriza novas escritas.
+>
+> **Estado em 04/11/2026:** os workflows n8n descritos aqui estão **parados** e os
+> arquivos deles não estão neste checkout (`../n8n/`, `../db/` e `../CLAUDE.md` não
+> existem aqui). A arquitetura que vai substituí-los está em
+> `docs/superpowers/specs/2026-11-03-wakecrm-motor-proprio-design.md`; até a fase 1
+> dela ser entregue, as regras do fim deste documento continuam valendo.
 
 ## Resumo executivo
 
@@ -348,3 +354,92 @@ A Fase 1 pode começar sem alteração de banco:
 Qualquer necessidade de `automation_events`, `followup_feedback`, nova etapa ou escrita
 em followup pertence a fases posteriores e exige schema, GRANTs e responsabilidade de
 writer explicitamente definidos antes da implementação.
+
+## Base existente e regras vigentes do painel
+
+Movido do antigo `AGENTS.md` em 04/11/2026, sem mudança de conteúdo. Vale até a fase 1
+do WakeCRM substituir a responsabilidade dos dados.
+
+### Base existente — não recriar
+
+- Stack: TanStack Start, React 19, Vite, Nitro, TanStack Query, Tailwind v4,
+  shadcn/ui, PostgreSQL via `pg`; gerenciador: Bun.
+- Rotas ficam em `src/routes/`; servidor e SQL em `src/server/`; componentes não
+  executam SQL.
+- `src/server/db.ts` é o único módulo que importa `pg` ou lê URLs do banco.
+- `getPool()` usa `painel_ro`; `getPoolRw()` usa a role limitada `painel_rw`.
+- Login, sessão por papel, PWA, push, fila individual, meus leads e admin já existem.
+- O Kanban já possui `HistoricoDoLead` + `getMensagens`; `/` possui `Thread`/`Bolha`;
+  `/meus-leads` possui outra conversa; `/wf02` possui `AbaTimeline`; reutilize esses
+  comportamentos antes de criar uma quarta implementação.
+- `src/lib/mock-data.ts` pertence à demonstração de `/templates`. Nunca o use em tela
+  operacional nem como prova de conclusão.
+
+Não mova o projeto inteiro para `src/features/` antecipadamente. Extraia um componente
+compartilhado quando uma fase exigir reutilização real; a componentização ampla pertence
+à Fase 12.
+
+
+### Responsabilidade dos dados
+
+O atendimento continua humano pelo WhatsApp. O n8n lê conversas, mantém o CRM,
+qualifica, agenda/cancela followups, redige sugestões e conversa com a Evolution API.
+O painel apresenta o estado, autentica a equipe, registra ações próprias e abre o
+WhatsApp; ele não é um segundo motor de automação.
+
+Regras invioláveis:
+
+1. O painel nunca chama a Evolution API e nunca envia mensagem ao lead.
+2. O painel não altera `mensagens`, `followups`, `crm_outbox`, etapa, temperatura,
+   resumo, `qualificar_apos` ou `leads.atendente_id` diretamente.
+3. As escritas atuais da `painel_rw` ficam limitadas a:
+   - sessões e inscrições push;
+   - `followup_toques` por INSERT append-only;
+   - `usuarios.ultimo_acesso_em`;
+   - administração autenticada de `usuarios.ativo` e cadastro limitado às colunas
+     `nome`, `usuario`, `senha_hash` e `label_id`, conforme os GRANTs atuais;
+   - `leads.sem_atendimento` e `sem_atendimento_motivo`, a segunda exceção nomeada e
+     limitada por coluna registrada em `../db/painel-role.sql` e
+     `scripts/painel-db.mjs`.
+4. Toda nova view ou tabela acessada pelo painel exige GRANT explícito, teste positivo
+   do acesso necessário e teste negativo das duas roles.
+5. `usuarios.senha_hash` é estritamente server-only: nunca aparece em view de leitura,
+   resposta, bundle, erro ou log.
+6. Credenciais, URLs com senha, chaves VAPID e segredos de webhook vivem somente em
+   `.env`; `.env.example` contém apenas placeholders.
+
+As fases futuras não ampliam esses privilégios por implicação:
+
+- `automation_events` deve ser escrito pelos workflows responsáveis e lido pelo painel
+  por uma superfície segura. Não armazene chain-of-thought; só decisão operacional,
+  motivo resumido, estados observáveis e metadados necessários.
+- `followup_feedback` ainda não faz parte da superfície autorizada da `painel_rw`.
+  Antes da Fase 9, definir DDL no fluxo responsável por `../db/`, conceder apenas as
+  colunas/operações necessárias e ampliar `db:check`. A Fase 8 pode guardar apenas o
+  retorno pendente no navegador; isso não é persistência durável nem conclusão da
+  coleta de feedback.
+- `contacts`, `opportunities` e uma etapa própria da oportunidade são decisões das
+  Fases 13 e 14. Até lá, trate `lead` como o modelo legado exposto pelas views; não
+  antecipe tabelas nem drag-and-drop.
+
+Se tabelas esperadas do CRM/equipe não existirem, não as crie pelo dashboard. Informe
+qual schema em `../db/` precisa ser aplicado pelo fluxo autorizado.
+
+### Semântica que não pode ser adulterada
+
+- “Abrir no WhatsApp” significa **abriu**, nunca **enviou**. O envio só é confirmado
+  pelo eco capturado pelo n8n.
+- `followup_toques` é append-only e não altera o ciclo de vida do followup.
+- Mensagens distinguem `lead`, `equipe` e `ia`, mas hoje não identificam qual atendente
+  digitou. Mostre “Equipe” e não invente autora ou ranking individual de resposta.
+- Métricas por atendente são por lead atribuído, não por autoria de mensagem.
+- Uma timeline só mostra fatos sustentados pelos dados. Na Fase 1, alterações históricas
+  de etapa/temperatura ou agentes específicos aparecem apenas quando houver evidência;
+  ausência de evento deve ser visível, não preenchida por inferência.
+- Followup cancelado não é automaticamente erro; mostre o motivo disponível.
+- Requalificar uma sugestão inadequada não é `sem_atendimento`, não é opt-out e não
+  remove o lead da distribuição. A requalificação pertence ao n8n e deve ser
+  idempotente.
+- As labels do WhatsApp não são fonte legível/confiável na instância atual. A dona do
+  lead vem de `leads.atendente_id`, preenchido pelo rodízio pegajoso do WF-08; não reabra
+  a investigação de labels sem upgrade, repareamento ou outro dado real novo.

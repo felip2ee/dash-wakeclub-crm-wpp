@@ -25,7 +25,7 @@ cara" **[decidido]**: é ferramenta de motivação, não enfeite.
 
 ## 2. Esta decisão substitui regras anteriores
 
-`AGENTS.md`, `ESPEC-PAINEL-EQUIPE.md` e `docs/current-architecture.md` dizem que o
+`AGENTS.md`, `ESPEC-PAINEL-EQUIPE.md` e `docs/architecture.md` dizem que o
 painel nunca escreve no CRM e nunca chama a Evolution. **Isso deixa de valer.** O dono
 decidiu que o app assume todas as responsabilidades do n8n **[decidido]**. A primeira
 fase atualiza `AGENTS.md` (seção "Responsabilidade dos dados" e "Semântica") para

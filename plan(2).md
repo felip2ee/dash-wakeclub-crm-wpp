@@ -209,7 +209,7 @@ Mapear também:
 Adicionar documentação interna em:
 
 ```text
-docs/current-architecture.md
+docs/architecture.md
 ```
 
 Contendo:
