@@ -13,6 +13,11 @@ Direção planejada (não implementada) para o WakeCRM: abas inferiores por pape
 de follow-ups estilo Reels com dois botões grandes e folha de motivo, comissão em
 destaque no início do vendedor. Rascunhos aprovados no design do WakeCRM, §7.4 e §9.
 
+## Referências visuais
+
+As telas devem ficar iguais às imagens em `docs/ref/ui/` (ver `docs/ref/README.md`), no
+tema verde; rosa é tema opcional. Spec: `docs/superpowers/specs/2026-11-05-wakecrm-interface.md`.
+
 ## Sistema existente
 
 - Fonte da verdade dos tokens: `src/styles.css` (Tailwind v4 `@theme inline` + variáveis

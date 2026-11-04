@@ -13,7 +13,7 @@ nomes técnicos exigidos por bibliotecas, APIs e pelo plano ficam como estão.
   de dados de `docs/architecture.md` já refletem o motor próprio.
 - UX de referência: `plan(2).md`. Contratos já implementados: `ESPEC-PAINEL-EQUIPE.md`
   e `ESPEC-BOTAO-NAO-ATENDER.md`.
-- Interface: `docs/design.md`. Preparação local: `docs/onboarding.md`. Checagens:
+- Interface: `docs/design.md`; referências visuais obrigatórias em `docs/ref/`. Preparação local: `docs/onboarding.md`. Checagens:
   `docs/quality.md`. Ferramentas e evidência do setup: `docs/setup.md`.
 - `../CLAUDE.md`, `../db/` e `../n8n/`, citados em documentos antigos, **não existem
   neste checkout**. Os workflows n8n exportados estão em `docs/n8n-legado/` (só fonte,
