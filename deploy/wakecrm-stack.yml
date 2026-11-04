@@ -1,0 +1,51 @@
+# Modelo da stack WakeCRM (Docker Swarm + Traefik).
+#
+# Uso pelo instalador: render_stack troca cada marcador de chave (cifrão e chaves) pelo valor do arquivo .env
+# e falha se faltar chave. Uso à mão no Portainer: Stacks > Add stack > Web editor,
+# nome "wakecrm"; substitua todos os marcadores de cifrão e chaves abaixo pelos valores reais antes de salvar.
+#
+# Atenção: cada valor de environment fica entre aspas duplas, então não pode conter
+# " nem \. Os segredos gerados são hex e a senha do Postgres vai percent-encoded
+# dentro das URLs, então isso vale por construção.
+# Placeholders de infraestrutura: DOMINIO, REDE (overlay externa do Traefik), CERTRESOLVER.
+
+version: "3.7"
+
+services:
+  wakecrm:
+    image: ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest
+    networks:
+      - ${REDE}
+    environment:
+      - "NODE_ENV=production"
+      - "DATABASE_URL=${DATABASE_URL}"
+      - "DATABASE_URL_RW=${DATABASE_URL_RW}"
+      - "DATABASE_URL_MOTOR=${DATABASE_URL_MOTOR}"
+      - "VITE_VAPID_PUBLIC_KEY=${VITE_VAPID_PUBLIC_KEY}"
+      - "VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}"
+      - "PUSH_DISPATCH_SECRET=${PUSH_DISPATCH_SECRET}"
+      - "WEBHOOK_EVOLUTION_SECRET=${WEBHOOK_EVOLUTION_SECRET}"
+      - "WEBHOOK_VENDAS_SECRET=${WEBHOOK_VENDAS_SECRET}"
+      - "EVOLUTION_INSTANCIA=${EVOLUTION_INSTANCIA}"
+      - "EVOLUTION_URL=${EVOLUTION_URL}"
+      - "EVOLUTION_API_KEY=${EVOLUTION_API_KEY}"
+      - "MOTOR_ATIVO="
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=${REDE}"
+        - "traefik.http.routers.wakecrm.rule=Host(`${DOMINIO}`)"
+        - "traefik.http.routers.wakecrm.entrypoints=websecure"
+        - "traefik.http.routers.wakecrm.tls.certresolver=${CERTRESOLVER}"
+        - "traefik.http.routers.wakecrm.service=wakecrm"
+        - "traefik.http.services.wakecrm.loadbalancer.server.port=3000"
+
+networks:
+  ${REDE}:
+    external: true
+    name: ${REDE}
