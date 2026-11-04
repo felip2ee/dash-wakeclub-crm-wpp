@@ -85,9 +85,7 @@ esperar_ate() {
   local limite=$((SECONDS + $1)) intervalo="$2" rc
   shift 2
   while :; do
-    "$@"
-    rc=$?
-    [ "$rc" -eq 0 ] && return 0
+    if "$@"; then return 0; else rc=$?; fi
     [ "$SECONDS" -ge "$limite" ] && return "$rc"
     sleep "$intervalo"
   done
@@ -98,6 +96,6 @@ _cor() { # CODIGO TEXTO
   if [ -t 1 ]; then printf '\033[%sm%s\033[0m\n' "$1" "$2"; else printf '%s\n' "$2"; fi
 }
 passo() { _cor 1 "[$1] $2"; }
-ok() { _cor 32 "ok: $1"; }
-falha() { _cor 31 "erro: $1"; }
-aviso() { _cor 33 "aviso: $1"; }
+ok() { _cor 32 "✓ $1"; }
+falha() { _cor 31 "✗ $1"; }
+aviso() { _cor 33 "! $1"; }

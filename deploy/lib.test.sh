@@ -91,4 +91,17 @@ assert_eq ok "$r" "esperar_ate respeita o prazo"
 esperar_ate 2 1 true
 assert_eq 0 "$?" "esperar_ate sucesso"
 
+# esperar_ate sob `set -e` (o instalador roda assim)
+cont="$TMP/cont"
+: >"$cont"
+export CONT="$cont"
+falha_duas() { echo x >>"$CONT"; [ "$(wc -l <"$CONT")" -ge 3 ]; }
+saida="$(bash -ec ". '$AQUI/lib.sh'; $(declare -f falha_duas); esperar_ate 5 1 falha_duas; echo fim" 2>&1)"
+assert_eq fim "$saida" "esperar_ate sob set -e tenta de novo e retorna 0"
+saida="$(bash -ec ". '$AQUI/lib.sh'; esperar_ate 1 1 false || echo rc=\$?; echo vivo" 2>&1)"
+assert_eq $'rc=1\nvivo' "$saida" "esperar_ate sob set -e não aborta antes do prazo"
+assert_eq "✓ a" "$(ok a)" "ok com ✓"
+assert_eq "✗ a" "$(falha a)" "falha com ✗"
+assert_eq "! a" "$(aviso a)" "aviso com !"
+
 echo "todos os $N testes passaram"
