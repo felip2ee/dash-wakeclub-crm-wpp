@@ -55,7 +55,7 @@ export function iniciarMotor(): void {
   });
 
   agendar("push", MINUTO, async () => {
-    await comTransacao(async (c) => void (await enviarPushPendentes(c)));
+    await enviarPushPendentes();
   });
 
   if (adaptador) {

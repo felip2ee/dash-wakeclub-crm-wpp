@@ -144,21 +144,17 @@ describe.skipIf(!bancoTesteAtivo)("push pendente", () => {
   test("entrega ok marca enviada", async () => {
     await esvaziarFila();
     const { id } = await avisoPendente();
-    await comTransacao((c) =>
-      enviarPushPendentes(c, async () => ({ enviados: 1, removidos: 0, falhas: 0 })),
-    );
+    await enviarPushPendentes(async () => ({ enviados: 1, removidos: 0, falhas: 0 }));
     expect(await estado(id)).toEqual({ status: "enviada", erro: null });
   });
 
   test("entrega que lança marca falhou com o erro", async () => {
     await esvaziarFila();
     const { usuarioId, id } = await avisoPendente();
-    await comTransacao((c) =>
-      enviarPushPendentes(c, async (p) => {
-        if (p.usuarioId === usuarioId) throw new Error("provedor fora");
-        return { enviados: 1, removidos: 0, falhas: 0 };
-      }),
-    );
+    await enviarPushPendentes(async (p) => {
+      if (p.usuarioId === usuarioId) throw new Error("provedor fora");
+      return { enviados: 1, removidos: 0, falhas: 0 };
+    });
     expect(await estado(id)).toEqual({ status: "falhou", erro: "provedor fora" });
   });
 });

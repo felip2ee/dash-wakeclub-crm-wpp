@@ -56,6 +56,9 @@ describe("opt-out", () => {
       "sair",
       "não me mande mais nada",
       "não quero mais receber",
+      "não quero mais contato",
+      "não quero mais nada",
+      "nao quero mais isso",
     ]) {
       expect(ehOptOut(frase)).toBe(true);
     }

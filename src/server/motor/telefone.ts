@@ -7,9 +7,9 @@
 
 // Cada pedido termina em fim de palavra (o \b do JS não entende acento): "Parece ótimo"
 // e "Sairia por quanto?" não são opt-out. `descadastr` é prefixo. "Não quero mais" só
-// vale sozinho ou seguido de receber/mensagem ("não quero mais esperar" é outra coisa).
+// vale sozinho ou seguido de receber/mensagem/contato/nada/isso ("não quero mais esperar" é outra coisa).
 const OPT_OUT =
-  /^(?:(?:pare|parar|para de (?:mandar|enviar)|sair|stop|remover?(?: meu)?|me tira|n[aã]o me (?:mand|envi)(?:em?|a)|nunca mais me)(?=$|[\s.!?,;])|descadastr|n[aã]o quero mais(?=\s*(?:$|[.!?,;]|receber|mensag)))/i;
+  /^(?:(?:pare|parar|para de (?:mandar|enviar)|sair|stop|remover?(?: meu)?|me tira|n[aã]o me (?:mand|envi)(?:em?|a)|nunca mais me)(?=$|[\s.!?,;])|descadastr|n[aã]o quero mais(?=\s*(?:$|[.!?,;]|receber|mensag|contato|nada|isso)))/i;
 
 export function paraE164(entrada: string): string | null {
   let d = String(entrada || "").replace(/\D/g, "");

@@ -7,7 +7,11 @@
  */
 import { definePlugin } from "nitro";
 
+import { logErro } from "../log";
+
 export default definePlugin(() => {
   if (process.env.MOTOR_ATIVO !== "1") return;
-  void import("./iniciar").then((m) => m.iniciarMotor());
+  void import("./iniciar")
+    .then((m) => m.iniciarMotor())
+    .catch((erro) => logErro("motor.boot", erro));
 });

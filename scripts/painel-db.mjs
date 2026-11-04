@@ -613,7 +613,7 @@ async function apply() {
     const caminho = resolve(RAIZ_PROJETO, "db", "painel-views.sql");
     const ddl = readFileSync(caminho, "utf8");
     await admin.query(ddl);
-    console.log(cor.ok(`  ✓ ${VIEWS_ESPERADAS.length} views aplicadas e liberadas`));
+    console.log(cor.ok(`  ✓ painel-views.sql aplicado e liberado`));
     console.log(cor.fraco(`    ${caminho}`));
 
     titulo("4. Privilégios limitados da painel_rw");
@@ -673,6 +673,16 @@ async function apply() {
          if exists (select 1 from pg_roles where rolname = 'wakecrm_motor')
             and to_regclass('wakeclub.v_followups_fila') is not null then
            grant select on wakeclub.v_followups_fila to wakecrm_motor;
+         end if;
+       end
+       $$`,
+    );
+    // v_mensagens_autoria vem da 0002; o painel-views.sql pode recriar views e apagar o grant.
+    await admin.query(
+      `do $$
+       begin
+         if to_regclass('wakeclub.v_mensagens_autoria') is not null then
+           grant select on wakeclub.v_mensagens_autoria to painel_ro;
          end if;
        end
        $$`,

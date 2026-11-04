@@ -54,6 +54,16 @@ describe.skipIf(!bancoTesteAtivo)("fila de entrada", () => {
     expect(await reivindicar(db(), 10, EVO)).toHaveLength(0);
   });
 
+  test("reprocessar recusa linha descartada por tamanho", async () => {
+    const { rows } = await db().query(
+      `insert into wakeclub.webhook_eventos (origem, corpo, status)
+       values ('evolution', '{"descartado":true,"tamanho":9}'::jsonb, 'falhou') returning id`,
+    );
+    const id = Number(rows[0].id);
+    expect(await reprocessar(db(), id)).toBe(false);
+    expect((await status(id)).status).toBe("falhou");
+  });
+
   test("dois reivindicadores", async () => {
     for (const chave of ["A", "A", "B", "B", "C"]) await enfileirar(db(), "evolution", {}, chave);
     const [c1, c2] = [await db().connect(), await db().connect()];

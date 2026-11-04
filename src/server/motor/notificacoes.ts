@@ -3,7 +3,7 @@
  * nova, reivindica pendentes, agrupa por destinatário e tipo e entrega por `entregarPush`.
  */
 import { telefone } from "../../lib/formato";
-import type { PoolClient } from "../db";
+import { comTransacao, getPoolMotor, type PoolClient } from "../db";
 import { logErro } from "../log";
 import { entregarPush } from "../push-dispatch";
 
@@ -151,12 +151,16 @@ export async function reivindicarNotificacoes(db: PoolClient): Promise<Notificac
   }));
 }
 
-/** Uma rodada: reivindica, agrupa, entrega e marca `enviada`/`falhou`. `entregar` troca nos testes. */
+/**
+ * Uma rodada: reivindica (transação curta, commit), entrega fora de transação e marca
+ * `enviada`/`falhou`. Assim uma falha ao marcar não desfaz a reivindicação e o push não sai
+ * de novo. `entregar` troca nos testes.
+ */
 export async function enviarPushPendentes(
-  db: PoolClient,
   entregar: typeof entregarPush = entregarPush,
 ): Promise<number> {
-  const grupos = agruparNotificacoes(await reivindicarNotificacoes(db));
+  const grupos = agruparNotificacoes(await comTransacao(reivindicarNotificacoes));
+  const db = getPoolMotor();
   for (const g of grupos) {
     try {
       await entregar({

@@ -112,7 +112,7 @@ export async function reprocessar(db: ClienteDb, id: number): Promise<boolean> {
   const { rowCount } = await db.query(
     `update wakeclub.webhook_eventos
         set status = 'pendente', tentativas = 0, proxima_tentativa_em = now(), erro = null
-      where id = $1::bigint and status = 'falhou'`,
+      where id = $1::bigint and status = 'falhou' and not (corpo ? 'descartado')`,
     [id],
   );
   return rowCount === 1;
