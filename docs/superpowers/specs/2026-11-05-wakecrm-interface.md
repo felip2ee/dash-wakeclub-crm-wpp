@@ -21,10 +21,11 @@ verde **[dono]**; rosa opcional **[dono]**; densidade Grande/Médio/Pequeno (ref
 - Temas por atributo em `<html data-tema="verde" | "rosa">`; modo por `.dark` (já existe)
   com `prefers-color-scheme` como padrão e opção de fixar.
   - **verde** (padrão): primária `oklch(0.55 0.16 158)` claro / `oklch(0.7 0.17 158)`
-    escuro (os atuais); degradê `linear-gradient(135deg, oklch(0.45 0.15 158), oklch(0.72 0.17 150))`.
-  - **rosa**: primária `oklch(0.62 0.25 15)`; degradê `linear-gradient(135deg, oklch(0.62 0.25 15), oklch(0.72 0.2 40))`
+    escuro (os atuais); degradê `linear-gradient(135deg, oklch(0.45 0.15 158), oklch(0.54 0.16 152))` (texto branco de 14 px ≥ 4,6:1 no pior ponto).
+  - **rosa**: primária `oklch(0.62 0.25 15)`; degradê `linear-gradient(135deg, oklch(0.58 0.25 15), oklch(0.585 0.2 35))` (≥ 4,6:1)
     (o rosa→laranja das imagens); fundo escuro idêntico ao do verde.
-  - Escuro das referências: fundo `oklch(0.13 0.01 260)`, cartão `oklch(0.18 0.01 260)`,
+  - Contraste sobre degradê: números grandes (≥ 24 px, negrito) em branco ≥ 3:1; texto pequeno em branco pleno (sem opacidade) ≥ 4.5:1 no ponto mais claro do degradê; chips de temperatura usam fundo sólido (`--quente` L 0.52, `--morno` com texto escuro, `--frio` L 0.54), nunca o degradê.
+- Escuro das referências: fundo `oklch(0.13 0.01 260)`, cartão `oklch(0.18 0.01 260)`,
     borda `oklch(1 0 0 / 8%)`. O modo claro mantém os tokens atuais.
 - Densidade em `<html data-densidade="grande" | "medio" | "pequeno">`: muda
   `font-size` base (17 / 16 / 14.5 px), `--radius` (0.9 / 0.75 / 0.6 rem) e o espaçamento

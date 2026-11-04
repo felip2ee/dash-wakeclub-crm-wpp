@@ -40,6 +40,10 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-quente: var(--quente);
+  --color-morno: var(--morno);
+  --color-frio: var(--frio);
+  --color-sucesso-whatsapp: var(--sucesso-whatsapp);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -54,6 +58,8 @@
 
 :root {
   --radius: 0.75rem;
+  /* Escala de espaçamento da densidade (multiplicador); ver html[data-densidade]. */
+  --espaco: 1;
 
   /* Warm off-white canvas, near-black ink, emerald WABA accent */
   --background: oklch(0.985 0.005 95);
@@ -112,14 +118,32 @@
   --sidebar-accent-foreground: oklch(0.98 0.005 160);
   --sidebar-border: oklch(0.3 0.03 165);
   --sidebar-ring: oklch(0.65 0.18 158);
+
+  /* Degradê dos KPIs, botão Enviar, item ativo e chip "Quente" (escuro → claro).
+     O suave é o fundo das caixas "Sugestão da IA". */
+  --gradiente-primario: linear-gradient(135deg, oklch(0.45 0.15 158), oklch(0.54 0.16 152));
+  --gradiente-primario-suave: linear-gradient(
+    135deg,
+    oklch(0.45 0.15 158 / 12%),
+    oklch(0.54 0.16 152 / 12%)
+  );
+
+  /* Temperatura do lead: semântica, igual nos dois temas. Fundos sólidos dos
+     chips; contraste medido em 12px: quente/branco 6.0:1, morno/texto escuro
+     8.9:1, frio/branco 4.9:1. */
+  --quente: oklch(0.52 0.2 40);
+  --morno: oklch(0.78 0.15 78);
+  --frio: oklch(0.54 0.14 240);
+  --sucesso-whatsapp: oklch(0.6 0.17 150);
 }
 
 .dark {
-  --background: oklch(0.16 0.02 250);
+  /* Superfícies pretas/grafite das referências (docs/ref/ui). */
+  --background: oklch(0.13 0.01 260);
   --foreground: oklch(0.96 0.005 250);
-  --card: oklch(0.2 0.02 250);
+  --card: oklch(0.18 0.01 260);
   --card-foreground: oklch(0.96 0.005 250);
-  --popover: oklch(0.2 0.02 250);
+  --popover: oklch(0.18 0.01 260);
   --popover-foreground: oklch(0.96 0.005 250);
   --primary: oklch(0.7 0.17 158);
   --primary-foreground: oklch(0.15 0.03 160);
@@ -129,7 +153,7 @@
   --muted-foreground: oklch(0.7 0.02 250);
   --accent: oklch(0.3 0.05 158);
   --accent-foreground: oklch(0.96 0.005 250);
-  --border: oklch(1 0 0 / 10%);
+  --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.7 0.17 158);
 
@@ -139,6 +163,54 @@
   --serie-lead: oklch(0.65 0.14 240);
   --serie-equipe: oklch(0.65 0.16 158);
   --serie-ia: oklch(0.63 0.18 300);
+
+  --sucesso-whatsapp: oklch(0.77 0.2 149);
+}
+
+/* Tema rosa (opcional, escolhido em Configurações): só troca cor, nunca layout.
+   O seletor com atributo vence `.dark` na especificidade, então o bloco de
+   baixo devolve os valores próprios do escuro. */
+:root[data-tema="rosa"] {
+  --primary: oklch(0.62 0.25 15);
+  --primary-foreground: oklch(0.99 0 0);
+  --accent: oklch(0.95 0.04 15);
+  --accent-foreground: oklch(0.35 0.12 15);
+  --ring: oklch(0.62 0.25 15);
+  --chart-1: oklch(0.62 0.25 15);
+
+  --sidebar: oklch(0.18 0.01 260);
+  --sidebar-foreground: oklch(0.92 0.005 260);
+  --sidebar-primary: oklch(0.62 0.25 15);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.24 0.01 260);
+  --sidebar-accent-foreground: oklch(0.98 0.005 260);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.62 0.25 15);
+
+  --gradiente-primario: linear-gradient(135deg, oklch(0.58 0.25 15), oklch(0.585 0.2 35));
+  --gradiente-primario-suave: linear-gradient(
+    135deg,
+    oklch(0.58 0.25 15 / 12%),
+    oklch(0.585 0.2 35 / 12%)
+  );
+}
+
+:root[data-tema="rosa"].dark {
+  --accent: oklch(0.3 0.08 15);
+  --accent-foreground: oklch(0.96 0.005 250);
+}
+
+/* Densidade da interface (Grande / Médio / Pequeno), vale para o CRM inteiro.
+   Médio é o padrão de :root. */
+html[data-densidade="grande"] {
+  font-size: 17px;
+  --radius: 0.9rem;
+  --espaco: 1.15;
+}
+html[data-densidade="pequeno"] {
+  font-size: 14.5px;
+  --radius: 0.6rem;
+  --espaco: 0.85;
 }
 
 @layer base {
@@ -150,6 +222,13 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
   h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.02em; }
+}
+
+@utility bg-gradiente-primario {
+  background-image: var(--gradiente-primario);
+}
+@utility bg-gradiente-primario-suave {
+  background-image: var(--gradiente-primario-suave);
 }
 
 @utility scrollbar-thin {

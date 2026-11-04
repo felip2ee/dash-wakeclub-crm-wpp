@@ -99,7 +99,7 @@ export function criarClienteOpenAi(fetchFn: FetchFn = fetch): ClienteIa | null {
 
     async transcrever(p) {
       const form = new FormData();
-      form.append("file", new Blob([p.dados], { type: p.mime }), p.nomeArquivo);
+      form.append("file", new Blob([new Uint8Array(p.dados)], { type: p.mime }), p.nomeArquivo);
       form.append("model", process.env.OPENAI_MODELO_TRANSCRICAO || "whisper-1");
       form.append("language", "pt");
       const corpo = (await pedir(
