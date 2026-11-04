@@ -1,16 +1,17 @@
-# Graph Report - dashboard  (2026-08-11)
+# Graph Report - dash-wakeclub-crm-wpp  (2026-11-04)
 
 ## Corpus Check
-- 118 files · ~70,376 words
+- 119 files · ~68,379 words
 - Verdict: corpus is large enough that graph structure adds value.
+- Unclassified: 11 file(s) not represented in the graph (top: (none) 6, .toml 1, .template 1)
 
 ## Summary
-- 1170 nodes · 2045 edges · 151 communities (86 shown, 65 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 20 edges (avg confidence: 0.5)
+- 1240 nodes · 2401 edges · 91 communities (86 shown, 5 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 56 edges (avg confidence: 0.91)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `380747b3`
+- Built from commit: `7c3b6f25`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -18,11 +19,11 @@
 - wf02.tsx
 - admin.tsx
 - routeTree.gen.ts
-- getPoolRw
+- push-dispatch.ts
 - utils.ts
 - compilerOptions
-- sidebar.tsx
-- exigirAdmin
+- __root.tsx
+- opportunities.ts
 - kanban.tsx
 - templates.tsx
 - cn
@@ -36,88 +37,46 @@
 - carousel.tsx
 - devDependencies
 - dependencies
-- chart.tsx
-- desde
+- WakeCRM · motor próprio, sem n8n
+- telefone
 - scripts
 - command.tsx
 - breadcrumb.tsx
 - drawer.tsx
 - navigation-menu.tsx
-- What You Must Do When Invoked
+- sidebar.tsx
 - toggle-group.tsx
 - form.tsx
 - package.json
 - getPool
+- core-rules.cjs
 - Arquitetura atual do Wake Club Dashboard
-- class-variance-authority
-- clsx
-- cmdk
-- date-fns
-- embla-carousel-react
+- admin.ts
+- WakeCRM · Wake Club
+- AppSidebar.tsx
+- formato.ts
 - index.tsx
-- eslint-plugin-prettier
-- globals
-- @hookform/resolvers
-- nitro
-- pg
-- @radix-ui/react-accordion
-- @radix-ui/react-alert-dialog
-- @radix-ui/react-avatar
-- @radix-ui/react-checkbox
-- @radix-ui/react-collapsible
-- @radix-ui/react-context-menu
-- @radix-ui/react-dialog
-- @radix-ui/react-dropdown-menu
-- @radix-ui/react-hover-card
-- @radix-ui/react-label
-- @radix-ui/react-menubar
-- @radix-ui/react-navigation-menu
-- @radix-ui/react-popover
-- @radix-ui/react-progress
-- @radix-ui/react-radio-group
-- @radix-ui/react-scroll-area
-- @radix-ui/react-select
-- @radix-ui/react-separator
-- @radix-ui/react-slider
-- @radix-ui/react-slot
-- @radix-ui/react-switch
-- @radix-ui/react-tabs
-- @radix-ui/react-toggle
-- @radix-ui/react-toggle-group
-- @radix-ui/react-tooltip
-- react
-- react-day-picker
-- react-dom
-- react-resizable-panels
-- recharts
-- sonner
-- tailwind-merge
-- tailwindcss
-- @tanstack/react-query
-- @tanstack/react-router
-- @tanstack/react-start
-- @tanstack/router-plugin
-- tw-animate-css
-- vaul
-- web-push
-- zod
-- prettier
-- @types/bcryptjs
-- @types/node
+- Preparação local
+- Design e acessibilidade
+- SidebarMenuButton
+- OpportunityWorkspace
+- accordion.tsx
+- Modelo de dados atual
+- SidebarProvider
+- resizable.tsx
+- AppSidebar
 - OpportunityWorkspace.tsx
-- @types/react
-- @types/react-dom
-- @types/web-push
-- select.tsx
-- @vitejs/plugin-react
-- conversas.ts
+- eslint.config.js
+- @radix-ui/react-aspect-ratio
+- @radix-ui/react-collapsible
+- vite.config.ts
+- exigirAdmin
 - plan(2).md
 - Botão "não atender" — especificação para o front
-- AGENTS.md · Refatoração do CRM Wake Club
+- AGENTS.md · WakeCRM (Wake Club)
 - auth.ts
 - FASE 7 — NOVA TELA DA ATENDENTE: MINHA FILA
 - O QUE NÃO FAZER
-- graphify reference: extra exports and benchmark
 - FASE 5 — CENTRAL ADMINISTRATIVA
 - FASE 3 — CRIAR AUDITORIA DAS IAs
 - FASE 1 — CRIAR O OPPORTUNITY WORKSPACE
@@ -128,8 +87,7 @@
 - FASE 6 — CENTRALIZAR MÉTRICAS
 - FASE 8 — FEEDBACK DO FOLLOWUP APÓS VOLTAR DO WHATSAPP
 - REGRAS DE UX
-- Wake Club Dashboard
-- graphify reference: query, path, explain
+- WakeCRM · Wake Club
 - FASE 9 — TABELA FOLLOWUP_FEEDBACK
 - FASE 10 — CICLO DE VIDA DO FOLLOWUP
 - FASE 13 — SEPARAR CONTATO DE OPORTUNIDADE
@@ -141,101 +99,89 @@
 - FASE 0 — MAPEAR O ESTADO ATUAL
 - FASE 2 — CRIAR ENDPOINT UNIFICADO DA OPORTUNIDADE
 - Q: vamos fazer a fase 7
-- graphify reference: add a URL and watch a folder
-- graphify reference: commit hook and native CLAUDE.md integration
-- graphify reference: incremental update and cluster-only
-- FASE 12 — COMPONENTIZAÇÃO DO FRONTEND
 - PERFORMANCE
-- graphify reference: GitHub clone and cross-repo merge
-- graphify reference: transcribe video and audio
 - minha-fila.tsx
-- @types/pg
 - Routes
-- extraction-spec.md
-- eslint-config-prettier
 - Q: Continuar a refatoracao pela Fase 2 e unificar o carregamento do OpportunityWorkspace
 - Q: O que precisa ser feito no n8n para a Fase 3?
-- alert.tsx
-- input-otp.tsx
 - avatar.tsx
-- @eslint/js
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 256 edges
-2. `exigirAdmin` - 31 edges
-3. `getPool()` - 27 edges
-4. `plural()` - 18 edges
-5. `desde()` - 17 edges
-6. `telefone()` - 17 edges
-7. `getPoolRw()` - 17 edges
-8. `compilerOptions` - 17 edges
-9. `Button` - 15 edges
-10. `Arquitetura atual do Wake Club Dashboard` - 15 edges
+2. `react` - 55 edges
+3. `lucide-react` - 32 edges
+4. `exigirAdmin` - 31 edges
+5. `getPool()` - 31 edges
+6. `getPoolRw()` - 21 edges
+7. `plural()` - 18 edges
+8. `@tanstack/react-router` - 17 edges
+9. `desde()` - 17 edges
+10. `telefone()` - 17 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `AlertDialogOverlay` --calls--> `cn()`  [EXTRACTED]
-  src/components/ui/alert-dialog.tsx → src/lib/utils.ts
-- `AlertTitle` --calls--> `cn()`  [EXTRACTED]
-  src/components/ui/alert.tsx → src/lib/utils.ts
-- `AvatarImage` --calls--> `cn()`  [EXTRACTED]
-  src/components/ui/avatar.tsx → src/lib/utils.ts
-- `BreadcrumbList` --calls--> `cn()`  [EXTRACTED]
-  src/components/ui/breadcrumb.tsx → src/lib/utils.ts
-- `BreadcrumbItem` --calls--> `cn()`  [EXTRACTED]
-  src/components/ui/breadcrumb.tsx → src/lib/utils.ts
+- `9.2 Kanban do admin` --references--> `OpportunityWorkspace()`  [INFERRED]
+  docs/superpowers/specs/2026-11-03-wakecrm-motor-proprio-design.md → src/features/opportunities/OpportunityWorkspace.tsx
+- `Conversas` --references--> `OpportunityWorkspace()`  [INFERRED]
+  plan(2).md → src/features/opportunities/OpportunityWorkspace.tsx
+- `Critério de aceite` --references--> `OpportunityWorkspace()`  [INFERRED]
+  plan(2).md → src/features/opportunities/OpportunityWorkspace.tsx
+- `B2. `src/server/db.ts` — a segunda conexão` --references--> `getPool()`  [INFERRED]
+  ESPEC-PAINEL-EQUIPE.md → src/server/db.ts
+- `2. O que já está pronto — não refazer` --references--> `getPoolRw()`  [INFERRED]
+  ESPEC-BOTAO-NAO-ATENDER.md → src/server/db.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (151 total, 65 thin omitted)
+## Communities (91 total, 5 thin omitted)
 
 ### Community 0 - "wf02.tsx"
-Cohesion: 0.10
+Cohesion: 0.11
 Nodes (14): plural(), InboxPage(), MeusLeadsPage(), AbaFila(), FOLLOWUP_ROTULO, LinhaDoMotor(), SITUACAO, STATUS_ESTILO (+6 more)
 
 ### Community 1 - "admin.tsx"
 Cohesion: 0.09
-Nodes (33): AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter(), AlertDialogHeader(), AlertDialogOverlay, AlertDialogTitle (+25 more)
+Nodes (29): @radix-ui/react-alert-dialog, react-day-picker, src_components_ui_alert_dialog_alertdialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter() (+21 more)
 
 ### Community 2 - "routeTree.gen.ts"
 Cohesion: 0.09
-Nodes (29): getRouter(), Route, Route, Route, Route, Route, AdminRoute, ApiPushEnviarRoute (+21 more)
+Nodes (24): getRouter(), Route, AdminRoute, ApiPushEnviarRoute, FileRoutesByFullPath, FileRoutesById, FileRoutesByTo, FileRouteTypes (+16 more)
 
-### Community 3 - "getPoolRw"
-Cohesion: 0.24
-Nodes (11): payloadSchema, Route, segredoValido(), testarNotificacaoDaAtendente, getPoolRw(), entregarPush(), Inscricao, mensagemDoErro() (+3 more)
+### Community 3 - "push-dispatch.ts"
+Cohesion: 0.15
+Nodes (14): Módulos server-only, Rotas e superfícies HTTP, ref_node_crypto, web-push, payloadSchema, Route, segredoValido(), testarNotificacaoDaAtendente (+6 more)
 
 ### Community 4 - "utils.ts"
-Cohesion: 0.09
-Nodes (12): Checkbox, HoverCardContent, PopoverContent, RadioGroup, RadioGroupItem, ResizableHandle(), ResizablePanelGroup(), Skeleton() (+4 more)
+Cohesion: 0.08
+Nodes (22): input-otp, @radix-ui/react-checkbox, @radix-ui/react-hover-card, @radix-ui/react-popover, @radix-ui/react-radio-group, @radix-ui/react-slider, @radix-ui/react-switch, @radix-ui/react-tooltip (+14 more)
 
 ### Community 5 - "compilerOptions"
-Cohesion: 0.07
-Nodes (26): DOM, DOM.Iterable, ES2022, eslint.config.js, src/**/*.ts, src/**/*.tsx, vite/client, vite.config.ts (+18 more)
+Cohesion: 0.11
+Nodes (18): compilerOptions, allowImportingTsExtensions, jsx, lib, module, moduleResolution, noEmit, noFallthroughCasesInSwitch (+10 more)
 
-### Community 6 - "sidebar.tsx"
-Cohesion: 0.05
-Nodes (48): AppSidebar(), navAdmin, PwaRegistrar(), Separator, SheetContent, SheetContentProps, SheetDescription, SheetFooter() (+40 more)
+### Community 6 - "__root.tsx"
+Cohesion: 0.14
+Nodes (8): ref_styles_css_url, PwaRegistrar(), SidebarInset, Toaster(), ToasterProps, ALERTA_ESTILO, Sessao, SaudeNumero
 
-### Community 7 - "exigirAdmin"
-Cohesion: 0.26
-Nodes (16): Route, exigirAdmin, getMensagens, Mensagem, CategoriaTimeline, DadosOpportunityWorkspace, EventoBase, getOpportunityWorkspace (+8 more)
+### Community 7 - "opportunities.ts"
+Cohesion: 0.22
+Nodes (13): zod, getMensagens, iso(), LinhaConversa, LinhaMensagem, Mensagem, CategoriaTimeline, DadosOpportunityWorkspace (+5 more)
 
 ### Community 8 - "kanban.tsx"
-Cohesion: 0.28
-Nodes (5): ScrollArea, ScrollBar, COLUNAS, FOLLOWUP_ROTULO, TEMPERATURA_ESTILO
+Cohesion: 0.18
+Nodes (9): Fronteira segura para iniciar a Fase 1, @radix-ui/react-scroll-area, src_components_ui_dialog_dialogtrigger, ScrollArea, ScrollBar, COLUNAS, FOLLOWUP_ROTULO, TEMPERATURA_ESTILO (+1 more)
 
 ### Community 9 - "templates.tsx"
-Cohesion: 0.15
-Nodes (12): Progress, TabsContent, TabsList, TabsTrigger, Campaign, campaigns, Template, templates (+4 more)
+Cohesion: 0.13
+Nodes (13): Input, Progress, TabsContent, TabsList, TabsTrigger, Campaign, campaigns, Template (+5 more)
 
 ### Community 10 - "cn"
-Cohesion: 0.11
-Nodes (31): AccordionContent, AccordionItem, AccordionTrigger, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuRadioItem (+23 more)
+Cohesion: 0.09
+Nodes (37): @radix-ui/react-context-menu, @radix-ui/react-dropdown-menu, @radix-ui/react-select, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuLabel, ContextMenuRadioItem (+29 more)
 
 ### Community 11 - "reports.tsx"
-Cohesion: 0.12
-Nodes (16): diaCurto(), EIXO, KPI(), Painel(), ReportsPage(), SERIE, somar(), Termometro() (+8 more)
+Cohesion: 0.08
+Nodes (26): recharts, ChartConfig, ChartContainer, ChartContext, ChartContextProps, ChartLegendContent, ChartTooltipContent, getPayloadConfigFromPayload() (+18 more)
 
 ### Community 12 - "components.json"
 Cohesion: 0.11
@@ -243,15 +189,15 @@ Nodes (18): aliases, components, hooks, lib, ui, utils, iconLibrary, registries 
 
 ### Community 13 - "Especificação · Painel da equipe (login, push, fila de followups, admin)"
 Cohesion: 0.05
-Nodes (42): 0. O contexto em cinco parágrafos, 10. Variáveis de ambiente, 11. Armadilhas conhecidas (todas já custaram tempo aqui), 12. Resumo do contrato com o n8n, 1. O que já existe (não recriar), 2. O que construir, 3. Fase A — Banco, 4. Fase B — Login e sessão (+34 more)
+Nodes (36): 0. O contexto em cinco parágrafos, 10. Variáveis de ambiente, 11. Armadilhas conhecidas (todas já custaram tempo aqui), 12. Resumo do contrato com o n8n, 1. O que já existe (não recriar), 2. O que construir, 4. Fase B — Login e sessão, 5. Fase C — App instalável (PWA) (+28 more)
 
 ### Community 14 - "menubar.tsx"
 Cohesion: 0.12
 Nodes (11): Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarLabel, MenubarRadioItem, MenubarSeparator, MenubarShortcut() (+3 more)
 
 ### Community 15 - "painel-db.mjs"
-Cohesion: 0.22
-Nodes (14): apply(), AQUI, check(), conectar(), cor, diagnosticarConexao(), exigir(), linha() (+6 more)
+Cohesion: 0.09
+Nodes (27): 3. Fase A — Banco, A1. A segunda role: `painel_rw`, A2. Views novas, A3. Script, ✅ Aceite da Fase A, eslint, ref_node_fs, ref_node_path (+19 more)
 
 ### Community 16 - "pagination.tsx"
 Cohesion: 0.20
@@ -262,100 +208,171 @@ Cohesion: 0.25
 Nodes (8): consumeLastCapturedError(), renderErrorPage(), fetch(), getServerEntry(), isH3SwallowedErrorBody(), normalizeCatastrophicSsrResponse(), ServerEntry, errorMiddleware
 
 ### Community 18 - "carousel.tsx"
-Cohesion: 0.19
-Nodes (13): Carousel, CarouselApi, CarouselContent, CarouselContext, CarouselContextProps, CarouselItem, CarouselNext, CarouselOptions (+5 more)
+Cohesion: 0.17
+Nodes (14): embla-carousel-react, Carousel, CarouselApi, CarouselContent, CarouselContext, CarouselContextProps, CarouselItem, CarouselNext (+6 more)
 
 ### Community 19 - "devDependencies"
-Cohesion: 0.15
-Nodes (13): eslint, eslint-plugin-react-hooks, eslint-plugin-react-refresh, devDependencies, eslint, eslint-plugin-react-hooks, eslint-plugin-react-refresh, typescript (+5 more)
+Cohesion: 0.09
+Nodes (23): devDependencies, eslint, eslint-config-prettier, eslint-import-resolver-typescript, @eslint/js, eslint-plugin-import-x, eslint-plugin-prettier, eslint-plugin-react-hooks (+15 more)
 
 ### Community 20 - "dependencies"
-Cohesion: 0.15
-Nodes (13): input-otp, lucide-react, dependencies, bcryptjs, input-otp, lucide-react, @radix-ui/react-aspect-ratio, react-hook-form (+5 more)
+Cohesion: 0.04
+Nodes (55): dependencies, bcryptjs, class-variance-authority, clsx, cmdk, date-fns, embla-carousel-react, @hookform/resolvers (+47 more)
 
-### Community 21 - "chart.tsx"
-Cohesion: 0.25
-Nodes (9): ChartConfig, ChartContainer, ChartContext, ChartContextProps, ChartLegendContent, ChartTooltipContent, getPayloadConfigFromPayload(), THEMES (+1 more)
+### Community 21 - "WakeCRM · motor próprio, sem n8n"
+Cohesion: 0.06
+Nodes (36): 10. Fases, 11. Pendências que dependem de dado real, 12. Deixado para o construtor, 1. Intenção, 3. Objetivos, não-objetivos, anti-objetivos, 4.1 Fila de entrada (webhooks), 4.2 Tarefas agendadas, 4.3 Evolution Go (+28 more)
 
-### Community 22 - "desde"
-Cohesion: 0.23
-Nodes (16): Evento(), OpportunityWorkspace(), dataHora(), dataHoraCompleta(), desde(), iniciais(), telefone(), FollowupCard() (+8 more)
+### Community 22 - "telefone"
+Cohesion: 0.27
+Nodes (12): Base existente — não recriar, Componentes e comportamentos reutilizáveis, Evento(), dataHoraCompleta(), iniciais(), telefone(), ItemDaLista(), Thread() (+4 more)
 
 ### Community 23 - "scripts"
-Cohesion: 0.20
-Nodes (10): scripts, build, build:dev, db:apply, db:check, dev, format, lint (+2 more)
+Cohesion: 0.13
+Nodes (15): scripts, build, build:dev, check, db:apply, db:check, dev, format (+7 more)
 
 ### Community 24 - "command.tsx"
-Cohesion: 0.15
-Nodes (11): Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut() (+3 more)
+Cohesion: 0.10
+Nodes (19): cmdk, @radix-ui/react-dialog, Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList (+11 more)
 
 ### Community 25 - "breadcrumb.tsx"
-Cohesion: 0.25
-Nodes (7): Breadcrumb, BreadcrumbEllipsis(), BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator()
+Cohesion: 0.22
+Nodes (8): @radix-ui/react-slot, Breadcrumb, BreadcrumbEllipsis(), BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator()
 
 ### Community 26 - "drawer.tsx"
-Cohesion: 0.25
-Nodes (6): DrawerContent, DrawerDescription, DrawerFooter(), DrawerHeader(), DrawerOverlay, DrawerTitle
+Cohesion: 0.22
+Nodes (7): vaul, DrawerContent, DrawerDescription, DrawerFooter(), DrawerHeader(), DrawerOverlay, DrawerTitle
 
 ### Community 27 - "navigation-menu.tsx"
-Cohesion: 0.29
-Nodes (7): NavigationMenu, NavigationMenuContent, NavigationMenuIndicator, NavigationMenuList, NavigationMenuTrigger, navigationMenuTriggerStyle, NavigationMenuViewport
+Cohesion: 0.25
+Nodes (8): @radix-ui/react-navigation-menu, NavigationMenu, NavigationMenuContent, NavigationMenuIndicator, NavigationMenuList, NavigationMenuTrigger, navigationMenuTriggerStyle, NavigationMenuViewport
 
-### Community 28 - "What You Must Do When Invoked"
-Cohesion: 0.08
-Nodes (24): For /graphify add and --watch, For /graphify query, For the commit hook and native CLAUDE.md integration, For --update and --cluster-only, /graphify, Honesty Rules, Interpreter guard for subcommands, Part A - Structural extraction for code files (+16 more)
+### Community 28 - "sidebar.tsx"
+Cohesion: 0.11
+Nodes (17): @radix-ui/react-separator, Separator, SidebarContext, SidebarContextProps, SidebarGroupAction, SidebarInput, SidebarMenuAction, SidebarMenuBadge (+9 more)
 
 ### Community 29 - "toggle-group.tsx"
-Cohesion: 0.43
-Nodes (5): ToggleGroup, ToggleGroupContext, ToggleGroupItem, Toggle, toggleVariants
+Cohesion: 0.31
+Nodes (7): @radix-ui/react-toggle, @radix-ui/react-toggle-group, ToggleGroup, ToggleGroupContext, ToggleGroupItem, Toggle, toggleVariants
 
 ### Community 30 - "form.tsx"
-Cohesion: 0.19
-Nodes (12): FormControl, FormDescription, FormFieldContext, FormFieldContextValue, FormItem, FormItemContext, FormItemContextValue, FormLabel (+4 more)
+Cohesion: 0.13
+Nodes (18): @radix-ui/react-label, react-hook-form, Alert, AlertDescription, AlertTitle, alertVariants, FormControl, FormDescription (+10 more)
 
 ### Community 31 - "package.json"
-Cohesion: 0.40
-Nodes (4): name, private, sideEffects, type
+Cohesion: 0.08
+Nodes (25): name, private, sideEffects, type, clsx, date-fns, eslint-config-prettier, @hookform/resolvers (+17 more)
 
 ### Community 32 - "getPool"
-Cohesion: 0.17
-Nodes (13): Route, Route, createPool(), getPool(), getLeadsPainel, iso(), LeadCard, Row (+5 more)
+Cohesion: 0.19
+Nodes (16): @tanstack/react-start, createPool(), getPool(), LinhaLead, LinhaMensagem, listarMensagensDoMeuLead, MensagemDoMeuLead, inscricaoSchema (+8 more)
 
-### Community 33 - "Arquitetura atual do Wake Club Dashboard"
-Cohesion: 0.09
-Nodes (21): Arquitetura atual do Wake Club Dashboard, Componentes e comportamentos reutilizáveis, Contexto do sistema, Entidades da equipe, Entidades do CRM, Estado validado nesta Fase 0, Fluxo de uma conversa até a ação humana, Fronteira segura para iniciar a Fase 1 (+13 more)
+### Community 33 - "core-rules.cjs"
+Cohesion: 0.19
+Nodes (13): {
+  BANNED_CONSOLE_METHODS,
+  DEFAULT_MAX_LINES,
+  fileName,
+  isBaselineIgnored,
+  isCheckableSourceFile,
+  isTestFile,
+}, maxLines, noDirectConsole, noDirectDataAccess, {
+  maxLines,
+  noDirectConsole,
+  noDirectDataAccess,
+}, BANNED_CONSOLE_METHODS, eslint_rules_utils_default_max_lines, fileName() (+5 more)
+
+### Community 34 - "Arquitetura atual do Wake Club Dashboard"
+Cohesion: 0.12
+Nodes (16): Arquitetura atual do Wake Club Dashboard, Base existente e regras vigentes do painel, Contexto do sistema, Estado validado nesta Fase 0, Fluxo de uma conversa até a ação humana, Lacunas em relação ao plano de refatoração, Organização do código, `painel_ro` (+8 more)
+
+### Community 35 - "admin.ts"
+Cohesion: 0.20
+Nodes (12): 5. Armadilhas que já custaram tempo neste repositório, alterarAtendente, alterarAtendenteSchema, AparelhoAdmin, criarAtendenteSchema, getPainelAdmin, iso(), numeroOuNulo() (+4 more)
+
+### Community 36 - "WakeCRM · Wake Club"
+Cohesion: 0.20
+Nodes (10): Fluxos que existem hoje, Fora de escopo, Manutenção, Pendências, Problema e objetivo, Próxima entrega (WakeCRM, planejado, não implementado), Público e papéis, Requisitos permanentes (+2 more)
+
+### Community 37 - "AppSidebar.tsx"
+Cohesion: 0.20
+Nodes (9): navAdmin, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu (+1 more)
+
+### Community 38 - "formato.ts"
+Cohesion: 0.33
+Nodes (8): dataHora(), desde(), hora(), FollowupCard(), DetalhesDoLead(), CardDoLead(), Conversa(), FilaCard()
 
 ### Community 39 - "index.tsx"
-Cohesion: 0.21
-Nodes (9): Input, diaRelativo(), hora(), Bolha(), Filtro, FOLLOWUP_ROTULO, TEMPERATURA_ESTILO, Conversa() (+1 more)
+Cohesion: 0.14
+Nodes (11): 2. Esta decisão substitui regras anteriores, src_components_ui_sheet_sheet, src_components_ui_tabs_tabs, diaRelativo(), Bolha(), Campo(), Filtro, FOLLOWUP_ROTULO (+3 more)
+
+### Community 41 - "Preparação local"
+Cohesion: 0.29
+Nodes (7): Agentes, Banco, Preparação local, Primeira execução, Problemas conhecidos, Pré-requisitos, Verificar
+
+### Community 42 - "Design e acessibilidade"
+Cohesion: 0.33
+Nodes (5): Design e acessibilidade, Direção, Interação, Manutenção, Sistema existente
+
+### Community 43 - "SidebarMenuButton"
+Cohesion: 0.33
+Nodes (6): Sidebar, SidebarMenuButton, sidebarMenuButtonVariants, SidebarRail, SidebarTrigger, useSidebar()
+
+### Community 44 - "OpportunityWorkspace"
+Cohesion: 0.50
+Nodes (5): Histórico da refatoração por oportunidades, Leitura prática das fases, Mandato atual, Produto que estamos construindo, OpportunityWorkspace()
+
+### Community 45 - "accordion.tsx"
+Cohesion: 0.40
+Nodes (4): @radix-ui/react-accordion, AccordionContent, AccordionItem, AccordionTrigger
+
+### Community 46 - "Modelo de dados atual"
+Cohesion: 0.50
+Nodes (4): Entidades da equipe, Entidades do CRM, Modelo de dados atual, Relações principais
+
+### Community 47 - "SidebarProvider"
+Cohesion: 0.50
+Nodes (3): Layout e revisão, SidebarProvider, useIsMobile()
+
+### Community 48 - "resizable.tsx"
+Cohesion: 0.50
+Nodes (3): react-resizable-panels, ResizableHandle(), ResizablePanelGroup()
+
+### Community 49 - "AppSidebar"
+Cohesion: 0.67
+Nodes (3): B6. Cabeçalho, AppSidebar(), encerrarSessao()
 
 ### Community 89 - "OpportunityWorkspace.tsx"
-Cohesion: 0.14
-Nodes (11): Badge(), BadgeProps, badgeVariants, DialogDescription, DialogHeader(), DialogTitle, FILTROS, FOLLOWUP_ROTULO (+3 more)
+Cohesion: 0.16
+Nodes (11): DialogContent, DialogDescription, DialogFooter(), DialogHeader(), DialogOverlay, DialogTitle, FILTROS, FOLLOWUP_ROTULO (+3 more)
 
-### Community 93 - "select.tsx"
-Cohesion: 0.25
-Nodes (7): SelectContent, SelectItem, SelectLabel, SelectScrollDownButton, SelectScrollUpButton, SelectSeparator, SelectTrigger
+### Community 96 - "eslint.config.js"
+Cohesion: 0.17
+Nodes (10): camadasUi, testFiles, eslint-import-resolver-typescript, @eslint/js, eslint-plugin-import-x, eslint-plugin-prettier, eslint-plugin-react-hooks, eslint-plugin-react-refresh (+2 more)
 
-### Community 102 - "conversas.ts"
-Cohesion: 0.29
-Nodes (7): Route, Conversa, Direcao, getConversas, iso(), LinhaConversa, LinhaMensagem
+### Community 100 - "vite.config.ts"
+Cohesion: 0.40
+Nodes (4): nitro, @tailwindcss/vite, vite, @vitejs/plugin-react
+
+### Community 102 - "exigirAdmin"
+Cohesion: 0.27
+Nodes (12): Route, Route, Route, Route, Route, Route, FileRoutesByPath, exigirAdmin (+4 more)
 
 ### Community 103 - "plan(2).md"
-Cohesion: 0.10
-Nodes (19): Administrador, Administrador, Atendente, Backend, COMPATIBILIDADE, DEFINIÇÃO DE PRONTO — PRODUTO, Exemplo, Frontend (+11 more)
+Cohesion: 0.08
+Nodes (23): Administrador, Administrador, Atendente, Backend, COMPATIBILIDADE, DEFINIÇÃO DE PRONTO — PRODUTO, Estrutura sugerida, Exemplo (+15 more)
 
 ### Community 104 - "Botão "não atender" — especificação para o front"
-Cohesion: 0.14
-Nodes (13): 0. Por que este botão existe, 1. A regra que este botão não pode quebrar, 2. O que já está pronto — não refazer, 3.1 Server function — em `src/server/leads.ts`, 3.2 Expor o estado na listagem, 3.3 O botão, 3. O que construir, 4. O que marcar de fato faz — e o que não faz (+5 more)
-
-### Community 105 - "AGENTS.md · Refatoração do CRM Wake Club"
 Cohesion: 0.15
-Nodes (12): AGENTS.md · Refatoração do CRM Wake Club, Base existente — não recriar, Comandos e validação, Convenções de implementação, Fluxo obrigatório de trabalho, Fontes de verdade, Graphify, Leitura prática das fases (+4 more)
+Nodes (12): 0. Por que este botão existe, 1. A regra que este botão não pode quebrar, 2. O que já está pronto — não refazer, 3.1 Server function — em `src/server/leads.ts`, 3.2 Expor o estado na listagem, 3.3 O botão, 3. O que construir, 4. O que marcar de fato faz — e o que não faz (+4 more)
+
+### Community 105 - "AGENTS.md · WakeCRM (Wake Club)"
+Cohesion: 0.18
+Nodes (11): Acordos de trabalho, AGENTS.md · WakeCRM (Wake Club), Comandos canônicos, Continuidade, Convenções de implementação, Delegação e revisão, Ferramentas e estilo, Git e colaboração (+3 more)
 
 ### Community 106 - "auth.ts"
-Cohesion: 0.33
-Nodes (10): LoginPage(), cookieSeguro(), entrar, estaBloqueado(), getSessao, hashToken(), Papel, registrarFalha() (+2 more)
+Cohesion: 0.22
+Nodes (14): bcryptjs, LoginPage(), enviar(), Route, criarAtendente, cookieSeguro(), entrar, estaBloqueado() (+6 more)
 
 ### Community 107 - "FASE 7 — NOVA TELA DA ATENDENTE: MINHA FILA"
 Cohesion: 0.20
@@ -364,10 +381,6 @@ Nodes (10): Card sugerido, Critério de aceite, Esperando resposta, FASE 7 — N
 ### Community 108 - "O QUE NÃO FAZER"
 Cohesion: 0.20
 Nodes (10): Não adicionar drag-and-drop antes de resolver a fonte de verdade da etapa., Não armazenar chain-of-thought de IA., Não considerar "abriu WhatsApp" como "enviou mensagem"., Não considerar followup cancelado automaticamente como erro., Não criar dashboards cheios de números sem ação correspondente., Não criar nova implementação de conversa para cada tela., Não esconder o motivo de decisões automáticas., Não refatorar banco inteiro antes de validar a nova UX. (+2 more)
-
-### Community 109 - "graphify reference: extra exports and benchmark"
-Cohesion: 0.22
-Nodes (8): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7a - FalkorDB export (only if --falkordb or --falkordb-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000)
 
 ### Community 110 - "FASE 5 — CENTRAL ADMINISTRATIVA"
 Cohesion: 0.22
@@ -409,13 +422,9 @@ Nodes (7): Detectar retorno, FASE 8 — FEEDBACK DO FOLLOWUP APÓS VOLTAR DO WHA
 Cohesion: 0.29
 Nodes (7): Regra 1, Regra 2, Regra 3, Regra 4, Regra 5, Regra 6, REGRAS DE UX
 
-### Community 120 - "Wake Club Dashboard"
-Cohesion: 0.29
-Nodes (6): Configuração local, Desenvolvimento, Imagem Docker, Qualidade e build, Requisitos, Wake Club Dashboard
-
-### Community 121 - "graphify reference: query, path, explain"
-Cohesion: 0.33
-Nodes (5): For /graphify explain, For /graphify path, graphify reference: query, path, explain, Step 0 — Constrained query expansion (REQUIRED before traversal), Step 1 — Traversal
+### Community 120 - "WakeCRM · Wake Club"
+Cohesion: 0.25
+Nodes (8): Configuração local, Desenvolvimento, Documentação, Imagem Docker, Próxima entrega, Qualidade e build, Requisitos, WakeCRM · Wake Club
 
 ### Community 122 - "FASE 9 — TABELA FOLLOWUP_FEEDBACK"
 Cohesion: 0.33
@@ -461,29 +470,13 @@ Nodes (5): Critério de aceite, FASE 2 — CRIAR ENDPOINT UNIFICADO DA OPORTUNID
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: vamos fazer a fase 7, Source Nodes
 
-### Community 133 - "graphify reference: add a URL and watch a folder"
-Cohesion: 0.50
-Nodes (3): For /graphify add, For --watch, graphify reference: add a URL and watch a folder
-
-### Community 134 - "graphify reference: commit hook and native CLAUDE.md integration"
-Cohesion: 0.50
-Nodes (3): For git commit hook, For native CLAUDE.md integration, graphify reference: commit hook and native CLAUDE.md integration
-
-### Community 135 - "graphify reference: incremental update and cluster-only"
-Cohesion: 0.50
-Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphify reference: incremental update and cluster-only
-
-### Community 136 - "FASE 12 — COMPONENTIZAÇÃO DO FRONTEND"
-Cohesion: 0.50
-Nodes (4): Estrutura sugerida, FASE 12 — COMPONENTIZAÇÃO DO FRONTEND, Problema, Regra
-
 ### Community 137 - "PERFORMANCE"
 Cohesion: 0.50
 Nodes (4): OpportunityWorkspace, PERFORMANCE, Timeline, Índices
 
 ### Community 140 - "minha-fila.tsx"
-Cohesion: 0.08
-Nodes (40): Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, classificar(), diaEmSaoPaulo() (+32 more)
+Cohesion: 0.06
+Nodes (56): ref_bun_test, class-variance-authority, lucide-react, sonner, @tanstack/react-query, @tanstack/react-router, Badge(), BadgeProps (+48 more)
 
 ### Community 145 - "Q: Continuar a refatoracao pela Fase 2 e unificar o carregamento do OpportunityWorkspace"
 Cohesion: 0.40
@@ -493,22 +486,14 @@ Nodes (4): Answer, Outcome, Q: Continuar a refatoracao pela Fase 2 e unificar o 
 Cohesion: 0.40
 Nodes (4): Answer, Outcome, Q: O que precisa ser feito no n8n para a Fase 3?, Source Nodes
 
-### Community 147 - "alert.tsx"
-Cohesion: 0.50
-Nodes (4): Alert, AlertDescription, AlertTitle, alertVariants
-
-### Community 148 - "input-otp.tsx"
-Cohesion: 0.40
-Nodes (4): InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot
-
 ### Community 149 - "avatar.tsx"
-Cohesion: 0.50
-Nodes (3): Avatar, AvatarFallback, AvatarImage
+Cohesion: 0.40
+Nodes (4): @radix-ui/react-avatar, Avatar, AvatarFallback, AvatarImage
 
 ## Knowledge Gaps
-- **495 isolated node(s):** `$schema`, `style`, `rsc`, `tsx`, `css` (+490 more)
-  These have ≤1 connection - possible missing edges or undocumented components.
-- **65 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **521 isolated node(s):** `$schema`, `style`, `rsc`, `tsx`, `css` (+516 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 597 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **5 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Work-memory lessons
 
@@ -523,17 +508,17 @@ Nodes (3): Avatar, AvatarFallback, AvatarImage
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `cn()` connect `cn` to `wf02.tsx`, `admin.tsx`, `utils.ts`, `sidebar.tsx`, `kanban.tsx`, `templates.tsx`, `reports.tsx`, `minha-fila.tsx`, `menubar.tsx`, `pagination.tsx`, `carousel.tsx`, `alert.tsx`, `input-otp.tsx`, `avatar.tsx`, `chart.tsx`, `desde`, `command.tsx`, `breadcrumb.tsx`, `drawer.tsx`, `navigation-menu.tsx`, `toggle-group.tsx`, `form.tsx`, `index.tsx`, `OpportunityWorkspace.tsx`, `select.tsx`?**
-  _High betweenness centrality (0.152) - this node is a cross-community bridge._
-- **Why does `dependencies` connect `dependencies` to `package.json`, `class-variance-authority`, `clsx`, `cmdk`, `date-fns`, `embla-carousel-react`, `@hookform/resolvers`, `pg`, `@radix-ui/react-accordion`, `@radix-ui/react-alert-dialog`, `@radix-ui/react-avatar`, `@radix-ui/react-checkbox`, `@radix-ui/react-collapsible`, `@radix-ui/react-context-menu`, `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-hover-card`, `@radix-ui/react-label`, `@radix-ui/react-menubar`, `@radix-ui/react-navigation-menu`, `@radix-ui/react-popover`, `@radix-ui/react-progress`, `@radix-ui/react-radio-group`, `@radix-ui/react-scroll-area`, `@radix-ui/react-select`, `@radix-ui/react-separator`, `@radix-ui/react-slider`, `@radix-ui/react-slot`, `@radix-ui/react-switch`, `@radix-ui/react-tabs`, `@radix-ui/react-toggle`, `@radix-ui/react-toggle-group`, `@radix-ui/react-tooltip`, `react`, `react-day-picker`, `react-dom`, `react-resizable-panels`, `recharts`, `sonner`, `tailwind-merge`, `tailwindcss`, `@tanstack/react-query`, `@tanstack/react-router`, `@tanstack/react-start`, `@tanstack/router-plugin`, `tw-animate-css`, `vaul`, `web-push`, `zod`?**
-  _High betweenness centrality (0.019) - this node is a cross-community bridge._
-- **Why does `devDependencies` connect `devDependencies` to `eslint-plugin-prettier`, `globals`, `@types/react-dom`, `nitro`, `@types/pg`, `eslint-config-prettier`, `@eslint/js`, `prettier`, `@types/bcryptjs`, `@types/react`, `@types/node`, `@types/web-push`, `@vitejs/plugin-react`, `package.json`?**
-  _High betweenness centrality (0.009) - this node is a cross-community bridge._
+- **Why does `cn()` connect `cn` to `wf02.tsx`, `admin.tsx`, `utils.ts`, `__root.tsx`, `kanban.tsx`, `templates.tsx`, `reports.tsx`, `minha-fila.tsx`, `menubar.tsx`, `pagination.tsx`, `carousel.tsx`, `avatar.tsx`, `telefone`, `command.tsx`, `breadcrumb.tsx`, `drawer.tsx`, `navigation-menu.tsx`, `sidebar.tsx`, `toggle-group.tsx`, `form.tsx`, `AppSidebar.tsx`, `formato.ts`, `index.tsx`, `SidebarMenuButton`, `OpportunityWorkspace`, `accordion.tsx`, `SidebarProvider`, `resizable.tsx`, `OpportunityWorkspace.tsx`?**
+  _High betweenness centrality (0.287) - this node is a cross-community bridge._
+- **Why does `OpportunityWorkspace()` connect `OpportunityWorkspace` to `FASE 2 — CRIAR ENDPOINT UNIFICADO DA OPORTUNIDADE`, `formato.ts`, `index.tsx`, `opportunities.ts`, `kanban.tsx`, `cn`, `Avaliar remoção da navegação principal`, `WakeCRM · motor próprio, sem n8n`, `telefone`, `OpportunityWorkspace.tsx`?**
+  _High betweenness centrality (0.255) - this node is a cross-community bridge._
+- **Why does `Critério de aceite` connect `FASE 2 — CRIAR ENDPOINT UNIFICADO DA OPORTUNIDADE` to `OpportunityWorkspace`?**
+  _High betweenness centrality (0.211) - this node is a cross-community bridge._
 - **What connects `$schema`, `style`, `rsc` to the rest of the system?**
-  _495 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _521 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `wf02.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.1038961038961039 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.10952380952380952 - nodes in this community are weakly interconnected._
 - **Should `admin.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.09230769230769231 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08912655971479501 - nodes in this community are weakly interconnected._
 - **Should `routeTree.gen.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.08602150537634409 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09230769230769231 - nodes in this community are weakly interconnected._
