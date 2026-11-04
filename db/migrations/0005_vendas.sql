@@ -10,15 +10,32 @@ create table if not exists fechamentos (
     id             uuid primary key default gen_random_uuid(),
     vendedor_id    uuid not null references usuarios (id),
     mes            date not null,
-    total_vendas   integer not null default 0,
+    total_vendas   numeric(12,2) not null default 0,
+    quantidade_vendas integer not null default 0,
     total_comissao numeric(12,2) not null default 0,
     ajustes        numeric(12,2) not null default 0,
+    a_pagar        numeric(12,2) not null default 0,
     pago_em        timestamptz,
     pago_por       uuid references usuarios (id),
     criado_em      timestamptz not null default now(),
     constraint fechamentos_mes_dia_1 check (mes = date_trunc('month', mes)::date),
     constraint fechamentos_vendedor_mes_unico unique (vendedor_id, mes)
 );
+
+-- Compatibilidade só para reaplicação manual em bancos de teste criados com a 0005 antiga
+-- (produção nunca aplicou): total_vendas nasceu integer com a quantidade; agora é valor em
+-- reais e a contagem tem coluna própria. Linhas antigas ficam com a quantidade em total_vendas.
+alter table fechamentos add column if not exists quantidade_vendas integer not null default 0;
+alter table fechamentos add column if not exists a_pagar numeric(12,2) not null default 0;
+do $$
+begin
+    if (select data_type from information_schema.columns
+         where table_schema = 'wakeclub' and table_name = 'fechamentos'
+           and column_name = 'total_vendas') <> 'numeric' then
+        alter table fechamentos alter column total_vendas type numeric(12,2);
+    end if;
+end
+$$;
 
 create table if not exists vendas (
     id               uuid primary key default gen_random_uuid(),
@@ -59,16 +76,27 @@ create trigger vendas_atualizado_em
     before update on vendas
     for each row execute function set_atualizado_em();
 
--- Estorno de mês já pago: valor negativo entra no próximo fechamento do vendedor.
+-- Estorno de mês já pago, venda atrasada ou saldo negativo: entra no próximo fechamento do vendedor.
 create table if not exists lancamentos_comissao (
     id            uuid primary key default gen_random_uuid(),
     vendedor_id   uuid not null references usuarios (id),
-    venda_id      uuid not null references vendas (id),
+    venda_id      uuid references vendas (id),
     fechamento_id uuid references fechamentos (id),
     valor         numeric(12,2) not null,
     motivo        text not null,
     criado_em     timestamptz not null default now()
 );
+
+-- Mesma compatibilidade: venda_id nulo é o saldo negativo levado de um mês pago ao próximo.
+do $$
+begin
+    if (select is_nullable from information_schema.columns
+         where table_schema = 'wakeclub' and table_name = 'lancamentos_comissao'
+           and column_name = 'venda_id') = 'NO' then
+        alter table lancamentos_comissao alter column venda_id drop not null;
+    end if;
+end
+$$;
 
 create index if not exists lancamentos_comissao_vendedor_idx
     on lancamentos_comissao (vendedor_id, criado_em desc);

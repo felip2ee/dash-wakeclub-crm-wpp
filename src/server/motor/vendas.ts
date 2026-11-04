@@ -7,6 +7,7 @@
  * recalcula nada; só um estorno novo muda a venda.
  */
 import type { PoolClient } from "../db";
+import { estornoPosFechamento, vendaAtrasada } from "../fechamento";
 import { normalizarVenda, type VendaNormalizada } from "../vendas/normalizar";
 import { categoriaDaVenda, comissaoDaVenda } from "../vendas/regras";
 import { ErroPermanente, type Processador } from "./fila";
@@ -160,9 +161,9 @@ async function aplicarVinculo(
 }
 
 /**
- * Estorno (webhook com `adminId` nulo, ou manual). Venda já num fechamento só ganha a
- * marca `pos_fechamento`: o lançamento negativo é do fechamento (Task 3). False se já
- * estava estornada ou não existe.
+ * Estorno (webhook com `adminId` nulo, ou manual). Venda já num fechamento ganha a marca
+ * `pos_fechamento` e o lançamento negativo de `estornoPosFechamento`. False se já estava
+ * estornada ou não existe.
  */
 export async function estornar(
   db: PoolClient,
@@ -186,7 +187,9 @@ export async function estornar(
        from e`,
     [vendaId, adminId],
   );
-  return rowCount === 1;
+  if (rowCount !== 1) return false;
+  await estornoPosFechamento(db, vendaId);
+  return true;
 }
 
 export async function processarVenda(
@@ -208,6 +211,7 @@ export async function processarVenda(
     if (casou) await aplicarVinculo(db, vendaId, casou.leadId, casou.por);
   }
   if (v.status === "estornada") await estornar(db, vendaId, null);
+  else if (nova) await vendaAtrasada(db, vendaId);
   return { vendaId, nova };
 }
 
@@ -221,6 +225,7 @@ export async function vincular(
   if (!(await aplicarVinculo(db, vendaId, leadId, { adminId }))) {
     throw new Error("Venda já tem dono ou não existe.");
   }
+  await vendaAtrasada(db, vendaId);
   // Como no casamento por telefone: o CPF da venda fica no lead para as próximas compras.
   await db.query(
     `update wakeclub.leads l set cpf = v.cpf
