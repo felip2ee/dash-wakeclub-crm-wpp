@@ -2,7 +2,9 @@ import { Coins, Flame, ShoppingCart, Target } from "lucide-react";
 
 import { CardDegrade } from "@/components/ui/card-degrade";
 import { Skeleton } from "@/components/ui/skeleton";
+import { rotuloMes } from "@/features/dinheiro/periodo";
 import { moeda, plural } from "@/lib/formato";
+import type { ResumoDinheiro } from "@/server/dinheiro";
 
 type Totais = {
   leadsAtivos: number;
@@ -11,8 +13,14 @@ type Totais = {
   probabilidade: number;
 };
 
-// Os quatro KPIs da referência 03. Os de pipeline já têm dado; os de venda esperam a fase 4.
-export function Kpis({ totais }: { totais: Totais | undefined }) {
+// Os quatro KPIs da referência 03: dois do pipeline (estado atual) e dois de vendas.
+export function Kpis({
+  totais,
+  vendas,
+}: {
+  totais: Totais | undefined;
+  vendas: ResumoDinheiro | undefined;
+}) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {totais ? (
@@ -38,18 +46,29 @@ export function Kpis({ totais }: { totais: Totais | undefined }) {
           <Skeleton className="h-28 rounded-xl" />
         </>
       )}
-      <CardDegrade
-        titulo="Vendido no período"
-        valor="Em breve"
-        legenda="Ainda sem vendas pelo webhook"
-        icone={ShoppingCart}
-      />
-      <CardDegrade
-        titulo="Comissão a pagar dia 10"
-        valor="Em breve"
-        legenda="Calculada sobre as vendas recebidas"
-        icone={Coins}
-      />
+      {vendas ? (
+        <>
+          <CardDegrade
+            titulo="Vendido no período"
+            valor={moeda(vendas.vendidoPeriodo.valor)}
+            legenda={plural(vendas.vendidoPeriodo.quantidade, "venda", "vendas")}
+            icone={ShoppingCart}
+            info="Vendas pagas no período escolhido; estornadas não contam."
+          />
+          <CardDegrade
+            titulo="Comissão a pagar dia 10"
+            valor={moeda(vendas.comissaoAPagarDia10.valor)}
+            legenda={`Referente a ${rotuloMes(vendas.comissaoAPagarDia10.mes)}`}
+            icone={Coins}
+            info="Comissão do mês anterior ainda não marcada como paga em Vendas e comissões."
+          />
+        </>
+      ) : (
+        <>
+          <Skeleton className="h-28 rounded-xl" />
+          <Skeleton className="h-28 rounded-xl" />
+        </>
+      )}
     </div>
   );
 }

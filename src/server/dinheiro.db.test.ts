@@ -149,6 +149,27 @@ describe.skipIf(!bancoTesteAtivo)("dinheiro", () => {
     expect((await lerResumoDinheiro(db(), periodo, vid, agora)).comissaoAPagarDia10.valor).toBe(0);
   });
 
+  test("a pagar dia 10 não desconta saldo negativo de um vendedor do total", async () => {
+    // Saldo negativo paga 0 (`fecharMes`); somado ao total, comeria a comissão dos outros.
+    const agora = new Date("2018-08-15T15:00:00Z");
+    const periodo = { de: "2018-08-01", ate: "2018-08-31" };
+    const total = async () =>
+      (await lerResumoDinheiro(db(), periodo, null, agora)).comissaoAPagarDia10.valor;
+    const antes = await total();
+
+    const negativo = await vendedor("Vendedor Negativo", 10);
+    await db().query(
+      `insert into wakeclub.lancamentos_comissao (vendedor_id, venda_id, valor, motivo)
+       values ($1::uuid, null, -50, 'teste saldo negativo')`,
+      [negativo],
+    );
+    const positivo = await vendedor("Vendedor Positivo", 10);
+    await vender(positivo, "2018-07-10T15:00:00Z", 1000);
+
+    expect((await lerPainelVendedor(db(), negativo, agora)).aPagarDia10.valor).toBe(0);
+    expect(await total()).toBe(Math.round((antes + 100) * 100) / 100);
+  });
+
   test("ranking semanal segunda a domingo SP", async () => {
     const a = await vendedor("Vendedor A", 10);
     const b = await vendedor("Vendedor B", 10);

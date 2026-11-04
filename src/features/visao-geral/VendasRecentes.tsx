@@ -1,10 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, ShoppingCart } from "lucide-react";
 
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusVenda } from "@/features/dinheiro/ListaVendas";
+import { clienteDa, ROTULO_CATEGORIA } from "@/features/dinheiro/venda";
+import { dataHoraCompleta, moeda } from "@/lib/formato";
+import type { VendaLinha } from "@/server/vendas";
+
 const COLUNAS = ["Data", "Cliente", "Vendedor", "Categoria", "Valor", "Status"];
 
-// Tabela da referência 03 com o cabeçalho final e uma linha de aviso até a fase 4.
-export function VendasRecentes() {
+// As últimas vendas pagas do período (referência 03); a lista completa fica em /vendas.
+export function VendasRecentes({ vendas }: { vendas: VendaLinha[] | undefined }) {
   return (
     <section className="rounded-xl border border-border bg-card p-4">
       <header className="flex flex-wrap items-start gap-3">
@@ -32,11 +38,33 @@ export function VendasRecentes() {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td colSpan={COLUNAS.length} className="py-8 text-center text-muted-foreground">
-                Ainda sem vendas pelo webhook
-              </td>
-            </tr>
+            {!vendas &&
+              [0, 1, 2].map((i) => (
+                <tr key={i}>
+                  <td colSpan={COLUNAS.length} className="py-1.5">
+                    <Skeleton className="h-8" />
+                  </td>
+                </tr>
+              ))}
+            {vendas?.length === 0 && (
+              <tr>
+                <td colSpan={COLUNAS.length} className="py-8 text-center text-muted-foreground">
+                  Nenhuma venda no período
+                </td>
+              </tr>
+            )}
+            {vendas?.map((v) => (
+              <tr key={v.id} className="border-b border-border last:border-0">
+                <td className="py-2 pr-3 tabular-nums">{dataHoraCompleta(v.compradaEm)}</td>
+                <td className="py-2 pr-3">{clienteDa(v)}</td>
+                <td className="py-2 pr-3">{v.vendedorNome ?? "—"}</td>
+                <td className="py-2 pr-3">{v.categoria ? ROTULO_CATEGORIA[v.categoria] : "—"}</td>
+                <td className="py-2 pr-3 tabular-nums">{moeda(v.valor)}</td>
+                <td className="py-2">
+                  <StatusVenda status={v.status} />
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

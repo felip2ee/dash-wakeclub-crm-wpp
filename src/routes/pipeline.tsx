@@ -1,18 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  CalendarDays,
-  ChevronDown,
-  Coins,
-  Flame,
-  ShoppingCart,
-  Target,
-  TriangleAlert,
-  UserRound,
-} from "lucide-react";
+import { CalendarDays, ChevronDown, TriangleAlert, UserRound } from "lucide-react";
 import { useState } from "react";
 
-import { CardDegrade } from "@/components/ui/card-degrade";
 import {
   Select,
   SelectContent,
@@ -21,12 +11,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { dinheiroDisponivel } from "@/features/dinheiro/disponivel";
+import { mesCorrente } from "@/features/dinheiro/periodo";
 import { ColunaEtapa } from "@/features/pipeline/ColunaEtapa";
 import { FaixaSomenteLeitura } from "@/features/pipeline/FaixaSomenteLeitura";
-import { moeda, plural } from "@/lib/formato";
+import { Kpis } from "@/features/visao-geral/Kpis";
 import { listarVendedoresAprovacao } from "@/server/aprovacao";
 import { exigirAdmin } from "@/server/auth";
+import { getResumoDinheiro } from "@/server/dinheiro";
 import { getPipeline } from "@/server/leads";
 
 export const Route = createFileRoute("/pipeline")({
@@ -52,6 +43,12 @@ function PipelinePage() {
     queryKey: ["vendedores"],
     queryFn: () => listarVendedoresAprovacao(),
   });
+  // Vendas do mês corrente: o Pipeline não tem filtro de período.
+  const dinheiro = useQuery({
+    queryKey: ["visao-geral", "pipeline", vendedorId],
+    queryFn: () => getResumoDinheiro({ data: { periodo: mesCorrente(), vendedorId } }),
+    refetchInterval: RECARREGAR_A_CADA_MS,
+  });
   const totais = pipeline.data?.totais;
 
   return (
@@ -64,11 +61,11 @@ function PipelinePage() {
       </header>
 
       <div className="flex flex-wrap gap-3">
-        {/* Período só vale para vendas (fase 4); o pipeline é sempre o estado atual. */}
+        {/* O pipeline é sempre o estado atual; os KPIs de venda contam o mês corrente. */}
         <button
           type="button"
           disabled
-          title="O período vale para as vendas, que chegam na fase 4"
+          title="O pipeline é sempre o estado atual; as vendas contam o mês corrente"
           className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm disabled:cursor-not-allowed disabled:opacity-70"
         >
           <CalendarDays aria-hidden className="h-4 w-4" />
@@ -95,47 +92,13 @@ function PipelinePage() {
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {totais ? (
-          <>
-            <CardDegrade
-              titulo="Pipeline cheio"
-              valor={moeda(totais.valorCheio)}
-              legenda={plural(totais.leadsAtivos, "lead ativo", "leads ativos")}
-              icone={Flame}
-              info="Soma de horas estimadas × preço da hora dos leads que ainda podem fechar."
-            />
-            <CardDegrade
-              titulo="Estimativa realista"
-              valor={moeda(totais.valorEsperado)}
-              legenda={`${totais.probabilidade}% de probabilidade`}
-              icone={Target}
-              info="Valor cheio × chance de fechar por etapa e temperatura."
-            />
-          </>
-        ) : (
-          <>
-            <Skeleton className="h-28 rounded-xl" />
-            <Skeleton className="h-28 rounded-xl" />
-          </>
-        )}
-        {!dinheiroDisponivel && (
-          <>
-            <CardDegrade
-              titulo="Vendido"
-              valor="Em breve"
-              legenda="Aparece quando as vendas chegarem ao CRM"
-              icone={ShoppingCart}
-            />
-            <CardDegrade
-              titulo="Comissão a pagar"
-              valor="Em breve"
-              legenda="Calculada sobre as vendas recebidas"
-              icone={Coins}
-            />
-          </>
-        )}
-      </div>
+      {/* Os mesmos KPIs da Visão geral; aqui o período das vendas é o mês corrente. */}
+      <Kpis totais={totais} vendas={dinheiro.data} />
+      {dinheiro.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          Não deu para carregar as vendas do mês.
+        </p>
+      )}
 
       <FaixaSomenteLeitura />
 

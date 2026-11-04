@@ -1,13 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Bell,
-  CalendarDays,
-  ChevronDown,
-  CircleHelp,
-  TriangleAlert,
-  UserRound,
-} from "lucide-react";
+import { Bell, CircleHelp, TriangleAlert, UserRound } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -18,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FiltroPeriodo } from "@/features/dinheiro/FiltroPeriodo";
+import { mesCorrente } from "@/features/dinheiro/periodo";
 import { SeletorDensidade } from "@/features/preferencias/SeletorDensidade";
 import { AlertasOperacao } from "@/features/visao-geral/AlertasOperacao";
 import { DesempenhoVendedores } from "@/features/visao-geral/DesempenhoVendedores";
@@ -45,10 +40,11 @@ const BOTAO_ICONE =
 // Visão geral (referência 03): filtros, KPIs, vendas, pipeline por etapa, time e alertas.
 function VisaoGeralPage() {
   const [vendedor, setVendedor] = useState(TODOS);
+  const [periodo, setPeriodo] = useState(mesCorrente);
   const vendedorId = vendedor === TODOS ? undefined : vendedor;
   const visao = useQuery({
-    queryKey: ["visao-geral", vendedorId],
-    queryFn: () => getVisaoGeral({ data: { vendedorId } }),
+    queryKey: ["visao-geral", vendedorId, periodo],
+    queryFn: () => getVisaoGeral({ data: { vendedorId, periodo } }),
     refetchInterval: RECARREGAR_A_CADA_MS,
   });
   const vendedores = useQuery({
@@ -77,17 +73,8 @@ function VisaoGeralPage() {
       </header>
 
       <div className="flex flex-wrap gap-3">
-        {/* Período só vale para vendas (fase 4); o pipeline é sempre o estado atual. */}
-        <button
-          type="button"
-          disabled
-          title="O período vale para as vendas, que chegam na fase 4"
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-card px-4 text-sm disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <CalendarDays aria-hidden className="h-4 w-4" />
-          <span className="font-semibold">Período:</span> estado atual
-          <ChevronDown aria-hidden className="h-4 w-4" />
-        </button>
+        {/* Período só recorta as vendas; o pipeline é sempre o estado atual. */}
+        <FiltroPeriodo periodo={periodo} onChange={setPeriodo} />
         <Select value={vendedor} onValueChange={setVendedor}>
           <SelectTrigger
             aria-label="Vendedor"
@@ -126,10 +113,10 @@ function VisaoGeralPage() {
         </div>
       ) : (
         <>
-          <Kpis totais={visao.data?.pipeline.totais} />
+          <Kpis totais={visao.data?.pipeline.totais} vendas={visao.data?.vendas} />
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <div className="min-w-0 space-y-4 xl:col-span-2">
-              <VendasPorCategoria />
+              <VendasPorCategoria categorias={visao.data?.vendas.porCategoria} />
               {visao.data ? (
                 <PipelinePorEtapa colunas={visao.data.pipeline.colunas} />
               ) : (
@@ -137,15 +124,18 @@ function VisaoGeralPage() {
               )}
             </div>
             <div className="min-w-0">
-              <DesempenhoVendedores vendedores={vendedores.data} />
+              <DesempenhoVendedores ranking={visao.data?.vendas.rankingPeriodo} />
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <div className="min-w-0">
-              <VendasRecentes />
+              <VendasRecentes vendas={visao.data?.vendas.vendasRecentes} />
             </div>
             <div className="min-w-0">
-              <AlertasOperacao alertas={visao.data?.alertas} />
+              <AlertasOperacao
+                alertas={visao.data?.alertas}
+                comissao={visao.data?.vendas.comissaoAPagarDia10}
+              />
             </div>
           </div>
         </>

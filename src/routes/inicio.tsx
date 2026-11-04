@@ -1,16 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, redirect } from "@tanstack/react-router";
-import { ChevronRight, MessageCircle, TrendingUp, Trophy, Zap } from "lucide-react";
+import { ChevronRight, MessageCircle, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { rotaInicial } from "@/components/shell/navegacao";
 import { AvatarIniciais } from "@/components/ui/avatar-iniciais";
-import { CardDegrade } from "@/components/ui/card-degrade";
 import { ChipTemperatura } from "@/components/ui/chip-temperatura";
 import { Skeleton } from "@/components/ui/skeleton";
-import { dinheiroDisponivel } from "@/features/dinheiro/disponivel";
+import { PainelVendedor } from "@/features/dinheiro/PainelVendedor";
+import { RankingSemanal } from "@/features/dinheiro/RankingSemanal";
 import { desde, telefone } from "@/lib/formato";
 import { exigirSessao } from "@/server/auth";
+import { getPainelVendedor } from "@/server/dinheiro";
 import { listarMeusLeads } from "@/server/meus-leads";
 
 export const Route = createFileRoute("/inicio")({
@@ -35,6 +36,10 @@ function InicioPage() {
     queryFn: () => listarMeusLeads(),
   });
   const esperando = leads?.filter((l) => l.aguardandoEquipe) ?? [];
+  const painel = useQuery({
+    queryKey: ["painel-vendedor"],
+    queryFn: () => getPainelVendedor(),
+  });
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
@@ -43,14 +48,19 @@ function InicioPage() {
         <p className="text-muted-foreground">Visão geral de performance e comissões</p>
       </header>
 
-      {/* O valor esperado e a comissão entram nas Tasks 6/7 e na fase 4, no lugar deste "em breve". */}
-      {!dinheiroDisponivel && (
-        <CardDegrade
-          titulo="Pode entrar"
-          valor="Em breve"
-          legenda="Comissões aparecem aqui quando as vendas chegarem ao CRM"
-          icone={TrendingUp}
-        />
+      {painel.isError ? (
+        <div role="alert" className="rounded-xl border border-border bg-card p-4 text-sm">
+          Não foi possível carregar suas comissões.{" "}
+          <button
+            type="button"
+            onClick={() => void painel.refetch()}
+            className="min-h-11 font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      ) : (
+        <PainelVendedor painel={painel.data} />
       )}
 
       <section aria-labelledby="acoes-rapidas" className="space-y-3">
@@ -128,18 +138,7 @@ function InicioPage() {
         )}
       </section>
 
-      <section
-        aria-labelledby="ranking"
-        className="flex items-center gap-3 rounded-xl border border-border bg-card p-4"
-      >
-        <Trophy aria-hidden className="h-6 w-6 shrink-0 text-muted-foreground" />
-        <div>
-          <h2 id="ranking" className="font-semibold">
-            Ranking da semana
-          </h2>
-          <p className="text-sm text-muted-foreground">Em breve</p>
-        </div>
-      </section>
+      {painel.data && <RankingSemanal ranking={painel.data.rankingSemanal} />}
     </div>
   );
 }

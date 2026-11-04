@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { comTransacao, getPoolMotor } from "./db";
 import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./motor/banco-teste";
 import { registrarMensagem } from "./motor/ingestao";
+import { processarVenda } from "./motor/vendas";
+import { lerVendasSemDono } from "./vendas";
 import { lerAlertas } from "./visao-geral";
 import { enfileirar } from "./webhooks/receber";
 
@@ -70,5 +72,34 @@ describe.skipIf(!bancoTesteAtivo)("alertas da visão geral no banco", () => {
       [id],
     );
     expect((await lerAlertas(db(), null)).filaFalhas).toBe(antes + 1);
+  });
+
+  test("conta e lista só vendas sem dono pagas", async () => {
+    const antes = (await lerAlertas(db(), null)).vendasSemDono;
+    const semDono = (status: "paga" | "estornada") =>
+      comTransacao((c) =>
+        processarVenda(
+          c,
+          {
+            idExterno: `t5-${randomUUID()}`,
+            compradaEm: new Date().toISOString(),
+            valor: 100,
+            cpf: null,
+            telefone: telefoneUnico(), // nenhum lead com este telefone
+            produto: "Aula 1h",
+            horas: 1,
+            status,
+            decisoes: [],
+          },
+          { bruto: true },
+        ),
+      );
+    const { vendaId: paga } = await semDono("paga");
+    const { vendaId: estornada } = await semDono("estornada");
+
+    expect((await lerAlertas(db(), null)).vendasSemDono).toBe(antes + 1);
+    const lista = (await lerVendasSemDono(db())).map((v) => v.id);
+    expect(lista).toContain(paga);
+    expect(lista).not.toContain(estornada);
   });
 });

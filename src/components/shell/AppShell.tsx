@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import type { Sessao } from "@/server/auth";
@@ -48,44 +47,6 @@ export function AppShell({
         itens={admin ? abasCelularAdmin : abasCelularAtendente}
         contagens={contagens}
       />
-    </div>
-  );
-}
-
-// Esqueleto das telas novas enquanto o conteúdo não chega: título da referência
-// e atalhos para as telas antigas que ainda fazem o trabalho.
-export function TelaEmBreve({
-  titulo,
-  subtitulo,
-  aviso,
-  atalhos,
-}: {
-  titulo: string;
-  subtitulo: string;
-  aviso: string;
-  atalhos: { url: string; texto: string }[];
-}) {
-  return (
-    <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-      <header>
-        <h1 className="font-display text-3xl font-bold">{titulo}</h1>
-        <p className="text-muted-foreground">{subtitulo}</p>
-      </header>
-      <section className="space-y-3 rounded-xl border border-border bg-card p-4">
-        <p className="text-sm text-muted-foreground">{aviso}</p>
-        <ul className="flex flex-wrap gap-2">
-          {atalhos.map((a) => (
-            <li key={a.url}>
-              <Link
-                to={a.url}
-                className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {a.texto}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
     </div>
   );
 }

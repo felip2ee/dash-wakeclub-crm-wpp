@@ -120,7 +120,8 @@ async function lerAPagarDia10(
   const linhas = (await calcularFechamento(db, mes)).filter(
     (l) => l.pagoEm === null && (vendedorId === null || l.vendedorId === vendedorId),
   );
-  return { mes, valor: somar(linhas.map((l) => l.aPagar)) };
+  // Saldo negativo paga 0 (`fecharMes`) e vai para o mês seguinte: não desconta dos outros.
+  return { mes, valor: somar(linhas.map((l) => Math.max(0, l.aPagar))) };
 }
 
 export async function lerResumoDinheiro(

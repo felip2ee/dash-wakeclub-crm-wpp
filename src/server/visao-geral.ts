@@ -1,7 +1,7 @@
 /**
  * Visão geral do admin (referência 03): o pipeline por etapa reaproveita `getPipeline`,
- * os alertas contam o que pede ação (aprovações, follow-ups vencidos, fila do motor) e
- * as vendas ficam `null` até a fase 4 trazer as vendas pelo webhook.
+ * os alertas contam o que pede ação (aprovações, follow-ups vencidos, vendas sem dono, fila
+ * do motor) e as vendas vêm de `lerResumoDinheiro` (fase 4).
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -9,11 +9,14 @@ import { z } from "zod";
 import { lerMonitorFila } from "./admin-motor";
 import { exigirAdmin } from "./auth";
 import { type ClienteDb, getPoolMotor } from "./db";
+import { lerResumoDinheiro } from "./dinheiro";
 import { getPipeline } from "./leads";
 
 export type AlertasOperacao = {
   aprovacoesPendentes: number;
   followupsEmAtraso: number;
+  /** Pagas, do sistema inteiro: venda sem dono não tem vendedor para filtrar. */
+  vendasSemDono: number;
   filaFalhas: number;
   filaAtrasados: number;
 };
@@ -29,7 +32,9 @@ export async function lerAlertas(
               count(*) filter (where f.status = 'pendente'
                                  and f.agendado_para < now() - interval '2 days')::int as atrasados,
               (select count(*)::int from wakeclub.webhook_eventos
-                where status = 'falhou') as fila_falhas
+                where status = 'falhou') as fila_falhas,
+              (select count(*)::int from wakeclub.vendas
+                where lead_id is null and status = 'paga') as sem_dono
          from wakeclub.followups f
          join wakeclub.leads l on l.id = f.lead_id
         where f.status in ('aguardando_aprovacao', 'pendente')
@@ -42,6 +47,7 @@ export async function lerAlertas(
   return {
     aprovacoesPendentes: Number(r.aprovacoes),
     followupsEmAtraso: Number(r.atrasados),
+    vendasSemDono: Number(r.sem_dono),
     filaFalhas: Number(r.fila_falhas),
     filaAtrasados: fila.atrasados,
   };
@@ -50,16 +56,17 @@ export async function lerAlertas(
 export const getVisaoGeral = createServerFn({ method: "GET" })
   .validator(
     z.object({
-      // Período só recorta vendas (fase 4); o pipeline é sempre o estado atual.
-      periodo: z.object({ de: z.string().date(), ate: z.string().date() }).optional(),
+      // Período só recorta vendas; o pipeline é sempre o estado atual.
+      periodo: z.object({ de: z.string().date(), ate: z.string().date() }),
       vendedorId: z.string().uuid().optional(),
     }),
   )
   .handler(async ({ data }) => {
     await exigirAdmin();
-    const [pipeline, alertas] = await Promise.all([
+    const [pipeline, alertas, vendas] = await Promise.all([
       getPipeline({ data: { vendedorId: data.vendedorId } }),
       lerAlertas(getPoolMotor(), data.vendedorId ?? null),
+      lerResumoDinheiro(getPoolMotor(), data.periodo, data.vendedorId ?? null),
     ]);
     return {
       // Sem os cards: a visão geral só mostra os totais por etapa.
@@ -68,7 +75,6 @@ export const getVisaoGeral = createServerFn({ method: "GET" })
         colunas: pipeline.colunas.map(({ cards: _cards, ...coluna }) => coluna),
       },
       alertas,
-      // Vendas chegam pelo webhook na fase 4 (`dinheiroDisponivel`); até lá não há o que somar.
-      vendas: null,
+      vendas,
     };
   });

@@ -84,9 +84,10 @@ export async function lerVendas(
   return rows.map(linha);
 }
 
+/** Só pagas: estornada sem dono não tem comissão nem vendedor a corrigir. */
 export async function lerVendasSemDono(db: ClienteDb): Promise<VendaLinha[]> {
   const { rows } = await db.query(
-    `${SELECT} where v.lead_id is null order by v.comprada_em desc limit 200`,
+    `${SELECT} where v.lead_id is null and v.status = 'paga' order by v.comprada_em desc limit 200`,
   );
   return rows.map(linha);
 }
