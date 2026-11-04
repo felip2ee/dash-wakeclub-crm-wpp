@@ -7,6 +7,7 @@ import {
   HeadContent,
   Scripts,
   useRouterState,
+  type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 
@@ -40,7 +41,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
   return (
@@ -135,7 +136,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const { sessao } = Route.useRouteContext();
-  const { saude } = Route.useLoaderData();
+  const saude = Route.useLoaderData()?.saude ?? null;
   const naTelaDeLogin = useRouterState({ select: (s) => s.location.pathname === "/login" });
 
   if (naTelaDeLogin) {

@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  useNavigate,
+  useRouter,
+  type ErrorComponentProps,
+} from "@tanstack/react-router";
 import {
   AlarmClock,
   ArrowLeft,
@@ -637,13 +642,15 @@ function SemConversas() {
   );
 }
 
-function ErroDeConexao({ error }: { error: Error }) {
+function ErroDeConexao({ error }: ErrorComponentProps) {
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center p-6">
       <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
         <TriangleAlert className="mx-auto h-8 w-8 text-destructive" />
         <h2 className="mt-3 font-display text-base font-semibold">Não deu para ler as conversas</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <p className="mt-3 text-xs text-muted-foreground">
           Se a mensagem fala em permissão, falta o GRANT das views novas. Rode{" "}
           <code className="font-mono">bun run db:apply</code> e depois{" "}

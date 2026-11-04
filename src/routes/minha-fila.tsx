@@ -217,7 +217,7 @@ function FilaCard({
   onAbrir: (item: ItemMinhaFila) => void;
   onCopiar: (texto: string) => Promise<void>;
 }) {
-  const sugestaoUtilizavel = item.followup && !item.aguardandoEquipe;
+  const sugestaoUtilizavel = item.aguardandoEquipe ? null : item.followup;
   const podeAgir = item.secao === "agora";
 
   return (

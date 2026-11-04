@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter, type ErrorComponentProps } from "@tanstack/react-router";
 import {
   AlarmClock,
   CalendarClock,
@@ -251,13 +251,15 @@ function CardDoLead({ lead }: { lead: LeadCard }) {
   );
 }
 
-function ErroDeConexao({ error }: { error: Error }) {
+function ErroDeConexao({ error }: ErrorComponentProps) {
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center p-6">
       <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
         <TriangleAlert className="mx-auto h-8 w-8 text-destructive" />
         <h2 className="mt-3 font-display text-base font-semibold">Não deu para ler o CRM</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
         <p className="mt-3 text-xs text-muted-foreground">
           Confira a <code className="font-mono">DATABASE_URL</code> no{" "}
           <code className="font-mono">.env</code> — ela precisa apontar para o banco{" "}

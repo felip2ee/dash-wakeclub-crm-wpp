@@ -10,6 +10,11 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
+    "lint:typed": "eslint --config eslint.typed.config.mjs .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "quality:rules": "node scripts/verify-quality-rules.mjs",
+    "check": "bun run lint && bun run typecheck && bun run test && bun run quality:rules",
     "format": "prettier --write .",
     "db:check": "node scripts/painel-db.mjs check",
     "db:apply": "node scripts/painel-db.mjs apply"
@@ -43,10 +48,10 @@
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.2.1",
-    "@tanstack/react-query": "^5.101.1",
-    "@tanstack/react-router": "^1.170.16",
-    "@tanstack/react-start": "^1.168.26",
-    "@tanstack/router-plugin": "^1.168.18",
+    "@tanstack/react-query": "^5.105.3",
+    "@tanstack/react-router": "^1.170.46",
+    "@tanstack/react-start": "^1.169.4",
+    "@tanstack/router-plugin": "^1.168.48",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -73,6 +78,7 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@types/bcryptjs": "^3.0.0",
+    "@types/bun": "^1.4.4",
     "@types/node": "^22.16.5",
     "@types/pg": "^8.15.5",
     "@types/react": "^19.2.0",
@@ -81,6 +87,8 @@
     "@vitejs/plugin-react": "^5.2.0",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.1",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.17.1",
     "eslint-plugin-prettier": "^5.2.6",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
@@ -89,6 +97,6 @@
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^8.0.16"
+    "vite": "^8.3.5"
   }
 }

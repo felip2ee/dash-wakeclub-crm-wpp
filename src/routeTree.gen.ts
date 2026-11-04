@@ -9,62 +9,22 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as Wf02RouteImport } from './routes/wf02'
-import { Route as TemplatesRouteImport } from './routes/templates'
-import { Route as ReportsRouteImport } from './routes/reports'
-import { Route as MinhaFilaRouteImport } from './routes/minha-fila'
-import { Route as MeusLeadsRouteImport } from './routes/meus-leads'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as KanbanRouteImport } from './routes/kanban'
-import { Route as InstalarRouteImport } from './routes/instalar'
-import { Route as FollowupsRouteImport } from './routes/followups'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as FollowupsRouteImport } from './routes/followups'
+import { Route as InstalarRouteImport } from './routes/instalar'
+import { Route as KanbanRouteImport } from './routes/kanban'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as MeusLeadsRouteImport } from './routes/meus-leads'
+import { Route as MinhaFilaRouteImport } from './routes/minha-fila'
+import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as TemplatesRouteImport } from './routes/templates'
+import { Route as Wf02RouteImport } from './routes/wf02'
 import { Route as ApiPushEnviarRouteImport } from './routes/api/push/enviar'
 
-const Wf02Route = Wf02RouteImport.update({
-  id: '/wf02',
-  path: '/wf02',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TemplatesRoute = TemplatesRouteImport.update({
-  id: '/templates',
-  path: '/templates',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReportsRoute = ReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MinhaFilaRoute = MinhaFilaRouteImport.update({
-  id: '/minha-fila',
-  path: '/minha-fila',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MeusLeadsRoute = MeusLeadsRouteImport.update({
-  id: '/meus-leads',
-  path: '/meus-leads',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const KanbanRoute = KanbanRouteImport.update({
-  id: '/kanban',
-  path: '/kanban',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InstalarRoute = InstalarRouteImport.update({
-  id: '/instalar',
-  path: '/instalar',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FollowupsRoute = FollowupsRouteImport.update({
-  id: '/followups',
-  path: '/followups',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -72,9 +32,49 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const FollowupsRoute = FollowupsRouteImport.update({
+  id: '/followups',
+  path: '/followups',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InstalarRoute = InstalarRouteImport.update({
+  id: '/instalar',
+  path: '/instalar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KanbanRoute = KanbanRouteImport.update({
+  id: '/kanban',
+  path: '/kanban',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MeusLeadsRoute = MeusLeadsRouteImport.update({
+  id: '/meus-leads',
+  path: '/meus-leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MinhaFilaRoute = MinhaFilaRouteImport.update({
+  id: '/minha-fila',
+  path: '/minha-fila',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TemplatesRoute = TemplatesRouteImport.update({
+  id: '/templates',
+  path: '/templates',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const Wf02Route = Wf02RouteImport.update({
+  id: '/wf02',
+  path: '/wf02',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPushEnviarRoute = ApiPushEnviarRouteImport.update({
@@ -188,67 +188,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/wf02': {
-      id: '/wf02'
-      path: '/wf02'
-      fullPath: '/wf02'
-      preLoaderRoute: typeof Wf02RouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/templates': {
-      id: '/templates'
-      path: '/templates'
-      fullPath: '/templates'
-      preLoaderRoute: typeof TemplatesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reports': {
-      id: '/reports'
-      path: '/reports'
-      fullPath: '/reports'
-      preLoaderRoute: typeof ReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/minha-fila': {
-      id: '/minha-fila'
-      path: '/minha-fila'
-      fullPath: '/minha-fila'
-      preLoaderRoute: typeof MinhaFilaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/meus-leads': {
-      id: '/meus-leads'
-      path: '/meus-leads'
-      fullPath: '/meus-leads'
-      preLoaderRoute: typeof MeusLeadsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/kanban': {
-      id: '/kanban'
-      path: '/kanban'
-      fullPath: '/kanban'
-      preLoaderRoute: typeof KanbanRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/instalar': {
-      id: '/instalar'
-      path: '/instalar'
-      fullPath: '/instalar'
-      preLoaderRoute: typeof InstalarRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/followups': {
-      id: '/followups'
-      path: '/followups'
-      fullPath: '/followups'
-      preLoaderRoute: typeof FollowupsRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -258,11 +202,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/followups': {
+      id: '/followups'
+      path: '/followups'
+      fullPath: '/followups'
+      preLoaderRoute: typeof FollowupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/instalar': {
+      id: '/instalar'
+      path: '/instalar'
+      fullPath: '/instalar'
+      preLoaderRoute: typeof InstalarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kanban': {
+      id: '/kanban'
+      path: '/kanban'
+      fullPath: '/kanban'
+      preLoaderRoute: typeof KanbanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/meus-leads': {
+      id: '/meus-leads'
+      path: '/meus-leads'
+      fullPath: '/meus-leads'
+      preLoaderRoute: typeof MeusLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/minha-fila': {
+      id: '/minha-fila'
+      path: '/minha-fila'
+      fullPath: '/minha-fila'
+      preLoaderRoute: typeof MinhaFilaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/templates': {
+      id: '/templates'
+      path: '/templates'
+      fullPath: '/templates'
+      preLoaderRoute: typeof TemplatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/wf02': {
+      id: '/wf02'
+      path: '/wf02'
+      fullPath: '/wf02'
+      preLoaderRoute: typeof Wf02RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/push/enviar': {
