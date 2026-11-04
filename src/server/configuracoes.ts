@@ -1,11 +1,13 @@
 /**
- * Configurações gerais que o admin edita em /configuracoes. Por enquanto só o preço
- * da hora (`configuracoes.preco_hora`, jsonb numérico), base do valor esperado dos
- * leads. Grava pela painel_rw (grant select/update da migração 0004); a linha já
+ * Configurações gerais que o admin vê em /configuracoes: o preço da hora
+ * (`configuracoes.preco_hora`, jsonb numérico), base do valor esperado dos leads, e os
+ * endereços dos webhooks com os segredos, para colar na Evolution e no sistema de vendas.
+ * O preço grava pela painel_rw (grant select/update da migração 0004); a linha já
  * nasce na migração, então aqui não há insert. O SQL fica em helpers que recebem o
  * cliente, para testar sem cookie.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { getRequestUrl } from "@tanstack/react-start/server";
 import { z } from "zod";
 
 import { exigirAdmin } from "./auth";
@@ -55,3 +57,42 @@ export const definirPrecoHora = createServerFn({ method: "POST" })
     await gravarPrecoHora(getPoolRw(), valor);
     return { precoHora: valor };
   });
+
+export type WebhookDestino = {
+  url: string;
+  /** `null` quando a variável de ambiente do segredo não está definida no servidor. */
+  segredo: string | null;
+  urlComToken: string | null;
+};
+
+export type Webhooks = { evolution: WebhookDestino; vendas: WebhookDestino };
+
+/** Monta a URL pública do webhook; o token na query é a alternativa ao header. */
+export function montarWebhook(
+  origem: string,
+  caminho: string,
+  segredo: string | undefined,
+): WebhookDestino {
+  const url = new URL(caminho, origem).toString();
+  if (!segredo) return { url, segredo: null, urlComToken: null };
+  const comToken = new URL(url);
+  comToken.searchParams.set("token", segredo);
+  return { url, segredo, urlComToken: comToken.toString() };
+}
+
+// Só admin: a resposta leva os segredos dos webhooks (decisão do dono, 04/11/2026).
+export const getWebhooks = createServerFn({ method: "GET" }).handler(
+  async (): Promise<Webhooks> => {
+    await exigirAdmin();
+    // Atrás do Traefik, host e protocolo públicos vêm dos cabeçalhos X-Forwarded-*.
+    const { origin } = getRequestUrl({ xForwardedHost: true, xForwardedProto: true });
+    return {
+      evolution: montarWebhook(
+        origin,
+        "/api/webhooks/evolution",
+        process.env.WEBHOOK_EVOLUTION_SECRET,
+      ),
+      vendas: montarWebhook(origin, "/api/webhooks/vendas", process.env.WEBHOOK_VENDAS_SECRET),
+    };
+  },
+);

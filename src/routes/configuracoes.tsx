@@ -11,6 +11,7 @@ import {
   Monitor,
   Tag,
   Users,
+  Webhook,
 } from "lucide-react";
 
 import { PainelIa } from "@/features/admin/PainelIa";
@@ -27,6 +28,7 @@ import { TemaEModo } from "@/features/configuracoes/TemaEModo";
 import { DistribuicaoLeads, usePainelAdmin, Usuarios } from "@/features/configuracoes/Usuarios";
 import { totalPesoAtivo } from "@/features/configuracoes/peso";
 import { VendasNaoConciliadas } from "@/features/configuracoes/VendasNaoConciliadas";
+import { Webhooks } from "@/features/configuracoes/Webhooks";
 import { moeda, plural } from "@/lib/formato";
 import { getRitmo } from "@/server/admin-ia";
 import { exigirAdmin } from "@/server/auth";
@@ -94,6 +96,7 @@ function ConfiguracoesPage() {
           <SecaoIa />
         </div>
         <VendasNaoConciliadas />
+        <Webhooks />
       </div>
     </div>
   );
@@ -173,6 +176,13 @@ function useSecoesCelular(): SecaoCelular[] {
       icone: Link2,
       resumo: semDono.data ? resumoSemDono(semDono.data) : "…",
       conteudo: <VendasNaoConciliadas />,
+    },
+    {
+      id: "webhooks",
+      titulo: "Webhooks",
+      icone: Webhook,
+      resumo: "Evolution e sistema de vendas",
+      conteudo: <Webhooks />,
     },
     {
       id: "respostas-rapidas",

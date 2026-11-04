@@ -211,6 +211,10 @@ Rotas anteriores, ainda acessíveis por URL:
 Os webhooks respondem 404 com segredo inválido ou ausente, 400 para JSON inválido e 413
 acima de 25 MB (nesse caso fica uma linha `falhou` com o tamanho, sem o corpo).
 
+O cartão "Webhooks" de `/configuracoes` (só admin, `getWebhooks` em `configuracoes.ts`) mostra a
+URL pública de cada webhook, montada pelos cabeçalhos `X-Forwarded-*`, o segredo e a URL com
+`?token=`, para colar na Evolution e no sistema de vendas. Os segredos saem só nessa resposta.
+
 As operações `createServerFn` são RPCs gerados pelo TanStack Start, não endpoints REST de
 domínio mantidos manualmente.
 
