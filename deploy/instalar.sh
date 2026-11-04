@@ -218,14 +218,19 @@ detectar_servico() {
 # definir_credencial ARQUIVO CHAVE VALOR: grava ou troca (valores decididos/detectados).
 # Segredos usam garantir_credencial da lib, que nunca troca.
 definir_credencial() {
-  [ "$(ler_credencial "$1" "$2")" = "$3" ] && return 0
-  if [ -f "$1" ]; then
+  local atual
+  atual="$(ler_credencial "$1" "$2")"
+  # Vazio nunca apaga um valor salvo (ex.: chave da Evolution sumiu do serviço).
+  if [ -z "$3" ] && [ -n "$atual" ]; then return 0; fi
+  if [ -f "$1" ] && grep -q "^$2=" "$1"; then
+    [ "$atual" = "$3" ] && return 0
     (
       umask 077
       grep -v "^$2=" "$1" >"$1.tmp.$$" || true
       mv "$1.tmp.$$" "$1"
     )
   fi
+  # Grava mesmo vazio: render_stack exige a chave presente.
   garantir_credencial "$1" "$2" "$3"
 }
 
@@ -244,6 +249,15 @@ rodar_no_app() {
   local env="$1"
   shift
   docker run --rm --network "$REDE" --env-file "$env" "$IMAGEM" "$@"
+}
+
+# checar_par_vapid PUBLICA PRIVADA: o par é uma unidade; metade salva para o instalador.
+checar_par_vapid() {
+  if [ -n "$1" ] && [ -z "$2" ]; then
+    morrer "$CREDENCIAIS tem VITE_VAPID_PUBLIC_KEY mas não VAPID_PRIVATE_KEY. Apague as duas linhas para gerar um par novo."
+  elif [ -z "$1" ] && [ -n "$2" ]; then
+    morrer "$CREDENCIAIS tem VAPID_PRIVATE_KEY mas não VITE_VAPID_PUBLIC_KEY. Apague as duas linhas para gerar um par novo."
+  fi
 }
 
 mascarar() {
@@ -279,7 +293,9 @@ detectar() {
   PG_USUARIO="$(valor_env_servico "$env_pg" POSTGRES_USER)"
   PG_USUARIO="${PG_USUARIO:-postgres}"
   PG_SENHA="$(valor_env_servico "$env_pg" POSTGRES_PASSWORD)"
+  PG_SENHA_ORIGEM="lida do serviço"
   if [ -z "$PG_SENHA" ]; then
+    PG_SENHA_ORIGEM="digitada"
     aviso "POSTGRES_PASSWORD não está nas variáveis do serviço $PG_SERVICO."
     [ -z "$SIM" ] || morrer "Senha do Postgres não encontrada."
     perguntar PG_SENHA "Senha do usuário $PG_USUARIO do Postgres" "" -s
@@ -291,7 +307,7 @@ detectar() {
     [ -z "$SIM" ] || morrer "Não consegui ler a versão do Postgres da imagem $(imagem_base "$img_pg")."
     perguntar PG_MAJOR "Versão principal do Postgres (imagem $(imagem_base "$img_pg"), ex.: 14)" ""
   done
-  ok "Postgres $PG_MAJOR, host $PG_HOST, usuário $PG_USUARIO, senha lida do serviço"
+  ok "Postgres $PG_MAJOR, host $PG_HOST, usuário $PG_USUARIO, senha $PG_SENHA_ORIGEM"
 
   # Traefik e certresolver
   detectar_servico TRAEFIK_SERVICO "Traefik" '^traefik(:|$)' 'traefik' "" sim
@@ -343,7 +359,17 @@ detectar() {
     porta="$(valor_env_servico "$env_evo" SERVER_PORT)"
     EVOLUTION_URL="http://$EVO_SERVICO:${porta:-8080}"
     EVOLUTION_API_KEY="$(valor_env_servico "$env_evo" AUTHENTICATION_API_KEY)"
-    [ -n "$EVOLUTION_API_KEY" ] || aviso "AUTHENTICATION_API_KEY não está nas variáveis de $EVO_SERVICO."
+    if [ -z "$EVOLUTION_API_KEY" ]; then
+      aviso "AUTHENTICATION_API_KEY não está nas variáveis de $EVO_SERVICO."
+      EVOLUTION_API_KEY="$(ler_credencial "$CREDENCIAIS" EVOLUTION_API_KEY)"
+      if [ -n "$EVOLUTION_API_KEY" ]; then
+        ok "chave da Evolution reaproveitada de $CREDENCIAIS"
+      elif [ -n "$SIM" ]; then
+        aviso "Chave da Evolution fica vazia (o adaptador que a usa vem depois)."
+      else
+        perguntar EVOLUTION_API_KEY "Chave da API da Evolution (AUTHENTICATION_API_KEY, Enter deixa vazia)" "" -s
+      fi
+    fi
     redes_servico "$EVO_SERVICO" | grep -qxF "$REDE" ||
       aviso "A Evolution não está na rede $REDE: $EVOLUTION_URL pode não ser alcançável pelo CRM."
   else
@@ -407,7 +433,8 @@ gerar() {
 
   VITE_VAPID_PUBLIC_KEY="$(ler_credencial "$CREDENCIAIS" VITE_VAPID_PUBLIC_KEY)"
   VAPID_PRIVATE_KEY="$(ler_credencial "$CREDENCIAIS" VAPID_PRIVATE_KEY)"
-  if [ -z "$VITE_VAPID_PUBLIC_KEY" ] || [ -z "$VAPID_PRIVATE_KEY" ]; then
+  checar_par_vapid "$VITE_VAPID_PUBLIC_KEY" "$VAPID_PRIVATE_KEY"
+  if [ -z "$VITE_VAPID_PUBLIC_KEY" ]; then
     # web-push é dependência de produção do app: gera offline, dentro da imagem.
     local par
     par="$(docker run --rm --network none "$IMAGEM" bun -e \
@@ -445,7 +472,7 @@ confirmar() {
   local chave
   cat <<EOF
 
-  Postgres        $PG_SERVICO (Postgres $PG_MAJOR, usuário $PG_USUARIO, senha do serviço)
+  Postgres        $PG_SERVICO (Postgres $PG_MAJOR, usuário $PG_USUARIO, senha $PG_SENHA_ORIGEM)
   Traefik         $TRAEFIK_SERVICO, certresolver $CERTRESOLVER
   Rede            $REDE
   Evolution       ${EVO_SERVICO:-não encontrada} ${EVOLUTION_URL:+($EVOLUTION_URL)}
