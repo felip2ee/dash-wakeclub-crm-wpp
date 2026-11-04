@@ -21,6 +21,8 @@ ENV PORT=3000
 COPY package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile --production
 COPY --from=build --chown=bun:bun /app/.output ./.output
+COPY --chown=bun:bun db ./db
+COPY --chown=bun:bun scripts ./scripts
 
 USER bun
 EXPOSE 3000
