@@ -13,6 +13,7 @@ import { devolverOrfaos, type Processador, rodarFila } from "./fila";
 import { criarProcessadorEvolution } from "./ingestao";
 import { enviarPushPendentes } from "./notificacoes";
 import { gravarHeartbeat } from "./saude";
+import { criarProcessadorVendas } from "./vendas";
 
 declare global {
   var __wakecrmMotor: boolean | undefined;
@@ -25,8 +26,8 @@ export function iniciarMotor(): void {
   globalThis.__wakecrmMotor = true;
 
   // Sem adaptador, eventos da Evolution ficam pendentes na fila até a captura virar
-  // código (plano, Task 13). Vendas só são gravadas nesta fase.
-  const processadores: Partial<Record<string, Processador>> = {};
+  // código (plano, Task 13). Vendas não dependem do adaptador.
+  const processadores: Partial<Record<string, Processador>> = { vendas: criarProcessadorVendas() };
   const adaptador = obterAdaptador();
   if (adaptador) processadores.evolution = criarProcessadorEvolution(adaptador);
 

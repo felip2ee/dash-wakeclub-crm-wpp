@@ -3,7 +3,14 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { getPoolMotor } from "../db";
 import { enfileirar } from "../webhooks/receber";
 import { bancoTesteAtivo } from "./banco-teste";
-import { devolverOrfaos, reivindicar, reprocessar, registrarFalha, rodarFila } from "./fila";
+import {
+  devolverOrfaos,
+  ErroPermanente,
+  reivindicar,
+  reprocessar,
+  registrarFalha,
+  rodarFila,
+} from "./fila";
 
 const db = () => getPoolMotor();
 const EVO = ["evolution"];
@@ -139,5 +146,22 @@ describe.skipIf(!bancoTesteAtivo)("fila de entrada", () => {
     });
     expect((await status(ok)).status).toBe("processado");
     expect(await status(ruim)).toEqual({ status: "pendente", tentativas: 1 });
+  });
+
+  test("erro permanente vai direto a falhou e e reprocessavel", async () => {
+    const id = await enfileirar(db(), "evolution", {}, "P1");
+    await rodarFila({
+      evolution: async () => {
+        throw new ErroPermanente("formato desconhecido: teste");
+      },
+    });
+    expect(await status(id)).toEqual({ status: "falhou", tentativas: 5 });
+    const { rows } = await db().query(
+      "select erro from wakeclub.webhook_eventos where id = $1::bigint",
+      [id],
+    );
+    expect(rows[0].erro).toBe("formato desconhecido: teste");
+    expect(await reprocessar(db(), id)).toBe(true);
+    expect(await status(id)).toEqual({ status: "pendente", tentativas: 0 });
   });
 });

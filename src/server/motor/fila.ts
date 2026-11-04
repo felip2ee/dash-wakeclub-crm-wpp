@@ -19,6 +19,9 @@ export type Processador = (
 
 const ESPERAS_SEGUNDOS = [30, 120, 600, 1800];
 
+/** Falha que retentar não resolve (ex.: formato desconhecido): vai direto a `falhou`. */
+export class ErroPermanente extends Error {}
+
 /** Segundos até a próxima tentativa depois da falha número `tentativas`; null = desistir. */
 export function esperaAposFalha(tentativas: number): number | null {
   return ESPERAS_SEGUNDOS[tentativas - 1] ?? null;
@@ -83,18 +86,25 @@ export async function concluir(
   );
 }
 
-export async function registrarFalha(db: ClienteDb, id: number, erro: string): Promise<void> {
+export async function registrarFalha(
+  db: ClienteDb,
+  id: number,
+  erro: string,
+  permanente = false,
+): Promise<void> {
   // Um comando só: ler e gravar `tentativas` separados deixaria duas falhas contarem uma.
   // O array começa em 1 no SQL, como `esperaAposFalha`; fora dele (null) desiste.
+  // Permanente: conta como a última tentativa, sem espera.
   await db.query(
     `update wakeclub.webhook_eventos
-        set tentativas = tentativas + 1,
-            status = case when ($3::int[])[tentativas + 1] is null then 'falhou' else 'pendente' end,
+        set tentativas = case when $4::boolean then cardinality($3::int[]) + 1 else tentativas + 1 end,
+            status = case when $4::boolean or ($3::int[])[tentativas + 1] is null
+                          then 'falhou' else 'pendente' end,
             proxima_tentativa_em = now() + make_interval(secs => coalesce(($3::int[])[tentativas + 1], 0)),
             processando_desde = null,
             erro = left($2::text, 1000)
       where id = $1::bigint and status = 'processando'`,
-    [id, erro, ESPERAS_SEGUNDOS],
+    [id, erro, ESPERAS_SEGUNDOS, permanente],
   );
 }
 
@@ -137,7 +147,12 @@ export async function rodarFila(
         });
       } catch (erro) {
         logErro("fila.falha", erro, { eventoId: evento.id, origem: evento.origem });
-        await registrarFalha(getPoolMotor(), evento.id, String((erro as Error)?.message ?? erro));
+        await registrarFalha(
+          getPoolMotor(),
+          evento.id,
+          String((erro as Error)?.message ?? erro),
+          erro instanceof ErroPermanente,
+        );
       }
     }),
   );
