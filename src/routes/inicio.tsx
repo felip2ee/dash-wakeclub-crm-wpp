@@ -9,7 +9,8 @@ import { ChipTemperatura } from "@/components/ui/chip-temperatura";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PainelVendedor } from "@/features/dinheiro/PainelVendedor";
 import { RankingSemanal } from "@/features/dinheiro/RankingSemanal";
-import { desde, telefone } from "@/lib/formato";
+import { desde, plural, telefone } from "@/lib/formato";
+import { listarFilaAprovacao } from "@/server/aprovacao";
 import { exigirSessao } from "@/server/auth";
 import { getPainelVendedor } from "@/server/dinheiro";
 import { listarMeusLeads } from "@/server/meus-leads";
@@ -40,6 +41,11 @@ function InicioPage() {
     queryKey: ["painel-vendedor"],
     queryFn: () => getPainelVendedor(),
   });
+  // Mesma chave de /aprovar e da barra: atendente vê só a própria fila.
+  const fila = useQuery({
+    queryKey: ["aprovacao", null],
+    queryFn: () => listarFilaAprovacao({ data: {} }),
+  });
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
@@ -68,10 +74,15 @@ function InicioPage() {
           Ações rápidas
         </h2>
         <div className="grid grid-cols-2 gap-3">
-          {/* shortcut: contagem de follow-ups mostra "—" até existir listarFilaAprovacao (src/server/aprovacao.ts). */}
           <AcaoRapida to="/aprovar" icone={<Zap aria-hidden className="h-6 w-6 text-primary" />}>
             <span className="block font-semibold">Follow-ups</span>
-            <span className="block text-sm text-muted-foreground">— pendentes</span>
+            <span className="block text-sm text-muted-foreground">
+              {fila.isPending
+                ? "…"
+                : fila.isError
+                  ? "—"
+                  : plural(fila.data.length, "pendente", "pendentes")}
+            </span>
           </AcaoRapida>
           <AcaoRapida
             to="/meus-leads"

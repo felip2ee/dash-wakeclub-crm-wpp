@@ -43,7 +43,13 @@ export function ListaVendas({
     mutationFn: (vendaId: string) => estornarVenda({ data: { vendaId } }),
     onSuccess: () => toast.success("Venda estornada."),
     onError: (erro) => toast.error(erro instanceof Error ? erro.message : "Falha ao estornar."),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["vendas"] }),
+    // Estorno muda o vendido, a comissão e o ranking: Visão geral e Meu painel também.
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["vendas"] }),
+        queryClient.invalidateQueries({ queryKey: ["visao-geral"] }),
+        queryClient.invalidateQueries({ queryKey: ["painel-vendedor"] }),
+      ]),
   });
 
   if (vendas.isPending) return <Carregando />;

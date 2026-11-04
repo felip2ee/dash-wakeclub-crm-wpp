@@ -1,5 +1,5 @@
 // Linha do tempo da conversa (referência 01, direita): chips só com fatos que existem no
-// banco. Compra e aluguel entram na fase 4, quando houver venda pelo webhook.
+// banco. Compra vem das vendas pagas do lead (webhook, fase 4).
 
 /** Evento de `eventos_automacao` como o servidor entrega (`getLinhaDoTempo`). */
 export type EventoLinha = {
@@ -10,14 +10,21 @@ export type EventoLinha = {
   para: string | null;
 };
 
+/** Venda paga do lead como o servidor entrega (`getLinhaDoTempo`). */
+export type CompraLinha = { compradaEm: string; produto: string | null; horas: number | null };
+
 export type ChipLinha = {
   chave: string;
-  tipo: "cadastro" | "etapa" | "followup";
+  tipo: "cadastro" | "etapa" | "followup" | "compra";
   rotulo: string;
   quando: string;
 };
 
-export function montarLinhaDoTempo(criadoEm: string, eventos: EventoLinha[]): ChipLinha[] {
+export function montarLinhaDoTempo(
+  criadoEm: string,
+  eventos: EventoLinha[],
+  compras: CompraLinha[] = [],
+): ChipLinha[] {
   const chips: ChipLinha[] = [];
   for (const [i, e] of eventos.entries()) {
     const chave = `${e.tipo}-${i}`;
@@ -28,6 +35,15 @@ export function montarLinhaDoTempo(criadoEm: string, eventos: EventoLinha[]): Ch
     if (e.tipo === "followup_sent") {
       chips.push({ chave, tipo: "followup", rotulo: "Follow-up enviado", quando: e.ocorridoEm });
     }
+  }
+  for (const [i, c] of compras.entries()) {
+    const detalhe = c.produto ?? (c.horas === null ? null : `${c.horas} h`);
+    chips.push({
+      chave: `compra-${i}`,
+      tipo: "compra",
+      rotulo: detalhe ? `Compra · ${detalhe}` : "Compra",
+      quando: c.compradaEm,
+    });
   }
   chips.sort((a, b) => Date.parse(a.quando) - Date.parse(b.quando));
   return [

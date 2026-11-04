@@ -39,6 +39,27 @@ describe("montarLinhaDoTempo", () => {
     expect(chips.map((c) => c.rotulo)).toEqual(["Cadastro realizado", "Etapa: Agendado"]);
   });
 
+  test("compra paga entra na ordem cronológica com produto ou horas", () => {
+    const chips = montarLinhaDoTempo(
+      CADASTRO,
+      [{ tipo: "followup_sent", ocorridoEm: "2026-01-20T12:00:00.000Z", de: null, para: null }],
+      [
+        { compradaEm: "2026-01-25T12:00:00.000Z", produto: null, horas: 2 },
+        { compradaEm: "2026-01-15T12:00:00.000Z", produto: "Wakeboard 1h", horas: 1 },
+        { compradaEm: "2026-01-26T12:00:00.000Z", produto: null, horas: null },
+      ],
+    );
+    expect(chips.map((c) => c.rotulo)).toEqual([
+      "Cadastro realizado",
+      "Compra · Wakeboard 1h",
+      "Follow-up enviado",
+      "Compra · 2 h",
+      "Compra",
+    ]);
+    expect(chips[1]).toMatchObject({ tipo: "compra", quando: "2026-01-15T12:00:00.000Z" });
+    expect(new Set(chips.map((c) => c.chave)).size).toBe(5);
+  });
+
   test("ignora tipos que não são fatos da linha do tempo", () => {
     const chips = montarLinhaDoTempo(CADASTRO, [
       { tipo: "lead_qualified", ocorridoEm: "2026-01-13T10:00:00.000Z", de: null, para: null },

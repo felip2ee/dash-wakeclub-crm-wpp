@@ -35,7 +35,7 @@ const RECARREGAR_A_CADA_MS = 30_000;
 const TODOS = "todos";
 
 const BOTAO_ICONE =
-  "inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-not-allowed aria-disabled:opacity-60";
 
 // Visão geral (referência 03): filtros, KPIs, vendas, pipeline por etapa, time e alertas.
 function VisaoGeralPage() {
@@ -62,11 +62,23 @@ function VisaoGeralPage() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="hidden text-sm font-medium lg:inline">Densidade da interface</span>
           <SeletorDensidade />
-          {/* shortcut: sino e ajuda ainda sem destino; ganham ação quando houver central de avisos. */}
-          <button type="button" aria-label="Notificações" title="em breve" className={BOTAO_ICONE}>
+          {/* shortcut: sino e ajuda ainda sem destino (aria-disabled); ganham ação quando houver central de avisos. */}
+          <button
+            type="button"
+            aria-label="Notificações"
+            aria-disabled="true"
+            title="em breve"
+            className={BOTAO_ICONE}
+          >
             <Bell aria-hidden className="h-5 w-5" />
           </button>
-          <button type="button" aria-label="Ajuda" title="em breve" className={BOTAO_ICONE}>
+          <button
+            type="button"
+            aria-label="Ajuda"
+            aria-disabled="true"
+            title="em breve"
+            className={BOTAO_ICONE}
+          >
             <CircleHelp aria-hidden className="h-5 w-5" />
           </button>
         </div>

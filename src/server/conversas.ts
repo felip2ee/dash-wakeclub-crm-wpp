@@ -212,6 +212,8 @@ export type LinhaDoTempo = {
   sugestao: { followupId: string; texto: string; modo: string | null } | null;
   /** Mensagens de áudio → status da transcrição (o texto delas é a transcrição). */
   audios: Record<string, string | null>;
+  /** Vendas pagas do lead (estornadas ficam de fora), em ordem cronológica. */
+  compras: { compradaEm: string; produto: string | null; horas: number | null }[];
 };
 
 type LinhaLinhaDoTempo = {
@@ -219,6 +221,7 @@ type LinhaLinhaDoTempo = {
   eventos: { tipo: string; ocorrido_em: string; de: string | null; para: string | null }[];
   sugestao: { followup_id: string; texto: string; modo: string | null } | null;
   audios: Record<string, string | null>;
+  compras: { comprada_em: string; produto: string | null; horas: number | null }[];
 };
 
 /** `atendenteId` null = admin; senão o lead precisa ser dela. */
@@ -253,7 +256,14 @@ export async function lerLinhaDoTempo(
               select json_object_agg(m.id, m.transcricao_status)
                 from wakeclub.mensagens m
                where m.lead_id = l.id and m.tipo = 'audio'
-            ), '{}'::json) as audios
+            ), '{}'::json) as audios,
+            coalesce((
+              select json_agg(json_build_object(
+                       'comprada_em', v.comprada_em, 'produto', v.produto, 'horas', v.horas)
+                     order by v.comprada_em, v.id)
+                from wakeclub.vendas v
+               where v.lead_id = l.id and v.status = 'paga'
+            ), '[]'::json) as compras
        from wakeclub.leads l
       where l.id = $1::uuid and ($2::uuid is null or l.atendente_id = $2::uuid)`,
     [leadId, atendenteId],
@@ -274,6 +284,11 @@ export async function lerLinhaDoTempo(
       modo: r.sugestao.modo,
     },
     audios: r.audios,
+    compras: r.compras.map((c) => ({
+      compradaEm: new Date(c.comprada_em).toISOString(),
+      produto: c.produto,
+      horas: c.horas,
+    })),
   };
 }
 

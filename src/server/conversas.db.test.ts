@@ -50,6 +50,7 @@ describe.skipIf(!bancoTesteAtivo)("lerLinhaDoTempo", () => {
     expect(r.eventos).toEqual([]);
     expect(r.sugestao).toBeNull();
     expect(r.audios).toEqual({});
+    expect(r.compras).toEqual([]);
   });
 
   test("etapa e follow-up enviado, sem outros tipos; sugestão aguardando aprovação", async () => {
@@ -81,6 +82,20 @@ describe.skipIf(!bancoTesteAtivo)("lerLinhaDoTempo", () => {
     const { leadId } = await lead("audio");
     const r = await lerLinhaDoTempo(db(), leadId, null);
     expect(Object.values(r.audios)).toEqual(["pendente"]);
+  });
+
+  test("venda paga do lead entra em compras; estornada não", async () => {
+    const { leadId } = await lead();
+    await db().query(
+      `insert into wakeclub.vendas (id_externo, comprada_em, valor, produto, horas, status, lead_id)
+       values ('teste:' || gen_random_uuid()::text, '2026-01-15T12:00:00Z', 300, 'Wakeboard 1h', 1, 'paga', $1::uuid),
+              ('teste:' || gen_random_uuid()::text, '2026-01-16T12:00:00Z', 600, null, 2, 'estornada', $1::uuid)`,
+      [leadId],
+    );
+    const r = await lerLinhaDoTempo(db(), leadId, null);
+    expect(r.compras).toEqual([
+      { compradaEm: "2026-01-15T12:00:00.000Z", produto: "Wakeboard 1h", horas: 1 },
+    ]);
   });
 
   test("atendente que não é dona não lê o lead", async () => {

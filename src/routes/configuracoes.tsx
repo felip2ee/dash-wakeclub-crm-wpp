@@ -31,6 +31,7 @@ import { moeda, plural } from "@/lib/formato";
 import { getRitmo } from "@/server/admin-ia";
 import { exigirAdmin } from "@/server/auth";
 import { getConfiguracoes } from "@/server/configuracoes";
+import { listarVendasSemDono, type VendaLinha } from "@/server/vendas";
 
 export const Route = createFileRoute("/configuracoes")({
   beforeLoad: async () => ({ sessao: await exigirAdmin() }),
@@ -98,6 +99,12 @@ function ConfiguracoesPage() {
   );
 }
 
+function resumoSemDono(vendas: VendaLinha[]): string {
+  if (vendas.length === 0) return "Nenhuma venda sem vínculo";
+  const soma = vendas.reduce((t, v) => t + v.valor, 0);
+  return `${plural(vendas.length, "venda sem vínculo", "vendas sem vínculo")} · ${moeda(soma)}`;
+}
+
 // Resumos da lista do celular, lidos dos mesmos caches dos cartões.
 function useSecoesCelular(): SecaoCelular[] {
   const painel = usePainelAdmin();
@@ -105,6 +112,10 @@ function useSecoesCelular(): SecaoCelular[] {
   const config = useQuery({ queryKey: CHAVE_CONFIGURACOES, queryFn: () => getConfiguracoes() });
   const saude = useSaudeNumero();
   const fila = useMonitorFila();
+  const semDono = useQuery({
+    queryKey: ["vendas", "sem-dono"],
+    queryFn: () => listarVendasSemDono(),
+  });
   const ativos = painel.data?.atendentes.filter((a) => a.ativo).length;
 
   return [
@@ -160,7 +171,7 @@ function useSecoesCelular(): SecaoCelular[] {
       id: "vendas-nao-conciliadas",
       titulo: "Vendas sem responsável",
       icone: Link2,
-      resumo: "Nenhuma venda recebida ainda",
+      resumo: semDono.data ? resumoSemDono(semDono.data) : "…",
       conteudo: <VendasNaoConciliadas />,
     },
     {

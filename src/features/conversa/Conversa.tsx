@@ -7,6 +7,7 @@ import {
   MessageCircle,
   MoreVertical,
   Send,
+  ShoppingCart,
   UserRound,
 } from "lucide-react";
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -29,6 +30,7 @@ const ICONE_CHIP: Record<ChipLinha["tipo"], typeof UserRound> = {
   cadastro: UserRound,
   etapa: ArrowLeftRight,
   followup: Send,
+  compra: ShoppingCart,
 };
 
 // Conversa de um lead (referência 01, direita), usada em `/` (admin) e `/meus-leads`:
@@ -72,7 +74,10 @@ export function Conversa({
   });
 
   const chips = useMemo(
-    () => (linha.data ? montarLinhaDoTempo(linha.data.criadoEm, linha.data.eventos) : []),
+    () =>
+      linha.data
+        ? montarLinhaDoTempo(linha.data.criadoEm, linha.data.eventos, linha.data.compras)
+        : [],
     [linha.data],
   );
   const lista = mensagens.data ?? [];

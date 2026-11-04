@@ -62,8 +62,7 @@ function InboxPage() {
   if (conversas.length === 0) return <SemConversas />;
 
   return (
-    // 8.5rem = cabeçalho (3.5) + barra inferior do celular (5); no desktop só o cabeçalho.
-    <div className="grid h-[calc(100dvh-8.5rem)] grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[340px_1fr] xl:grid-cols-[360px_1fr_320px]">
+    <div className="grid altura-tela-com-barra grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[340px_1fr] xl:grid-cols-[360px_1fr_320px]">
       <aside
         className={cn(
           "min-h-0 flex-col border-r border-border md:flex",

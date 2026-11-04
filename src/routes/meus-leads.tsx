@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 
+import { rotaInicial } from "@/components/shell/navegacao";
 import { Conversa } from "@/features/conversa/Conversa";
 import { ListaConversas } from "@/features/conversas-lista/ListaConversas";
 import { telefone } from "@/lib/formato";
@@ -11,7 +12,7 @@ export const Route = createFileRoute("/meus-leads")({
   validateSearch: z.object({ lead: z.string().uuid().optional() }),
   beforeLoad: async () => {
     const sessao = await exigirSessao();
-    if (sessao.papel === "admin") throw redirect({ to: "/kanban" });
+    if (sessao.papel === "admin") throw redirect({ to: rotaInicial("admin") });
     return { sessao };
   },
   loader: () => listarMeusLeads(),
@@ -26,8 +27,7 @@ function MeusLeadsPage() {
   const selecionado = leads.find((lead) => lead.id === leadId) ?? null;
 
   return (
-    // 8.5rem = cabeçalho (3.5) + barra inferior do celular (5); no desktop só o cabeçalho.
-    <div className="mx-auto h-[calc(100dvh-8.5rem)] w-full max-w-3xl md:h-[calc(100dvh-3.5rem)]">
+    <div className="mx-auto altura-tela-com-barra w-full max-w-3xl md:h-[calc(100dvh-3.5rem)]">
       {selecionado ? (
         <Conversa
           key={selecionado.id}

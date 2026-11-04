@@ -70,7 +70,8 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.18 0.02 250);
 
-  --primary: oklch(0.55 0.16 158);
+  /* 0.52: 4.7:1 como texto sobre o fundo e 4.8:1 com branco por cima (0.55 dava 4.2:1). */
+  --primary: oklch(0.52 0.16 158);
   --primary-foreground: oklch(0.99 0 0);
 
   --secondary: oklch(0.96 0.008 250);
@@ -94,7 +95,7 @@
 
   --border: oklch(0.9 0.01 250);
   --input: oklch(0.9 0.01 250);
-  --ring: oklch(0.55 0.16 158);
+  --ring: oklch(0.52 0.16 158);
 
   --chart-1: oklch(0.55 0.16 158);
   --chart-2: oklch(0.62 0.14 240);
@@ -172,14 +173,15 @@
    O seletor com atributo vence `.dark` na especificidade, então o bloco de
    baixo devolve os valores próprios do escuro. */
 :root[data-tema="rosa"] {
-  --primary: oklch(0.62 0.25 15);
+  /* 0.56: 5.0:1 como texto sobre o fundo claro e 5.1:1 com branco por cima (0.62 dava 3.9/4.0). */
+  --primary: oklch(0.56 0.22 15);
   --primary-foreground: oklch(0.99 0 0);
   --accent: oklch(0.95 0.04 15);
   --accent-foreground: oklch(0.35 0.12 15);
-  --ring: oklch(0.62 0.25 15);
+  --ring: oklch(0.56 0.22 15);
   --chart-1: oklch(0.62 0.25 15);
 
-  --sidebar-primary: oklch(0.62 0.25 15);
+  --sidebar-primary: oklch(0.56 0.22 15);
   --sidebar-primary-foreground: oklch(0.99 0 0);
   --sidebar-ring: oklch(0.62 0.25 15);
 
@@ -192,6 +194,11 @@
 }
 
 :root[data-tema="rosa"].dark {
+  /* No escuro 0.56 cai a 3.6:1 sobre o card; volta a 0.62 (4.6:1) e, como o verde
+     escuro, põe texto escuro sobre a primária (4.8:1; branco dava 4.0:1). */
+  --primary: oklch(0.62 0.25 15);
+  --primary-foreground: oklch(0.15 0.03 15);
+  --ring: oklch(0.62 0.25 15);
   --accent: oklch(0.3 0.08 15);
   --accent-foreground: oklch(0.96 0.005 250);
 }
@@ -225,6 +232,12 @@ html[data-densidade="pequeno"] {
 }
 @utility bg-gradiente-primario-suave {
   background-image: var(--gradiente-primario-suave);
+}
+
+/* Altura útil no celular: tela menos cabeçalho (3.5rem) e barra inferior
+   (3.5rem + borda de 1px + área segura do iPhone). No desktop cada tela usa md:h-[…]. */
+@utility altura-tela-com-barra {
+  height: calc(100dvh - 7rem - 1px - env(safe-area-inset-bottom));
 }
 
 @utility scrollbar-thin {

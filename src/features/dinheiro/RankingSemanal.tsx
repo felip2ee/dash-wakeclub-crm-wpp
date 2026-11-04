@@ -14,9 +14,12 @@ export function RankingSemanal({ ranking }: { ranking: PosicaoRanking[] }) {
   return (
     <section aria-labelledby="ranking" className="space-y-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="ranking" className="text-lg font-semibold">
-          Ranking da semana
-        </h2>
+        <div>
+          <h2 id="ranking" className="text-lg font-semibold">
+            Ranking da semana
+          </h2>
+          <p className="text-xs text-muted-foreground">Por valor comissionável</p>
+        </div>
         {eu && !semVendas && (
           <p className="text-sm text-muted-foreground">Você está em {eu.posicao}º</p>
         )}

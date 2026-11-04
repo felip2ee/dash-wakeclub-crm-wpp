@@ -97,7 +97,7 @@ function AprovarPage() {
   const posicao = Math.min(atual, Math.max(total - 1, 0));
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-8.5rem)] w-full max-w-3xl flex-col px-4 pt-4 md:h-[calc(100dvh-3.5rem)] md:pb-4">
+    <div className="mx-auto flex altura-tela-com-barra w-full max-w-3xl flex-col px-4 pt-4 md:h-[calc(100dvh-3.5rem)] md:pb-4">
       <header className="flex flex-wrap items-start gap-x-3 gap-y-2 pb-3">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-3xl font-bold">Para avaliar</h1>

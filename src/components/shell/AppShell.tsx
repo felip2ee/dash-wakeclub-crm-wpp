@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
+import { listarFilaAprovacao } from "@/server/aprovacao";
 import type { Sessao } from "@/server/auth";
 import { listarMeusLeads } from "@/server/meus-leads";
 import { BarraInferior } from "./BarraInferior";
@@ -18,15 +19,21 @@ export function AppShell({
   children: ReactNode;
 }) {
   const admin = sessao.papel === "admin";
-  // Mesma chave de /inicio: a contagem sai do cache quando a tela já carregou.
-  // shortcut: sem contagem de follow-ups nem badges do admin até existir server de aprovação (Task 3).
+  // Mesmas chaves de /inicio e /aprovar: a contagem sai do cache quando a tela já carregou.
+  // shortcut: sem badges do admin; entram se o admin pedir contagem na navegação.
   const { data: meusLeads } = useQuery({
     queryKey: ["meus-leads"],
     queryFn: () => listarMeusLeads(),
     enabled: !admin,
   });
+  const { data: filaAprovacao } = useQuery({
+    queryKey: ["aprovacao", null],
+    queryFn: () => listarFilaAprovacao({ data: {} }),
+    enabled: !admin,
+  });
   const contagens: Record<string, number> = {
     "/meus-leads": meusLeads?.filter((l) => l.aguardandoEquipe).length ?? 0,
+    "/aprovar": filaAprovacao?.length ?? 0,
   };
 
   return (
@@ -40,8 +47,10 @@ export function AppShell({
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur">
           {cabecalho}
         </header>
-        {/* pb-20: espaço da barra inferior no celular. */}
-        <main className="min-h-0 flex-1 pb-20 md:pb-0">{children}</main>
+        {/* Espaço da barra inferior no celular: 3.5rem + borda + área segura do iPhone. */}
+        <main className="min-h-0 flex-1 pb-[calc(3.5rem+1px+env(safe-area-inset-bottom))] md:pb-0">
+          {children}
+        </main>
       </div>
       <BarraInferior
         itens={admin ? abasCelularAdmin : abasCelularAtendente}
