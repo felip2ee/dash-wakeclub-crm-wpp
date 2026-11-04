@@ -4,6 +4,7 @@
  *
  *   bun run db:migrate                 aplica todas as pendentes
  *   bun run db:migrate -- --ate 0002   para depois da 0002 (a 0003 é o corte na virada)
+ *   bun scripts/migrar.mjs --pendentes lista as pendentes (uma por linha), sem aplicar nem criar nada
  *
  * Por que existe: o schema vivia dentro do workflow n8n "db setup". Agora o app é o dono
  * dele, e cada mudança vira um arquivo versionado, aplicado uma vez e registrado em
@@ -89,6 +90,18 @@ async function main() {
   const cliente = new pg.Client({ connectionString: url, connectionTimeoutMillis: 8000 });
   await cliente.connect();
   try {
+    if (process.argv.includes("--pendentes")) {
+      // Só leitura: num banco novo a tabela ainda não existe e tudo está pendente.
+      const { rows: tabela } = await cliente.query(
+        "select to_regclass('wakeclub.migracoes') is not null as existe",
+      );
+      const { rows } = tabela[0].existe
+        ? await cliente.query("select nome from wakeclub.migracoes")
+        : { rows: [] };
+      const feitas = new Set(rows.map((r) => r.nome));
+      for (const nome of arquivos) if (!feitas.has(nome)) console.log(nome);
+      return;
+    }
     await cliente.query("create schema if not exists wakeclub");
     await cliente.query(
       `create table if not exists wakeclub.migracoes (
