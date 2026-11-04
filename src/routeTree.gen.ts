@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AprovarRouteImport } from './routes/aprovar'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as EquipeRouteImport } from './routes/equipe'
 import { Route as FollowupsRouteImport } from './routes/followups'
@@ -39,6 +40,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AprovarRoute = AprovarRouteImport.update({
+  id: '/aprovar',
+  path: '/aprovar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
@@ -140,6 +146,7 @@ const ApiWebhooksVendasRoute = ApiWebhooksVendasRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
   '/followups': typeof FollowupsRoute
@@ -163,6 +170,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
   '/followups': typeof FollowupsRoute
@@ -187,6 +195,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
   '/followups': typeof FollowupsRoute
@@ -212,6 +221,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/aprovar'
     | '/configuracoes'
     | '/equipe'
     | '/followups'
@@ -235,6 +245,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/aprovar'
     | '/configuracoes'
     | '/equipe'
     | '/followups'
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/aprovar'
     | '/configuracoes'
     | '/equipe'
     | '/followups'
@@ -282,6 +294,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  AprovarRoute: typeof AprovarRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   EquipeRoute: typeof EquipeRoute
   FollowupsRoute: typeof FollowupsRoute
@@ -317,6 +330,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aprovar': {
+      id: '/aprovar'
+      path: '/aprovar'
+      fullPath: '/aprovar'
+      preLoaderRoute: typeof AprovarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/configuracoes': {
@@ -458,6 +478,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  AprovarRoute: AprovarRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   EquipeRoute: EquipeRoute,
   FollowupsRoute: FollowupsRoute,
