@@ -7,8 +7,9 @@
 | `bun run lint` | ESLint 9 + typescript-eslint `strict` + React Hooks + Prettier + regras locais `quality/*` e fronteiras do projeto |
 | `bun run typecheck` | `tsc --noEmit` com TypeScript `strict` |
 | `bun run test` | testes `bun:test` (`src/**/*.test.ts`) |
+| `bun run test:db` | testes de banco (`*.db.test.ts`) contra o Postgres descartável de `scripts/banco-teste.sh`; `PORTA=NNNN` escolhe outro contêiner |
 | `bun run quality:rules` | self-check das regras locais (`scripts/verify-quality-rules.mjs` sobre `eslint-rules/index.cjs`) |
-| `bun run check` | os quatro acima, em sequência; sem build, rede, banco ou segredo |
+| `bun run check` | lint, tipos, testes puros e self-check, em sequência; sem build, rede, banco ou segredo (`test:db` fica fora) |
 | `bun run lint:typed` | perfil tipado separado (`eslint.typed.config.mjs`): `no-floating-promises` e `no-misused-promises` |
 | `bun run build` | build Vite/Nitro de produção |
 | `bun run db:check` | views e privilégios das roles no banco real (exige `.env`) |
@@ -37,18 +38,31 @@ Medido por regra antes de definir severidade. Regra sem violação entrou como `
 
 | Regra | Violações | Severidade |
 |---|---|---|
-| `quality/max-lines` (350) | 7 arquivos (`wf02.tsx` 948, `sidebar.tsx` 744, `index.tsx` 655, `reports.tsx` 578, `admin.tsx` 539, `OpportunityWorkspace.tsx` 416, `templates.tsx` 369) | warn |
-| `complexity` (12) | 12 | warn |
+| `quality/max-lines` (350) | 6 arquivos (`wf02.tsx` 951, `sidebar.tsx` 745, `index.tsx` 678, `admin.tsx` 590, `reports.tsx` 581, `OpportunityWorkspace.tsx` 417) | warn |
+| `complexity` (12) | 13 | warn |
 | `react-refresh/only-export-components` | 6 | warn (já era) |
 | `quality/no-direct-console` | 4 (`__root.tsx`, `server.ts` ×2, `start.ts`) | warn |
-| `max-lines-per-function` (150) | 3 | warn |
-| `@typescript-eslint/no-unused-vars` | 3 | warn (antes `off`) |
+| `max-lines-per-function` (150) | 5 | warn |
+| `@typescript-eslint/no-unused-vars` | 2 | warn (antes `off`) |
 | `max-statements` (20) | 2 | warn |
 | `import-x/no-duplicates` | 2 (`src/server.ts`) | warn |
 | `max-depth`, `max-params`, `max-nested-callbacks`, `no-empty`, `no-var`, `prefer-const`, `import-x/no-unresolved` | 0 | error |
 
-Total: 0 erros, 39 avisos. Plano de redução: não refatorar só para zerar. Cada arquivo
-que a fase do WakeCRM tocar sai abaixo do limite ou registra o motivo aqui. Quando uma
+Total recontado em 04/11/2026 ao fechar a fase 1: 0 erros, 40 avisos (`eslint -f json`,
+contagem por `ruleId`). Plano de redução: não refatorar só para zerar. Cada arquivo
+que a fase do WakeCRM tocar sai abaixo do limite ou registra o motivo aqui.
+
+Arquivos tocados pela fase 1 que seguem acima de 350 linhas:
+
+- `src/routes/index.tsx` (678): a Task 12 reindentou o rodapé da conversa para incluir o
+  composer de envio (+22 linhas). Extrair `RodapeConversa` fica deferido; a rota já era
+  grande e a extração é refatoração própria.
+- `src/routes/admin.tsx` (590): as Tasks 10 e 11 acrescentaram monitor da fila, peso e
+  comissão, correção de dono e cadastro com peso/%. Dividir a tela em componentes por
+  seção fica para a fase de componentização.
+
+`src/routes/templates.tsx` saiu da lista (182 linhas).
+ Quando uma
 regra chegar a zero, ela vira `error`. Não use ignore amplo nem comentário de disable
 para esconder violação.
 
@@ -63,14 +77,22 @@ ficam em `warn` e fora do `check` até o primeiro ser corrigido; aí o perfil en
 
 - Teste lógica com decisão: filas, priorização, cálculo, normalização, autorização.
   Exemplos atuais: `src/features/minha-fila/fila.test.ts`,
-  `src/features/opportunities/timeline.test.ts`.
-- Não escreva teste que só repete a implementação. Não há suíte E2E nem banco de
-  teste versionado; o que depende de banco é verificado por `db:check` e teste de
-  privilégio positivo/negativo no ambiente autorizado.
+  `src/features/opportunities/timeline.test.ts`, `src/server/motor/distribuicao.test.ts`.
+- Não escreva teste que só repete a implementação. Não há suíte E2E.
+- Testes de banco ficam em `*.db.test.ts`, com `describe.skipIf(!bancoTesteAtivo)`
+  (`TESTE_BANCO=1`, definido por `scripts/test-db.sh`); por isso `bun run test` os pula
+  e `bun run test:db` os roda. Sobe-se o banco com `bash scripts/banco-teste.sh`
+  (Postgres 14 em Docker, porta 54339, migrações aplicadas e reaplicadas).
+- Isolamento: a role real do motor (`wakecrm_motor`) não tem DELETE, então os testes
+  não limpam o banco; cada um usa dado único (`telefoneUnico`, `criarVendedor`,
+  `desativarTodos` em `src/server/motor/banco-teste.ts`). Testes de privilégio são
+  positivos e negativos, com as roles reais.
+- `db:check` continua sendo a prova de views e privilégios no ambiente autorizado.
 - PWA, push e retorno do WhatsApp só contam como prontos depois de teste em aparelho
   real.
-- Para a fase 1 do WakeCRM, o design exige teste da distribuição por peso, categoria de
-  venda, comissão, cota de ritmo e do normalizador de eventos.
+- Fase 1: distribuição, fila (sequência por chave, retentativas, órfãos), ingestão, saúde,
+  notificações, respostas rápidas, envio, migrações e virada têm testes de banco. O
+  normalizador de eventos da Evolution depende da Task 13.
 
 ## Avaliação do harness
 

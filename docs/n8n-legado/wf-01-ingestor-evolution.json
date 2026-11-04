@@ -1,0 +1,439 @@
+{
+  "name": "wakeclubcrm · WF-01 Ingestor Evolution",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wakeclubcrm/evolution",
+        "options": {}
+      },
+      "id": "10d840e5-a9b7-4496-b52e-cd1d89303c88",
+      "name": "Webhook Evolution",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -464,
+        0
+      ],
+      "webhookId": "9d1ce309-87a3-4c38-8f44-e488a8df371d"
+    },
+    {
+      "parameters": {
+        "jsCode": "const OPT_OUT = /^(pare|parar|para de (mandar|enviar)|sair|stop|descadastr|remover?( meu)?|me tira|n[aã]o (quero|me) (mais|mand|envi)|nunca mais me)/i;\n\nfunction paraE164(entrada) {\n  let d = String(entrada || '').replace(/\\D/g, '');\n  if (!d) return null;\n  if (d.startsWith('55') && d.length === 12) {\n    const ddd = d.slice(2, 4);\n    const local = d.slice(4);\n    if (/^[6-9]/.test(local)) d = '55' + ddd + '9' + local;\n  }\n  if (d.length < 8 || d.length > 15) return null;\n  if (d[0] === '0') return null;\n  return '+' + d;\n}\n\nfunction desembrulhar(msg, nivel) {\n  nivel = nivel || 0;\n  if (!msg || nivel > 5) return msg || {};\n  if (msg.ephemeralMessage) return desembrulhar(msg.ephemeralMessage.message, nivel + 1);\n  if (msg.viewOnceMessage) return desembrulhar(msg.viewOnceMessage.message, nivel + 1);\n  if (msg.viewOnceMessageV2) return desembrulhar(msg.viewOnceMessageV2.message, nivel + 1);\n  if (msg.viewOnceMessageV2Extension) return desembrulhar(msg.viewOnceMessageV2Extension.message, nivel + 1);\n  if (msg.documentWithCaptionMessage) return desembrulhar(msg.documentWithCaptionMessage.message, nivel + 1);\n  if (msg.editedMessage) return desembrulhar(msg.editedMessage.message, nivel + 1);\n  return msg;\n}\n\nfunction extrairTexto(bruta) {\n  const m = desembrulhar(bruta);\n  if (!m || typeof m !== 'object') return null;\n  if (typeof m.conversation === 'string' && m.conversation.trim()) {\n    return { texto: m.conversation, tipo: 'texto' };\n  }\n  if (m.extendedTextMessage && m.extendedTextMessage.text) {\n    return { texto: m.extendedTextMessage.text, tipo: 'texto' };\n  }\n  if (m.imageMessage) {\n    return { texto: m.imageMessage.caption || '[imagem]', tipo: 'imagem' };\n  }\n  if (m.videoMessage) {\n    return { texto: m.videoMessage.caption || '[video]', tipo: 'video' };\n  }\n  if (m.documentMessage) {\n    const arq = m.documentMessage.fileName ? ' ' + m.documentMessage.fileName : '';\n    return { texto: m.documentMessage.caption || ('[documento' + arq + ']'), tipo: 'documento' };\n  }\n  if (m.audioMessage) return { texto: '[audio]', tipo: 'audio' };\n  if (m.stickerMessage) return { texto: '[figurinha]', tipo: 'figurinha' };\n  if (m.contactMessage || m.contactsArrayMessage) return { texto: '[contato]', tipo: 'contato' };\n  if (m.locationMessage || m.liveLocationMessage) {\n    return { texto: '[localizacao]', tipo: 'localizacao' };\n  }\n  if (m.buttonsResponseMessage && m.buttonsResponseMessage.selectedDisplayText) {\n    return { texto: m.buttonsResponseMessage.selectedDisplayText, tipo: 'texto' };\n  }\n  if (m.templateButtonReplyMessage && m.templateButtonReplyMessage.selectedDisplayText) {\n    return { texto: m.templateButtonReplyMessage.selectedDisplayText, tipo: 'texto' };\n  }\n  if (m.listResponseMessage && m.listResponseMessage.singleSelectReply) {\n    const t = m.listResponseMessage.title || m.listResponseMessage.singleSelectReply.selectedRowId;\n    if (t) return { texto: t, tipo: 'texto' };\n  }\n  return null;\n}\n\nfunction paraIso(valor) {\n  if (valor === null || valor === undefined) return new Date().toISOString();\n  const s = String(valor);\n  if (/^\\d+$/.test(s)) {\n    const n = Number(s);\n    const ms = n > 1e12 ? n : n * 1000;\n    const dt = new Date(ms);\n    return isNaN(dt.getTime()) ? new Date().toISOString() : dt.toISOString();\n  }\n  const dt = new Date(s);\n  return isNaN(dt.getTime()) ? new Date().toISOString() : dt.toISOString();\n}\n\nfunction descartar(motivo, extra) {\n  return { json: Object.assign({ ignorar: true, motivo_ignorado: motivo }, extra || {}) };\n}\n\nconst saida = [];\n\nfor (const item of $input.all()) {\n  const corpo = item.json.body || item.json;\n  const evento = String(corpo.event || '').toLowerCase().replace(/_/g, '.');\n  const instancia = corpo.instance || corpo.instanceId || null;\n\n  if (evento && evento !== 'messages.upsert') {\n    saida.push(descartar('evento nao tratado: ' + evento, { evento: evento }));\n    continue;\n  }\n\n  const bruto = corpo.data !== undefined ? corpo.data : null;\n  const lista = Array.isArray(bruto) ? bruto : bruto ? [bruto] : [];\n  if (lista.length === 0) {\n    saida.push(descartar('payload sem data', { evento: evento }));\n    continue;\n  }\n\n  for (const d of lista) {\n    const chave = d.key || {};\n    const jidBruto = String(chave.remoteJid || '');\n\n    if (!jidBruto) {\n      saida.push(descartar('mensagem sem remoteJid'));\n      continue;\n    }\n    if (jidBruto.endsWith('@g.us')) {\n      saida.push(descartar('mensagem de grupo', { jid: jidBruto }));\n      continue;\n    }\n    if (jidBruto.includes('broadcast') || jidBruto.endsWith('@newsletter')) {\n      saida.push(descartar('status ou canal', { jid: jidBruto }));\n      continue;\n    }\n\n    let jidPessoa = jidBruto;\n    if (jidBruto.endsWith('@lid')) {\n      const alt = chave.remoteJidAlt || chave.senderPn || d.remoteJidAlt || '';\n      if (!alt) {\n        saida.push(descartar('jid @lid sem numero real', { jid: jidBruto }));\n        continue;\n      }\n      jidPessoa = String(alt);\n    }\n\n    const telefone = paraE164(jidPessoa.split('@')[0].split(':')[0]);\n    if (!telefone) {\n      saida.push(descartar('telefone invalido', { jid: jidBruto }));\n      continue;\n    }\n\n    const conteudo = extrairTexto(d.message);\n    if (!conteudo) {\n      saida.push(descartar('mensagem sem conteudo aproveitavel', { jid: jidBruto }));\n      continue;\n    }\n\n    const daEquipe = chave.fromMe === true;\n    const texto = String(conteudo.texto).slice(0, 4000);\n    const limpo = texto.trim();\n\n    saida.push({\n      json: {\n        ignorar: false,\n        motivo_ignorado: '',\n        telefone: telefone,\n        nome: daEquipe ? '' : String(d.pushName || '').slice(0, 120),\n        direcao: daEquipe ? 'equipe' : 'lead',\n        texto: texto,\n        tipo_midia: conteudo.tipo,\n        enviada_em: paraIso(d.messageTimestamp),\n        evolution_msg_id: chave.id ? String(chave.id) : '',\n        opt_out: !daEquipe && limpo.length <= 60 && OPT_OUT.test(limpo),\n        instancia: instancia,\n      },\n    });\n  }\n}\n\nreturn saida;"
+      },
+      "id": "961783a9-398d-4e69-acb9-2987b25dc7a6",
+      "name": "Normalizar evento Evolution",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "nao-ignorado",
+              "leftValue": "={{ $json.ignorar }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "38826da8-cc1f-4db9-8aa3-1c5c7f46b58e",
+      "name": "So conversa individual",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        32,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into wakeclub.leads (telefone, nome)\nvalues ($1, nullif($2, ''))\non conflict (telefone) do update\n   set nome = coalesce(wakeclub.leads.nome, nullif(excluded.nome, ''))\nreturning id as lead_id, telefone, nome, etiqueta, opt_out;",
+        "options": {
+          "queryReplacement": "={{ [$json.telefone, $json.nome] }}"
+        }
+      },
+      "id": "5919c93d-2ab0-49a1-8434-bc3e43f3f4ed",
+      "name": "Upsert lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into wakeclub.mensagens\n  (lead_id, direcao, texto, enviada_em, evolution_msg_id, tipo, transcricao_status)\nvalues ($1::uuid, $2, nullif($3, ''), $4::timestamptz, nullif($5, ''), nullif($6::text, ''),\n        case when $6::text = 'audio' and nullif($5, '') is not null\n             then 'pendente' end)\non conflict (evolution_msg_id) do nothing\nreturning id as mensagem_id, lead_id, direcao, transcricao_status;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, $(\"Normalizar evento Evolution\").item.json.direcao, $(\"Normalizar evento Evolution\").item.json.texto, $(\"Normalizar evento Evolution\").item.json.enviada_em, $(\"Normalizar evento Evolution\").item.json.evolution_msg_id, $(\"Normalizar evento Evolution\").item.json.tipo_midia] }}"
+        }
+      },
+      "id": "80766295-2d0b-4afe-8125-16efedbbbd29",
+      "name": "Gravar mensagem",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        432,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "tem-mensagem-id",
+              "leftValue": "={{ $json.mensagem_id || \"\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ecb22667-d9ce-49ef-b96d-9324c19d4e2a",
+      "name": "So mensagem nova",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with antes as (\n  select id, opt_out as opt_out_antes\n    from wakeclub.leads\n   where id = $1::uuid\n),\nmov as (\n  update wakeclub.leads l\n     set ultima_msg_lead_em = case\n           when $2 = 'lead' then greatest(l.ultima_msg_lead_em, $3::timestamptz)\n           else l.ultima_msg_lead_em end,\n         ultima_msg_equipe_em = case\n           when $2 = 'equipe' then greatest(l.ultima_msg_equipe_em, $3::timestamptz)\n           else l.ultima_msg_equipe_em end,\n         n_toques = case when $2 = 'lead' then 0 else l.n_toques end,\n         opt_out = l.opt_out or $4::boolean,\n         etiqueta = case when $4::boolean then 'Negociação encerrada' else l.etiqueta end,\n         qualificar_apos = case\n           when l.opt_out or $4::boolean then null\n           else now() + interval '2 minutes' end\n   where l.id = $1::uuid\n  returning l.id, l.opt_out, l.etiqueta, l.qualificar_apos\n),\ncancelados as (\n  update wakeclub.followups f\n     set status = 'cancelado',\n         motivo_cancelamento = case\n           when $4::boolean then 'opt-out: o lead pediu para parar'\n           else 'conversa viva: houve movimento' end\n   where f.lead_id = $1::uuid\n     and f.status = 'pendente'\n  returning f.id, f.lead_id, f.tipo, f.agendado_para,\n            f.motivo_cancelamento\n),\ntoque as (\n  select distinct on (t.followup_id)\n         t.followup_id, t.aberto_em, t.usuario_id\n    from wakeclub.followup_toques t\n   where t.followup_id in (select id from cancelados)\n     and t.aberto_em >= $3::timestamptz - interval '60 minutes'\n     and t.aberto_em <= $3::timestamptz + interval '5 minutes'\n   order by t.followup_id, t.aberto_em desc\n),\noutbox as (\n  insert into wakeclub.crm_outbox (lead_id, tipo, payload)\n  select m.id,\n         'opt_out',\n         jsonb_build_object('etiqueta', m.etiqueta, 'em', $3::timestamptz)\n    from mov m\n    join antes a on a.id = m.id\n   where m.opt_out and not a.opt_out_antes\n  returning id\n),\nev_cancelado as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select c.lead_id, 'sistema', 'followup_cancelled', 'webhook',\n         case when $4::boolean\n                then 'cancelado por opt-out'\n                else 'cancelado por conversa viva' end,\n         c.motivo_cancelamento,\n         jsonb_build_object(\n           'status', 'pendente',\n           'tipo', c.tipo,\n           'agendado_para', c.agendado_para),\n         jsonb_build_object('status', 'cancelado'),\n         jsonb_build_object('direcao', $2::text),\n         'followup', c.id, $5::text,\n         'wf01:' || $5::text || ':' || c.id::text,\n         null::text, null::text\n    from cancelados c\n  on conflict do nothing\n  returning id\n),\nev_enviado as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select c.lead_id, 'sistema', 'followup_sent', 'webhook',\n         'eco da equipe correlacionado a toque no painel',\n         'mensagem da equipe chegou dentro da janela do toque no botao',\n         '{}'::jsonb,\n         jsonb_build_object('enviado_em', $3::timestamptz),\n         jsonb_build_object(\n           'janela_min', 60,\n           'tolerancia_min', 5,\n           'toque_em', t.aberto_em,\n           'usuario_id', t.usuario_id),\n         'followup', c.id, $5::text,\n         'wf01:' || $5::text || ':' || c.id::text,\n         null::text, null::text\n    from cancelados c\n    join toque t on t.followup_id = c.id\n   where $2 = 'equipe'\n  on conflict do nothing\n  returning id\n)\nselect m.id as lead_id,\n       m.opt_out,\n       m.etiqueta,\n       m.qualificar_apos,\n       (select count(*) from cancelados) as followups_cancelados,\n       (select count(*) from ev_cancelado) as ev_cancelados,\n       (select count(*) from ev_enviado) as ev_enviados\n  from mov m;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, $json.direcao, $(\"Normalizar evento Evolution\").item.json.enviada_em, $(\"Normalizar evento Evolution\").item.json.opt_out, $execution.id] }}"
+        }
+      },
+      "id": "2c4e52e7-86c2-4ed0-ad54-202150a451d8",
+      "name": "Registrar movimento",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        864,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## WF-01 · Ingestor Evolution (porta de entrada unica)\n\nFase 1 do roadmap: espelho. Nada sai daqui para o lead.\n\nA Evolution so aceita UMA url de webhook por instancia, entao este no e a\nporta de entrada de tudo e o Rotear evento separa: messages.upsert segue\npela conversa, os eventos de saude vao para o WF-07 como sub-workflow.\nEvento fora das duas listas morre no switch, sem fallback.\n\nA Evolution entrega as duas pontas da conversa (fromMe true = equipe,\nfalse = lead). Grupo, status e newsletter sao descartados no Code.\n\nNA EVOLUTION, apontar o webhook para a url de producao deste no e marcar\nsomente estes eventos:\n  MESSAGES_UPSERT   conversa (as duas pontas)\n  MESSAGES_UPDATE   ack de entrega, o sinal precoce de restricao\n  CONNECTION_UPDATE queda, reconexao, statusReason\n  QRCODE_UPDATED    pedindo pareamento de novo\n  LOGOUT_INSTANCE   deslogado\nMarcar mais que isso so gera execucao que morre no switch.",
+        "height": 320,
+        "width": 740,
+        "color": 4
+      },
+      "id": "2e8a6ce1-420a-41a9-8e4c-023473af1bc5",
+      "name": "Sticky Note 8426ca57",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        -368
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Idempotencia e debounce\n\nmensagens.evolution_msg_id e unico: webhook repetido nao duplica. Se o\ninsert nao devolve linha, o filtro corta e nada mais acontece.\n\nRegistrar movimento faz tudo o que a chegada de uma mensagem significa:\ncarimba ultima_msg_*, zera n_toques se foi o lead, cancela o followup\npendente (conversa viva) e empurra qualificar_apos = now() + 2min, que e\no debounce do WF-02 sem no Wait.\n\nOpt-out e deterministico aqui, nao decisao de IA: bate a regex, vira\nopt_out = true, etiqueta Negociacao encerrada, e nunca mais recebe nada.\n\nATENCAO WF-03: ao enviar o followup, gravar o key.id devolvido pela\nEvolution em mensagens.evolution_msg_id. Sem isso o eco do proprio envio\nvolta pelo webhook como equipe e cancela o followup seguinte.\n\n",
+        "height": 424,
+        "width": 768,
+        "color": 3
+      },
+      "id": "8023e632-f2b2-459c-85a4-0b9a69373f1f",
+      "name": "Sticky Note 29dfd8b9",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -464
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e-upsert",
+                    "leftValue": "={{ String($json.body?.event ?? $json.event ?? \"\").toLowerCase().replace(/_/g, \".\") }}",
+                    "rightValue": "messages.upsert",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e-connection",
+                    "leftValue": "={{ String($json.body?.event ?? $json.event ?? \"\").toLowerCase().replace(/_/g, \".\") }}",
+                    "rightValue": "connection.update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "e-qrcode",
+                    "leftValue": "={{ String($json.body?.event ?? $json.event ?? \"\").toLowerCase().replace(/_/g, \".\") }}",
+                    "rightValue": "qrcode.updated",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "e-logout",
+                    "leftValue": "={{ String($json.body?.event ?? $json.event ?? \"\").toLowerCase().replace(/_/g, \".\") }}",
+                    "rightValue": "logout.instance",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "e-remove",
+                    "leftValue": "={{ String($json.body?.event ?? $json.event ?? \"\").toLowerCase().replace(/_/g, \".\") }}",
+                    "rightValue": "remove.instance",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "e-startup",
+                    "leftValue": "={{ String($json.body?.event ?? $json.event ?? \"\").toLowerCase().replace(/_/g, \".\") }}",
+                    "rightValue": "application.startup",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "e-ack",
+                    "leftValue": "={{ String($json.body?.event ?? $json.event ?? \"\").toLowerCase().replace(/_/g, \".\") }}",
+                    "rightValue": "messages.update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "or"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3e55a931-1725-4503-a9b2-fef24b520e48",
+      "name": "Rotear evento",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "9U38Mxy8gcljdhkN",
+          "cachedResultName": "wakeclubcrm · WF-07 Saude do numero"
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "323335ef-57e6-4053-bbf3-c690b3c7f552",
+      "name": "Chamar WF-07 saude",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        -144,
+        224
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Normalizar evento Evolution": {
+      "main": [
+        [
+          {
+            "node": "So conversa individual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "So conversa individual": {
+      "main": [
+        [
+          {
+            "node": "Upsert lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert lead": {
+      "main": [
+        [
+          {
+            "node": "Gravar mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gravar mensagem": {
+      "main": [
+        [
+          {
+            "node": "So mensagem nova",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "So mensagem nova": {
+      "main": [
+        [
+          {
+            "node": "Registrar movimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Evolution": {
+      "main": [
+        [
+          {
+            "node": "Rotear evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rotear evento": {
+      "main": [
+        [
+          {
+            "node": "Normalizar evento Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Chamar WF-07 saude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar movimento": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "bffee244-dd1b-45a7-8ac3-c6f3dbfaf514",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "3ggAvcM9RKBi6GQV",
+  "tags": []
+}

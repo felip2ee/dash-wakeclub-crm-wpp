@@ -35,6 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { MonitorDaFila } from "@/features/admin/MonitorDaFila";
+import { PesoEComissao } from "@/features/admin/PesoEComissao";
 import { dataHora, plural } from "@/lib/formato";
 import { cn } from "@/lib/utils";
 import {
@@ -133,6 +135,12 @@ function AdminPage() {
         </div>
       </section>
 
+      <section aria-labelledby="motor" className="space-y-3">
+        <TituloSecao id="motor" numero="4" titulo="Motor" />
+        <MonitorDaFila />
+        <PesoEComissao atendentes={atendentes} />
+      </section>
+
       <section aria-labelledby="equipe">
         <TituloSecao id="equipe" numero="3" titulo="Por atendente" />
         <div className="space-y-3">
@@ -172,12 +180,24 @@ function CadastroAtendente({
   const [usuario, setUsuario] = useState("");
   const [senha, setSenha] = useState("");
   const [labelId, setLabelId] = useState("");
+  const [peso, setPeso] = useState("1");
+  const [comissaoPct, setComissaoPct] = useState("0");
 
   async function cadastrar(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const salvo = await executar(
       "criar-atendente",
-      () => criarAtendente({ data: { nome, usuario, senha, labelId } }),
+      () =>
+        criarAtendente({
+          data: {
+            nome,
+            usuario,
+            senha,
+            labelId: labelId || undefined,
+            peso: Number(peso),
+            comissaoPct: Number(comissaoPct),
+          },
+        }),
       `${nome.trim()} foi cadastrada.`,
     );
     if (!salvo) return;
@@ -186,12 +206,14 @@ function CadastroAtendente({
     setUsuario("");
     setSenha("");
     setLabelId("");
+    setPeso("1");
+    setComissaoPct("0");
   }
 
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>
       <DialogTrigger asChild>
-        <Button disabled={bloqueado || labels.length === 0}>
+        <Button disabled={bloqueado}>
           <UserPlus className="h-4 w-4" /> Nova atendente
         </Button>
       </DialogTrigger>
@@ -253,10 +275,10 @@ function CadastroAtendente({
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Label do WhatsApp</Label>
-              <Select value={labelId} onValueChange={setLabelId} required>
+              <Label>Label do WhatsApp (opcional)</Label>
+              <Select value={labelId} onValueChange={setLabelId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione a label da pessoa" />
+                  <SelectValue placeholder="Sem label" />
                 </SelectTrigger>
                 <SelectContent>
                   {labels.map((label) => (
@@ -270,13 +292,41 @@ function CadastroAtendente({
                 Escolha a label pessoal da atendente, não uma etapa do funil.
               </p>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="atendente-peso">Peso (0 a 10)</Label>
+                <Input
+                  id="atendente-peso"
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={1}
+                  value={peso}
+                  onChange={(e) => setPeso(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="atendente-comissao">Comissão %</Label>
+                <Input
+                  id="atendente-comissao"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={comissaoPct}
+                  onChange={(e) => setComissaoPct(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setAberto(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={bloqueado || !labelId}>
+            <Button type="submit" disabled={bloqueado}>
               Cadastrar atendente
             </Button>
           </DialogFooter>

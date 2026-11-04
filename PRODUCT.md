@@ -8,9 +8,13 @@ perguntou preço ou recebeu link esfria. O produto mantém o CRM preenchido a pa
 conversas, distribui os leads entre a equipe, sugere follow-ups escritos por IA e mostra
 o funil em dinheiro.
 
-**Estado em 04/11/2026:** o motor atual (workflows n8n) está parado. O painel continua
-no ar como espelho do banco, mas sem dados novos. A próxima entrega troca o n8n pelo
-próprio app (WakeCRM), conforme
+**Estado da fase 1 (04/11/2026):** implementada localmente e **não publicada**. Está
+pronto: fila de webhooks, ingestão, distribuição por peso e menção, saúde do número,
+push, área de super admin, respostas rápidas, envio pelo app, migrações versionadas e o
+corte da virada. O n8n segue parado e não volta. A virada está **bloqueada pela
+captura dos eventos reais do Evolution Go** (a publicação do endpoint é o que permite
+capturar; Task 13 do plano): sem o adaptador, o webhook só grava o corpo bruto e o
+envio pelo app fica desligado. Design:
 `docs/superpowers/specs/2026-11-03-wakecrm-motor-proprio-design.md`.
 
 ## Público e papéis
@@ -30,12 +34,13 @@ Só existem esses dois papéis. "Super admin" é a área de configuração do `a
 
 Detalhes, rotas e permissões: `docs/architecture.md`.
 
-## Próxima entrega (WakeCRM, planejado, não implementado)
+## Próxima entrega (WakeCRM)
 
 Em ordem, segundo o design:
 
-1. Atendimento pelo app via Evolution Go, fila de webhooks no Postgres, distribuição por
-   peso e lead "pra sempre" do vendedor.
+1. Fechar a fase 1: capturar os eventos reais do Evolution Go (Task 13), escrever o
+   adaptador e validar envio e mídia em aparelho real; depois publicar e fazer a virada
+   (`docs/runbook-virada.md`).
 2. IA de volta: transcrição e qualificação.
 3. Follow-up com fila de aprovação estilo Reels e modos de ritmo (conservador/aquecido).
 4. Vendas por webhook, categorias (follow-up, atendimento, recompra, espontânea),
@@ -63,8 +68,8 @@ revisitar só se a manutenção de migrações virar problema.
 
 ## Pendências
 
-- Formato real dos eventos do Evolution Go e do webhook de vendas (capturados na fase 1
-  e na fase 4).
+- Formato real dos eventos do Evolution Go (Task 13, bloqueia a publicação da fase 1) e
+  do webhook de vendas (fase 4).
 - Validação em aparelho real de PWA, push e envio.
 
 ## Histórico da refatoração por oportunidades
@@ -101,7 +106,6 @@ Estado atual da refatoração:
 Execute uma fase por vez. Não avance automaticamente para a próxima fase quando houver
 dependência externa, decisão de produto pendente ou risco de alterar comportamento.
 
-
 ### Produto que estamos construindo
 
 A oportunidade passa a ser o centro da experiência. O administrador deve responder
@@ -116,7 +120,6 @@ uma migração imediata. Preserve `/`, `/kanban`, `/wf02`, `/reports`, `/admin`,
 Métricas operacionais são controles: quando representam uma população, devem aplicar o
 filtro correspondente. Não adicione números decorativos nem misture logs técnicos à
 visão operacional.
-
 
 ### Leitura prática das fases
 
@@ -134,7 +137,6 @@ visão operacional.
 - **Fases 13–14:** migrar contato/oportunidade e fonte de etapa progressivamente, com
   compatibilidade e rollback. Só depois considerar drag-and-drop.
 - **Fase 15:** remover navegação antiga apenas após paridade funcional demonstrada.
-
 
 ## Manutenção
 

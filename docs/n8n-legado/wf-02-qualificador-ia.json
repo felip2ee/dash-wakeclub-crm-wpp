@@ -1,0 +1,463 @@
+{
+  "name": "wakeclubcrm · WF-02 Qualificador IA",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with vencidos as (\n  select id\n    from wakeclub.leads\n   where qualificar_apos is not null\n     and qualificar_apos <= now()\n     and opt_out = false\n     and sem_atendimento = false\n   order by qualificar_apos\n   limit 8\n   for update skip locked\n),\nreivindicados as (\n  update wakeclub.leads l\n     set qualificar_apos = null\n    from vencidos v\n   where l.id = v.id\n  returning l.id, l.telefone, l.nome, l.etiqueta, l.origem, l.interesse,\n            l.objecao, l.temperatura, l.resumo, l.data_agendada,\n            l.ultima_msg_lead_em, l.ultima_msg_equipe_em, l.n_toques\n)\nselect r.id as lead_id,\n       r.telefone,\n       r.nome,\n       r.etiqueta,\n       r.origem,\n       r.interesse,\n       r.objecao,\n       r.temperatura,\n       r.resumo,\n       r.n_toques,\n       to_char(r.data_agendada at time zone 'America/Sao_Paulo',\n               'YYYY-MM-DD HH24:MI') as data_agendada_local,\n       to_char(now() at time zone 'America/Sao_Paulo',\n               'YYYY-MM-DD HH24:MI') as agora_local,\n       to_char((now() + interval '30 minutes') at time zone 'America/Sao_Paulo',\n               'YYYY-MM-DD HH24:MI') as minimo_local,\n       to_char((now() + interval '30 days') at time zone 'America/Sao_Paulo',\n               'YYYY-MM-DD HH24:MI') as limite_local,\n       round(extract(epoch from (now() - r.ultima_msg_lead_em)) / 60)::int\n         as min_desde_lead,\n       round(extract(epoch from (now() - r.ultima_msg_equipe_em)) / 60)::int\n         as min_desde_equipe,\n       (select coalesce(json_agg(json_build_object(\n                 'quem', h.direcao,\n                 'em', to_char(h.enviada_em at time zone 'America/Sao_Paulo',\n                               'YYYY-MM-DD HH24:MI'),\n                 'texto', h.texto) order by h.enviada_em), '[]'::json)\n          from (select m.direcao, m.enviada_em, m.texto\n                  from wakeclub.mensagens m\n                 where m.lead_id = r.id\n                 order by m.enviada_em desc\n                 limit 40) h) as historico\n  from reivindicados r;",
+        "options": {}
+      },
+      "id": "c71e530a-5b8c-4c85-8247-0ecccf0da49a",
+      "name": "Reivindicar leads vencidos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -656,
+        48
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const l = $json;\n\nfunction ou(v, alt) {\n  if (v === null || v === undefined || v === '') return alt;\n  return String(v);\n}\n\nconst hist = Array.isArray(l.historico) ? l.historico : [];\nlet conversa = '';\nfor (const m of hist) {\n  let quem = 'IA';\n  if (m.quem === 'lead') quem = 'LEAD';\n  if (m.quem === 'equipe') quem = 'EQUIPE';\n  conversa = conversa + '[' + ou(m.em, '?') + '] ' + quem + ': ' +\n             ou(m.texto, '(sem texto)') + '\\n';\n}\nif (!conversa) conversa = '(nenhuma mensagem registrada)\\n';\n\nconst ficha =\n  'AGORA: ' + ou(l.agora_local, '?') + ' (America/Sao_Paulo)\\n' +\n  'Nao agende followup antes de ' + ou(l.minimo_local, '?') +\n  ' nem depois de ' + ou(l.limite_local, '?') + '.\\n' +\n  '\\n' +\n  'FICHA ATUAL DO LEAD\\n' +\n  'nome: ' + ou(l.nome, '(desconhecido)') + '\\n' +\n  'etiqueta: ' + ou(l.etiqueta, 'Novo Lead') + '\\n' +\n  'origem: ' + ou(l.origem, '(nao sei)') + '\\n' +\n  'interesse: ' + ou(l.interesse, '(nao sei)') + '\\n' +\n  'objecao: ' + ou(l.objecao, '(nao sei)') + '\\n' +\n  'temperatura: ' + ou(l.temperatura, '(nao sei)') + '\\n' +\n  'data agendada: ' + ou(l.data_agendada_local, '(nenhuma)') + '\\n' +\n  'resumo anterior: ' + ou(l.resumo, '(nenhum)') + '\\n' +\n  'followups enviados sem resposta: ' + ou(l.n_toques, '0') + '\\n' +\n  'minutos desde a ultima mensagem do lead: ' +\n  ou(l.min_desde_lead, '(nunca falou)') + '\\n' +\n  'minutos desde a ultima mensagem da equipe: ' +\n  ou(l.min_desde_equipe, '(nunca falou)') + '\\n' +\n  '\\n' +\n  'CONVERSA (mais antiga primeiro)\\n';\n\nreturn {\n  json: {\n    lead_id: l.lead_id,\n    etiqueta_atual: ou(l.etiqueta, 'Novo Lead'),\n    agora_local: l.agora_local,\n    minimo_local: l.minimo_local,\n    limite_local: l.limite_local,\n    prompt_usuario: ficha + conversa,\n  },\n};"
+      },
+      "id": "aca709c4-db6e-4eb5-aec2-6796993d2fda",
+      "name": "Montar prompt do lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt_usuario }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "= Você analisa conversas de WhatsApp da Wake Club, mantém o CRM atualizado e\n  decide quando uma oportunidade deve aparecer na fila de follow-ups da equipe.\n\n  Você NUNCA fala diretamente com o lead e NUNCA envia mensagens.\n  O follow-up é apenas uma sugestão interna. Quando chegar o momento, outro\n  agente redigirá o texto e uma atendente humana decidirá se deve editar e enviar.\n\n  OBJETIVO PRINCIPAL\n\n  Não deixar esfriar um lead que demonstrou desejo, curiosidade comercial ou\n  intenção de agendar.\n\n  Se houver uma oportunidade razoável de retomada, programe o follow-up.\n  Não exija certeza de compra. Perguntar preço, modalidade, horários, localização,\n  pacotes, desconto, disponibilidade ou funcionamento já demonstra interesse.\n\n  REGRA MAIS IMPORTANTE\n\n  Conversa recente não significa followup null.\n\n  Se a última mensagem útil foi da EQUIPE e agora estamos aguardando o LEAD,\n  programe um follow-up para o futuro, mesmo que a equipe tenha respondido há\n  poucos minutos. O horário programado já respeitará o tempo adequado de espera.\n\n  Use followup null somente quando realmente não existe ação comercial futura a\n  ser colocada na fila.\n\n  Se a última mensagem foi do LEAD e ele ainda espera uma resposta da EQUIPE,\n  não programe uma retomada de venda: use followup null, pois primeiro a equipe\n  precisa responder normalmente.\n\n  SINAIS DE DESEJO — PRIORIZE FOLLOW-UP\n\n  Considere especialmente desejando o lead que:\n\n  - perguntou preço, pacotes ou forma de pagamento;\n  - perguntou horários ou disponibilidade;\n  - informou um dia, período ou ocasião em que pretende ir;\n  - disse “fechou”, “tenho interesse”, “vou ver”, “te aviso”, “mais tarde entro\n    em contato”, “pretendo ir” ou equivalente;\n  - recebeu o link do app, mas ainda não concluiu;\n  - tentou cupom, checkout, cadastro, pagamento ou agendamento;\n  - quer alinhar com namorado, amigos ou família;\n  - teve reserva cancelada ou precisa remarcar;\n  - pediu informações concretas sobre wakeboard ou wakesurf;\n  - já foi aluno e demonstrou vontade de fazer outra aula.\n\n  Não trate “vou ver e te aviso” como encerramento. É intenção com uma pequena\n  pendência e deve gerar retomada.\n\n  ETIQUETAS\n\n  Escolha exatamente uma:\n\n  Novo Lead\n  - Chegou, mas ainda não houve conversa comercial suficiente.\n\n  Atendimento\n  - Está tirando dúvidas ou ainda não recebeu o link do app.\n\n  Link enviado\n  - Recebeu o link do app e ainda não concluiu cadastro, compra ou agendamento.\n\n  Aguardando pagamento\n  - Está no checkout, tentou pagar, pediu Pix, enviará comprovante ou encontrou\n    dificuldade no pagamento.\n\n  Agendado\n  - Existe aula marcada com data e hora concretas.\n\n  Aula realizada\n  - A conversa comprova que a aula aconteceu.\n\n  Follow-up\n  - A conversa comercial parou e já está em uma cadência de retomada.\n\n  Negociacao encerrada\n  - Disse claramente que desistiu, não tem interesse ou pediu para não ser\n    contatado. Não use essa etiqueta apenas porque ficou em silêncio.\n\n  TEMPERATURA\n\n  quente:\n  - quer agendar, escolheu dia/período, pediu disponibilidade, recebeu link,\n    entrou no checkout, tentou cupom/pagamento ou demonstrou desejo explícito.\n\n  morno:\n  - perguntou preço, pacotes, funcionamento, modalidade ou localização, mas\n    ainda não indicou quando pretende ir.\n\n  frio:\n  - mensagem genérica sem avanço comercial, contato sem interesse identificável\n    ou ausência de informação suficiente.\n\n  CADÊNCIA INICIAL\n\n  Escolha o primeiro momento adequado conforme o último passo da conversa:\n\n  - Intenção imediata, data próxima ou dificuldade no checkout: +2h.\n  - Link enviado sem conclusão: +4h.\n  - “Vou ver com alguém e te aviso”: +6h.\n  - Informações de preço/pacote respondidas e lead sumiu: +8h.\n  - Interesse genérico, sem intenção concreta: +1 dia.\n  - Disse um dia futuro, como “sexta” ou “outro fim de semana”: programe perto\n    desse momento, antes que a oportunidade passe.\n  - Pediu para chamar em uma data específica: respeite exatamente o prazo.\n\n  Para contatos seguintes sem resposta, use como referência:\n  +1 dia, +3 dias, +7 dias, +15 dias e +30 dias.\n\n  O follow-up não precisa ser enviado automaticamente. Ele apenas aparecerá para\n  revisão humana. Portanto, na dúvida entre perder uma oportunidade interessada\n  e criar uma sugestão revisável, crie a sugestão.\n\n  FOLLOWUP NULL — SOMENTE NESTES CASOS\n\n  - A última mensagem do lead ainda aguarda resposta normal da equipe.\n  - O lead pediu para não receber contato ou encerrou claramente a negociação.\n  - Há reclamação, irritação ou situação sensível que exige tratamento humano.\n  - Já pagou e agendou, sem nenhuma pendência.\n  - A conversa não tem qualquer sinal de interesse comercial.\n  - Existe compromisso concreto que torna uma retomada de venda inadequada.\n\n  Não use followup null apenas porque:\n  - a equipe respondeu recentemente;\n  - o lead disse que vai pensar, verificar ou falar com outra pessoa;\n  - o link acabou de ser enviado;\n  - ainda não se passaram várias horas;\n  - não há certeza de que o lead comprará.\n\n  TIPOS\n\n  reengajar:\n  Lead interessado que deve ser retomado para avançar, concluir, remarcar ou\n  escolher um próximo passo.\n\n  lembrete_d1:\n  Véspera de aula com data e hora confirmadas.\n\n  lembrete_dia:\n  Manhã do dia da aula confirmada.\n\n  pos_aula:\n  Após aula comprovadamente realizada, para agradecimento e continuidade.\n\n  REGRAS DE PREENCHIMENTO\n\n  - Horários em America/Sao_Paulo, formato YYYY-MM-DD HH:MM.\n  - Programe entre 8h e 20h.\n  - Respeite os limites mínimo e máximo informados no contexto.\n  - data_agendada somente com data e hora concretas.\n  - resumo deve dizer: o que deseja, sinais de intenção, onde parou e qual é o\n    próximo passo comercial.\n  - interesse deve registrar modalidade, pacote, quantidade de pessoas, período\n    ou ocasião quando essas informações existirem.\n  - objecao deve registrar a trava real: preço, agenda, acompanhante, checkout,\n    cupom, pagamento, clima, medo ou outra pendência.\n  - motivo do follow-up deve explicar objetivamente por que vale retomar e o que\n    a atendente deve tentar avançar.\n  - Nunca invente fatos, disponibilidade, descontos ou condições.",
+          "maxIterations": 3,
+          "enableStreaming": false
+        }
+      },
+      "id": "1de38e6d-d5f3-4c38-af6f-1914bdcea198",
+      "name": "Qualificador IA",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -208,
+        48
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4-mini",
+          "cachedResultName": "gpt-5.4-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "reasoningEffort": "low",
+          "timeout": 60000,
+          "maxRetries": 2
+        }
+      },
+      "id": "df8b8b1f-e9af-4b77-844f-0e8e5e24982a",
+      "name": "Modelo do Qualificador",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -272,
+        272
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "z5yFYKVFsaQSYjw5",
+          "name": "fernando API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"etiqueta\", \"temperatura\", \"resumo\", \"followup\"],\n  \"properties\": {\n    \"etiqueta\": {\n      \"type\": \"string\",\n      \"enum\": [\"Novo Lead\", \"Atendimento\", \"Link enviado\",\n               \"Aguardando pagamento\", \"Agendado\", \"Aula realizada\",\n               \"Follow-up\", \"Negociacao encerrada\"]\n    },\n    \"interesse\": { \"type\": [\"string\", \"null\"] },\n    \"objecao\": { \"type\": [\"string\", \"null\"] },\n    \"temperatura\": { \"type\": \"string\", \"enum\": [\"quente\", \"morno\", \"frio\"] },\n    \"data_agendada\": { \"type\": [\"string\", \"null\"] },\n    \"resumo\": { \"type\": \"string\" },\n    \"justificativa_curta\": {\n      \"type\": [\"string\", \"null\"],\n      \"description\": \"Uma frase curta com os sinais observaveis da conversa que sustentam a etiqueta e a temperatura escolhidas (o que o lead disse ou deixou de dizer). Nao descreva seu raciocinio nem seus passos.\"\n    },\n    \"followup\": {\n      \"type\": [\"object\", \"null\"],\n      \"required\": [\"quando\", \"tipo\", \"motivo\"],\n      \"properties\": {\n        \"quando\": { \"type\": \"string\" },\n        \"tipo\": {\n          \"type\": \"string\",\n          \"enum\": [\"reengajar\", \"lembrete_d1\", \"lembrete_dia\", \"pos_aula\"]\n        },\n        \"motivo\": { \"type\": \"string\" }\n      }\n    }\n  }\n}"
+      },
+      "id": "d342e6c3-5eb4-45ad-88e6-5941fef9e7a8",
+      "name": "Formato da qualificacao",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -48,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update wakeclub.leads\n   set qualificar_apos = now() + interval '10 minutes'\n where id = $1::uuid\n   and opt_out = false\nreturning id as lead_id,\n          to_char(qualificar_apos at time zone 'America/Sao_Paulo',\n                  'YYYY-MM-DD HH24:MI') as nova_tentativa_local;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id || $(\"Reivindicar leads vencidos\").item.json.lead_id] }}"
+        }
+      },
+      "id": "c24acb6b-0a89-4c7c-96d5-bfe2af4d5210",
+      "name": "Reagendar apos falha",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        816,
+        160
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const ctx = $('Montar prompt do lead').item.json;\nconst cru = $json.output === undefined ? $json : $json.output;\n\nconst ETIQUETAS = [\n  'Novo Lead', 'Atendimento', 'Link enviado', 'Aguardando pagamento',\n  'Agendado', 'Aula realizada', 'Follow-up', 'Negociação encerrada'];\nconst TEMPERATURAS = ['quente', 'morno', 'frio'];\nconst TIPOS = ['reengajar', 'lembrete_d1', 'lembrete_dia', 'pos_aula'];\nconst CARIMBO = /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$/;\n\nfunction texto(v, max) {\n  if (v === null || v === undefined) return '';\n  const s = String(v).trim();\n  if (!s || s === 'null' || s === 'undefined') return '';\n  return s.slice(0, max);\n}\n\nfunction recusar(motivo) {\n  return { json: { valido: false, lead_id: ctx.lead_id, erro: motivo } };\n}\n\nif (!cru || typeof cru !== 'object') return recusar('a IA nao devolveu objeto');\n\nlet etiqueta = texto(cru.etiqueta, 60);\nif (etiqueta === 'Negociacao encerrada') etiqueta = 'Negociação encerrada';\nif (ETIQUETAS.indexOf(etiqueta) === -1) etiqueta = ctx.etiqueta_atual;\n\nlet temperatura = texto(cru.temperatura, 20).toLowerCase();\nif (TEMPERATURAS.indexOf(temperatura) === -1) temperatura = '';\n\nconst resumo = texto(cru.resumo, 2000);\nif (!resumo) return recusar('a IA nao devolveu resumo');\n\nlet dataAgendada = texto(cru.data_agendada, 16);\nif (dataAgendada && !CARIMBO.test(dataAgendada)) dataAgendada = '';\n\nconst f = cru.followup;\nlet temFollowup = false;\nlet quando = '';\nlet tipo = '';\nlet motivo = '';\n\nif (f && typeof f === 'object') {\n  quando = texto(f.quando, 16);\n  tipo = texto(f.tipo, 30).toLowerCase();\n  motivo = texto(f.motivo, 500);\n  if (CARIMBO.test(quando)) {\n    if (TIPOS.indexOf(tipo) === -1) tipo = 'reengajar';\n    if (quando < ctx.minimo_local) quando = ctx.minimo_local;\n    if (quando > ctx.limite_local) quando = ctx.limite_local;\n    temFollowup = true;\n  }\n}\n\nreturn {\n  json: {\n    valido: true,\n    lead_id: ctx.lead_id,\n    etiqueta: etiqueta,\n    interesse: texto(cru.interesse, 500),\n    objecao: texto(cru.objecao, 500),\n    temperatura: temperatura,\n    data_agendada: dataAgendada,\n    resumo: resumo,\n    // Auditoria (§18). Vazio e aceito: campo novo nunca derruba qualificacao.\n    justificativa: texto(cru.justificativa_curta, 300),\n    tem_followup: temFollowup,\n    fup_quando: temFollowup ? quando : '',\n    fup_tipo: temFollowup ? tipo : '',\n    fup_motivo: temFollowup ? motivo : '',\n    erro: '',\n  },\n};"
+      },
+      "id": "f31a63fc-698e-4eff-ac40-6a26b52b937c",
+      "name": "Validar decisao da IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "decisao-valida",
+              "leftValue": "={{ $json.valido }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "54a435f9-1675-43a5-894e-5dfa7be040f2",
+      "name": "Decisao utilizavel",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        368,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with antes as (\n  select id, etiqueta, temperatura, interesse, objecao, data_agendada\n    from wakeclub.leads\n   where id = $1::uuid\n),\natualizado as (\n  update wakeclub.leads l\n     set etiqueta      = $2,\n         interesse     = nullif($3, ''),\n         objecao       = nullif($4, ''),\n         temperatura   = nullif($5, ''),\n         data_agendada = nullif($6::text, '')::timestamp\n                           at time zone 'America/Sao_Paulo',\n         resumo        = nullif($7, '')\n   where l.id = $1::uuid\n     and l.opt_out = false\n  returning l.id, l.etiqueta, l.temperatura, l.interesse, l.objecao,\n            l.data_agendada, l.resumo\n),\ncancelados as (\n  update wakeclub.followups f\n     set status = 'cancelado',\n         motivo_cancelamento = 'requalificacao: a conversa andou'\n   where f.lead_id = (select id from atualizado)\n     and f.status = 'pendente'\n  returning f.id, f.lead_id, f.tipo, f.agendado_para, f.motivo_cancelamento\n),\noutbox as (\n  insert into wakeclub.crm_outbox (lead_id, tipo, payload)\n  select a.id,\n         'qualificacao',\n         jsonb_build_object(\n           'etiqueta', a.etiqueta,\n           'temperatura', a.temperatura,\n           'interesse', a.interesse,\n           'objecao', a.objecao,\n           'data_agendada', a.data_agendada,\n           'resumo', a.resumo)\n    from atualizado a\n  returning id\n),\nev_qualificado as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select a.id, 'qualificador', 'lead_qualified', 'schedule',\n         a.etiqueta || ' / ' || coalesce(a.temperatura, 'sem temperatura'),\n         nullif($8::text, ''),\n         jsonb_build_object(\n           'etiqueta', b.etiqueta,\n           'temperatura', b.temperatura,\n           'interesse', b.interesse,\n           'objecao', b.objecao,\n           'data_agendada', b.data_agendada),\n         jsonb_build_object(\n           'etiqueta', a.etiqueta,\n           'temperatura', a.temperatura,\n           'interesse', a.interesse,\n           'objecao', a.objecao,\n           'data_agendada', a.data_agendada),\n         jsonb_build_object(\n           'resumo_chars', length(coalesce(a.resumo, '')),\n           'followups_cancelados', (select count(*) from cancelados)),\n         'lead', a.id, $9::text,\n         'wf02:' || $9::text || ':' || a.id::text,\n         $10::text, $11::text\n    from atualizado a\n    join antes b on b.id = a.id\n  on conflict do nothing\n  returning id\n),\nev_etapa as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select a.id, 'qualificador', 'stage_changed', 'schedule',\n         coalesce(b.etiqueta, 'sem etiqueta') || ' -> ' || a.etiqueta,\n         nullif($8::text, ''),\n         jsonb_build_object('etiqueta', b.etiqueta),\n         jsonb_build_object('etiqueta', a.etiqueta),\n         '{}'::jsonb,\n         'lead', a.id, $9::text,\n         'wf02:' || $9::text || ':' || a.id::text,\n         $10::text, $11::text\n    from atualizado a\n    join antes b on b.id = a.id\n   where a.etiqueta is distinct from b.etiqueta\n  on conflict do nothing\n  returning id\n),\nev_temperatura as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select a.id, 'qualificador', 'temperature_changed', 'schedule',\n         coalesce(b.temperatura, 'sem leitura') || ' -> ' ||\n           coalesce(a.temperatura, 'sem leitura'),\n         nullif($8::text, ''),\n         jsonb_build_object('temperatura', b.temperatura),\n         jsonb_build_object('temperatura', a.temperatura),\n         '{}'::jsonb,\n         'lead', a.id, $9::text,\n         'wf02:' || $9::text || ':' || a.id::text,\n         $10::text, $11::text\n    from atualizado a\n    join antes b on b.id = a.id\n   where a.temperatura is distinct from b.temperatura\n  on conflict do nothing\n  returning id\n),\nev_cancelado as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select c.lead_id, 'qualificador', 'followup_cancelled', 'schedule',\n         'cancelado na requalificacao',\n         c.motivo_cancelamento,\n         jsonb_build_object(\n           'status', 'pendente',\n           'tipo', c.tipo,\n           'agendado_para', c.agendado_para),\n         jsonb_build_object('status', 'cancelado'),\n         '{}'::jsonb,\n         'followup', c.id, $9::text,\n         'wf02:' || $9::text || ':' || c.id::text,\n         $10::text, $11::text\n    from cancelados c\n  on conflict do nothing\n  returning id\n)\nselect a.id as lead_id,\n       a.etiqueta,\n       a.temperatura,\n       (select count(*) from cancelados) as followups_cancelados,\n       (select count(*) from ev_qualificado)\n         + (select count(*) from ev_etapa)\n         + (select count(*) from ev_temperatura)\n         + (select count(*) from ev_cancelado) as eventos\n  from atualizado a;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, $json.etiqueta, $json.interesse, $json.objecao, $json.temperatura, $json.data_agendada, $json.resumo, $json.justificativa, $execution.id, 'gpt-5.4-mini', 'wf02-2026-08-11'] }}"
+        }
+      },
+      "id": "058b3345-0c5e-4671-a828-06aad710055d",
+      "name": "Gravar qualificacao",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        592,
+        -96
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "quis-agendar",
+              "leftValue": "={{ $(\"Validar decisao da IA\").item.json.tem_followup }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "c69642c3-d0f3-4d61-acc6-6522b56ebec7",
+      "name": "A IA quis agendar",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        816,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with criado as (\n  insert into wakeclub.followups (lead_id, agendado_para, tipo, motivo)\n  select $1::uuid,\n         ($2)::timestamp at time zone 'America/Sao_Paulo',\n         $3,\n         nullif($4, '')\n   where not exists (\n           select 1\n             from wakeclub.followups f\n            where f.lead_id = $1::uuid\n              and f.status = 'pendente')\n  returning id, lead_id, tipo, agendado_para, motivo\n),\nevento as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select c.lead_id, 'qualificador', 'followup_created', 'schedule',\n         c.tipo || ' em ' ||\n           to_char(c.agendado_para at time zone 'America/Sao_Paulo',\n                   'YYYY-MM-DD HH24:MI'),\n         c.motivo,\n         '{}'::jsonb,\n         jsonb_build_object(\n           'tipo', c.tipo,\n           'agendado_para', c.agendado_para,\n           'status', 'pendente'),\n         '{}'::jsonb,\n         'followup', c.id, $5::text,\n         'wf02:' || $5::text || ':' || c.id::text,\n         $6::text, $7::text\n    from criado c\n  on conflict do nothing\n  returning id\n)\nselect c.id as followup_id, c.lead_id, c.tipo,\n       to_char(c.agendado_para at time zone 'America/Sao_Paulo',\n               'YYYY-MM-DD HH24:MI') as agendado_para_local,\n       (select count(*) from evento) as eventos\n  from criado c;",
+        "options": {
+          "queryReplacement": "={{ [$(\"Validar decisao da IA\").item.json.lead_id, $(\"Validar decisao da IA\").item.json.fup_quando, $(\"Validar decisao da IA\").item.json.fup_tipo, $(\"Validar decisao da IA\").item.json.fup_motivo, $execution.id, 'gpt-5.4-mini', 'wf02-2026-08-11'] }}"
+        }
+      },
+      "id": "f31409b2-ade5-4e4e-8bc0-457b18613a58",
+      "name": "Agendar followup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1040,
+        -144
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## WF-02 · Qualificador IA\n\nFase 2 do roadmap. A IA le a conversa e preenche o CRM. Nada sai para o\nlead aqui: este workflow so escreve no banco e agenda.\n\nReivindicar leads vencidos e o debounce do §4 acontecendo: pega quem tem\nqualificar_apos vencido, zera o carimbo no mesmo comando e devolve ja com\nas ultimas 40 mensagens agregadas em json. FOR UPDATE SKIP LOCKED faz duas\nexecucoes sobrepostas pegarem leads diferentes, entao rodar de minuto em\nminuto e seguro.\n\nUma linha por lead do inicio ao fim: o historico vem agregado em json_agg\njustamente para nao virar N linhas e quebrar o pareamento de itens.\n\nTodos os horarios trocados com a IA sao texto YYYY-MM-DD HH:MM em\nAmerica/Sao_Paulo. O banco converte na entrada e na saida. Assim a IA nunca\nlida com fuso e a comparacao de limites vira comparacao de string.",
+        "height": 632,
+        "width": 740,
+        "color": 4
+      },
+      "id": "ada6695a-be01-472e-9d8a-f219dd96b433",
+      "name": "Sticky Note 66ed0284",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -976,
+        -816
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## O que a IA pode e nao pode\n\nO parser exige o JSON do esquema, mas quem manda e o Validar decisao da IA:\netiqueta fora da lista do §4 cai para a etiqueta atual, temperatura\ninvalida vira null, tipo desconhecido vira reengajar e o horario e preso\nentre now()+30min e now()+30d. Nenhuma saida de LLM chega no banco sem\npassar por aqui: um CHECK estourando derrubaria a execucao inteira.\n\nSe a IA falhar ou devolver lixo, o lead nao se perde: Reagendar apos falha\ndevolve qualificar_apos para now()+10min e ele volta na proxima varredura.\nSem isso o carimbo ja foi zerado na reivindicacao e o lead ficaria orfao.\n\nGravar qualificacao cancela o followup pendente; Agendar followup cria o\nnovo, nesta ordem (§6). O insert ainda tem um not exists de guarda: se o\ncancelamento nao pegou, ele nao insere em vez de estourar o indice unico\nfollowups_um_pendente_por_lead.\n\nHorario comercial NAO e tratado aqui de proposito (§7.1): filtro duro e\nWHERE do WF-03. Um followup marcado para as 3h da manha simplesmente nao\naparece na query de disparo e e pego na varredura das 8h.",
+        "height": 660,
+        "width": 960,
+        "color": 3
+      },
+      "id": "6e05a822-ce8d-4f26-9e99-9352a36faabd",
+      "name": "Sticky Note 299ec915",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        -816
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "5a2efa89-52e7-41e5-b27b-84ebb21cb33f",
+      "name": "A cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -880,
+        48
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Reivindicar leads vencidos": {
+      "main": [
+        [
+          {
+            "node": "Montar prompt do lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar prompt do lead": {
+      "main": [
+        [
+          {
+            "node": "Qualificador IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualificador IA": {
+      "main": [
+        [
+          {
+            "node": "Validar decisao da IA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reagendar apos falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo do Qualificador": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Qualificador IA",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formato da qualificacao": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Qualificador IA",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar decisao da IA": {
+      "main": [
+        [
+          {
+            "node": "Decisao utilizavel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decisao utilizavel": {
+      "main": [
+        [
+          {
+            "node": "Gravar qualificacao",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reagendar apos falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gravar qualificacao": {
+      "main": [
+        [
+          {
+            "node": "A IA quis agendar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reagendar apos falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A IA quis agendar": {
+      "main": [
+        [
+          {
+            "node": "Agendar followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A cada 15 minutos": {
+      "main": [
+        [
+          {
+            "node": "Reivindicar leads vencidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "c53df502-be54-4cfd-aebb-04d02352bd01",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "qYg0xFamSUYY0wtA",
+  "tags": []
+}

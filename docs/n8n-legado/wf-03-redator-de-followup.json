@@ -1,0 +1,660 @@
+{
+  "name": "wakeclubcrm · WF-03 Redator de followup",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "862a4cb6-02cb-4fb0-9399-16e2e608208f",
+      "name": "A cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -896,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n    f.id as followup_id,\n    f.lead_id,\n    f.tipo,\n    f.motivo,\n    l.nome,\n    l.etiqueta,\n    l.interesse,\n    l.objecao,\n    l.temperatura,\n    l.resumo,\n    l.n_toques,\n    u.nome as atendente_nome,\n    to_char(l.data_agendada at time zone 'America/Sao_Paulo',\n            'YYYY-MM-DD HH24:MI') as data_agendada_local,\n    to_char(now() at time zone 'America/Sao_Paulo',\n            'YYYY-MM-DD HH24:MI') as agora_local,\n    to_char((now() + interval '30 minutes') at time zone 'America/Sao_Paulo',\n            'YYYY-MM-DD HH24:MI') as minimo_local,\n    to_char((now() + interval '30 days') at time zone 'America/Sao_Paulo',\n            'YYYY-MM-DD HH24:MI') as limite_local,\n    round(extract(epoch from (now() - l.ultima_msg_lead_em)) / 60)::int\n      as min_desde_lead,\n    round(extract(epoch from (now() - l.ultima_msg_equipe_em)) / 60)::int\n      as min_desde_equipe,\n    (select coalesce(json_agg(json_build_object(\n              'quem', h.direcao,\n              'em', to_char(h.enviada_em at time zone 'America/Sao_Paulo',\n                            'YYYY-MM-DD HH24:MI'),\n              'texto', h.texto) order by h.enviada_em), '[]'::json)\n       from (select m.direcao, m.enviada_em, m.texto\n               from wakeclub.mensagens m\n              where m.lead_id = f.lead_id\n              order by m.enviada_em desc\n              limit 30) h) as historico,\n    (select coalesce(json_agg(json_build_object(\n              'em', to_char(a.sugerido_em at time zone 'America/Sao_Paulo',\n                            'YYYY-MM-DD HH24:MI'),\n              'tipo', a.tipo,\n              'texto', a.texto_sugerido) order by a.sugerido_em), '[]'::json)\n       from (select b.tipo, b.texto_sugerido, b.sugerido_em\n               from wakeclub.followups b\n              where b.lead_id = f.lead_id\n                and b.texto_sugerido is not null\n                and b.id <> f.id\n              order by b.sugerido_em desc\n              limit 5) a) as textos_anteriores\n  from wakeclub.followups f\n  join wakeclub.leads l on l.id = f.lead_id\n  join wakeclub.usuarios u on u.id = l.atendente_id\n where f.status = 'pendente'\n   and f.texto_sugerido is null\n   and f.agendado_para <= now()\n   and l.opt_out = false\n   and l.sem_atendimento = false\n   and extract(hour from now() at time zone 'America/Sao_Paulo') between 8 and 19\n order by f.agendado_para\n limit 10;",
+        "options": {}
+      },
+      "id": "f217184c-1ce8-4f30-a49e-f11f14736d02",
+      "name": "Buscar followups a redigir",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -672,
+        320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\n\nconst rotulo = (q) => (q === \"lead\" ? \"LEAD\" : q === \"equipe\" ? \"EQUIPE\" : \"IA\");\nconst hist = Array.isArray(d.historico) ? d.historico : [];\nconst conversa = hist.length\n  ? hist.map((m) => \"[\" + m.em + \"] \" + rotulo(m.quem) + \": \" + m.texto).join(\"\\n\")\n  : \"(sem mensagens)\";\n\nconst ficha = [\n  \"AGORA: \" + d.agora_local + \" (America/Sao_Paulo)\",\n  \"LEAD: \" + (d.nome || \"sem nome\"),\n  \"ETIQUETA: \" + (d.etiqueta || \"-\"),\n  \"TEMPERATURA: \" + (d.temperatura || \"-\"),\n  \"INTERESSE: \" + (d.interesse || \"-\"),\n  \"OBJECAO: \" + (d.objecao || \"-\"),\n  \"RESUMO: \" + (d.resumo || \"-\"),\n  \"TOQUES SEM RESPOSTA: \" + (d.n_toques ?? 0),\n  \"MINUTOS DESDE A ULTIMA DO LEAD: \" + (d.min_desde_lead ?? \"nunca\"),\n  \"MINUTOS DESDE A ULTIMA DA EQUIPE: \" + (d.min_desde_equipe ?? \"nunca\"),\n  \"AULA MARCADA PARA: \" + (d.data_agendada_local || \"nao ha\"),\n  \"\",\n  \"FOLLOW-UP EM QUESTAO\",\n  \"  tipo: \" + d.tipo,\n  \"  motivo de quem agendou: \" + (d.motivo || \"-\"),\n].join(\"\\n\");\n\nreturn { json: { ...d, prompt_usuario: ficha + \"\\n\\nCONVERSA:\\n\" + conversa } };"
+      },
+      "id": "10b7b6ed-8023-476f-a261-8385721f4794",
+      "name": "Montar prompt do porteiro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt_usuario }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Voce decide se um follow-up ja agendado ainda faz sentido AGORA. Voce nao\nescreve mensagem nenhuma.\n\nO DEFAULT E DEIXAR PASSAR. So barre com motivo claro nos dados. Barrar demais\ne o pior erro que voce pode cometer aqui: uma sugestao ruim custa um toque\nignorado de uma vendedora, uma sugestao que nunca existiu custa um lead.\n\nBarre (enviar = false) quando:\n- a conversa esta viva: a equipe respondeu ha pouco ou o lead esta no assunto;\n- o follow-up ficou obsoleto: foi agendado pra cobrar algo que ja aconteceu\n  (ex: agendado como \"pensou no pacote?\" e o lead ja pagou);\n- o clima azedou: reclamacao, irritacao, cobranca. Follow-up de venda aqui\n  queima o lead;\n- o texto sairia redundante com o que a equipe ja mandou na mao.\n\nSe o lead deu um prazo explicito que ainda nao chegou (\"me chama semana que\nvem\"), barre E preencha reagendar_para no formato YYYY-MM-DD HH:MM.\n\nNao barre por duvida generica nem por achar que \"talvez seja cedo demais\".\n\nE NAO BARRE porque ja houve toque anterior sem resposta. Lead que sumiu leva\nvarios toques espacados, cada um com um angulo novo, e quem cuida de nao\nrepetir e o redator, nao voce. \"Ja mandaram um follow-up e ele nao respondeu\"\ne a descricao do trabalho, nao um motivo pra barrar. Silencio do lead nunca e\nmotivo: se fosse, o follow-up so aconteceria pra quem responde.\n\nO motivo deve ser curto e concreto: quem vai ler ele e uma pessoa conferindo\nse voce esta calibrado.",
+          "maxIterations": 2,
+          "enableStreaming": false
+        }
+      },
+      "id": "fb273b62-463b-4ccc-80a7-129247e4f4c9",
+      "name": "Porteiro IA",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -224,
+        320
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4-mini",
+          "cachedResultName": "gpt-5.4-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "reasoningEffort": "low",
+          "timeout": 60000,
+          "maxRetries": 2
+        }
+      },
+      "id": "c70818ef-03ff-4679-bb7e-2d36e80358fd",
+      "name": "Modelo do Porteiro",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -256,
+        544
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "z5yFYKVFsaQSYjw5",
+          "name": "fernando API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"enviar\", \"motivo\"],\n  \"properties\": {\n    \"enviar\": { \"type\": \"boolean\" },\n    \"motivo\": { \"type\": \"string\" },\n    \"reagendar_para\": { \"type\": [\"string\", \"null\"] }\n  }\n}"
+      },
+      "id": "fd49597b-c3e7-46e7-8f8d-7630b592c128",
+      "name": "Formato da decisao",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -80,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const ctx = $('Montar prompt do porteiro').item.json;\nconst cru = $json.output === undefined ? $json : $json.output;\n\nlet enviar = typeof cru.enviar === 'boolean' ? cru.enviar : true;\nlet motivo = String(cru.motivo ?? '').trim().slice(0, 400);\nlet quando = String(cru.reagendar_para ?? '').trim();\n\nif (enviar) quando = '';\n\nif (quando && !/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$/.test(quando)) quando = '';\nif (quando) {\n  if (quando < ctx.minimo_local) quando = ctx.minimo_local;\n  if (quando > ctx.limite_local) quando = ctx.limite_local;\n}\n\nif (!enviar && !motivo) motivo = 'o porteiro barrou sem dizer o motivo';\n\nreturn {\n  json: {\n    ...ctx,\n    enviar,\n    motivo_porteiro: motivo,\n    reagendar_para: quando,\n    tem_reagendamento: quando !== \"\",\n  },\n};"
+      },
+      "id": "44713349-b927-4f68-954f-76c04e114cd7",
+      "name": "Validar decisao do porteiro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.enviar }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "26aa8a3b-ba3e-49e1-87cc-0f37f7abd335",
+      "name": "Porteiro liberou?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        352,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\n\nconst rotulo = (q) => (q === \"lead\" ? \"LEAD\" : q === \"equipe\" ? \"EQUIPE\" : \"IA\");\nconst hist = Array.isArray(d.historico) ? d.historico : [];\nconst conversa = hist.length\n  ? hist.map((m) => \"[\" + m.em + \"] \" + rotulo(m.quem) + \": \" + m.texto).join(\"\\n\")\n  : \"(sem mensagens)\";\n\nconst antes = Array.isArray(d.textos_anteriores) ? d.textos_anteriores : [];\nconst anteriores = antes.length\n  ? antes.map((t) => \"[\" + t.em + \"] (\" + t.tipo + \") \" + t.texto).join(\"\\n\")\n  : \"(nenhum ainda, este e o primeiro toque)\";\n\n// Primeiro nome so: \"isadora\" soa como gente, \"isadora souza\" soa como cadastro.\nconst atendente = String(d.atendente_nome || \"\").trim().split(/\\s+/)[0] || \"a equipe\";\n\n// MODO: o piso deterministico entre reabrir a conversa e retomar um assunto\n// concreto. Fica em codigo porque deixar o modelo julgar sozinho e o que\n// produzia link e oferta em todo texto: escrevendo, ele sempre acha um motivo\n// pra empurrar. O prompt pode SUBIR pra RETOMAR se achar o pedido nas\n// palavras do proprio lead, e o default de duvida e REABRIR.\n// \"Link enviado\" ficou de fora de proposito: essa etiqueta registra o que a\n// EQUIPE fez, nao o que o lead pediu. A equipe manda valor e link logo no\n// comeco pra quem so perguntou \"como funciona\", e promover esse lead a RETOMAR\n// era autorizar o modelo a remandar o mesmo link. Se o lead tiver pedido de\n// verdade, o proprio prompt sobe o modo pelas palavras dele.\nconst ETAPAS_CONCRETAS = [\"aguardando pagamento\", \"agendado\", \"aula realizada\"];\nconst TIPOS_CONCRETOS = [\"lembrete_d1\", \"lembrete_dia\", \"pos_aula\"];\nconst etiquetaBaixa = String(d.etiqueta || \"\").trim().toLowerCase();\nconst temAula = Boolean(d.data_agendada_local);\nconst tipoConcreto = TIPOS_CONCRETOS.includes(String(d.tipo || \"\"));\nconst retomar = temAula || tipoConcreto || ETAPAS_CONCRETAS.includes(etiquetaBaixa);\nconst modo = retomar ? \"RETOMAR\" : \"REABRIR\";\nconst porqueModo = temAula\n  ? \"o lead tem aula marcada\"\n  : tipoConcreto\n    ? \"follow-up de aula marcada\"\n    : retomar\n      ? \"a etapa do funil (\" + d.etiqueta + \") mostra pedido concreto\"\n      : etiquetaBaixa === \"link enviado\"\n        ? \"Link enviado registra o que a EQUIPE fez, nao pedido do lead\"\n        : \"a etapa do funil nao mostra nenhum pedido concreto do lead\";\n\n// Link ja mandado e fato do historico, entao vem daqui e nao da leitura do\n// modelo. Conta tambem o que a EQUIPE mandou na mao: o caso comum e a\n// atendente ter despejado valores e link na primeira resposta, e insistir\n// nisso e o que fazia o texto soar como cobranca.\nconst tudoQueJaFoi = hist.concat(antes).map((m) => String(m.texto || \"\")).join(\" \").toLowerCase();\nconst jaMandados = [];\nif (tudoQueJaFoi.includes(\"wakeclub.com.br/agendar\")) jaMandados.push(\"o link de agendar\");\nif (tudoQueJaFoi.includes(\"wakeclub.com.br/carteira\")) jaMandados.push(\"o link da carteira (valores)\");\nconst linhaLinks = jaMandados.length\n  ? jaMandados.join(\" e \") + \" ja esta com o lead. NAO mande de novo.\"\n  : \"nenhum ainda\";\n\nconst ficha = [\n  \"AGORA: \" + d.agora_local + \" (America/Sao_Paulo)\",\n  \"VOCE E: \" + atendente,\n  \"MODO: \" + modo + \" (\" + porqueModo + \")\",\n  \"NUMERO DESTE TOQUE: \" + (antes.length + 1),\n  \"LINKS JA MANDADOS: \" + linhaLinks,\n  \"LEAD: \" + (d.nome || \"sem nome\"),\n  \"ETIQUETA: \" + (d.etiqueta || \"-\"),\n  \"TEMPERATURA: \" + (d.temperatura || \"-\"),\n  \"INTERESSE: \" + (d.interesse || \"-\"),\n  \"OBJECAO QUE TRAVOU: \" + (d.objecao || \"-\"),\n  \"RESUMO DA CONVERSA: \" + (d.resumo || \"-\"),\n  \"TOQUES SEM RESPOSTA ATE AGORA: \" + (d.n_toques ?? 0),\n  \"AULA MARCADA PARA: \" + (d.data_agendada_local || \"nao ha\"),\n  \"\",\n  \"ESTE FOLLOW-UP\",\n  \"  tipo: \" + d.tipo,\n  \"  por que foi agendado: \" + (d.motivo || \"-\"),\n].join(\"\\n\");\n\nconst prompt = ficha +\n  \"\\n\\nCONVERSA ATE AQUI:\\n\" + conversa +\n  \"\\n\\nTEXTOS QUE VOCE JA MANDOU NESTE LEAD (nao repita o angulo):\\n\" + anteriores +\n  \"\\n\\nEscreva a mensagem no modo \" + modo + \".\";\n\nreturn { json: { ...d, prompt_usuario: prompt, atendente_primeiro_nome: atendente, modo } };"
+      },
+      "id": "70c5cf5a-eb6d-4580-a643-2bdf5ff6800f",
+      "name": "Montar prompt do redator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt_usuario }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Voce escreve UMA mensagem de WhatsApp para um lead da Wake Club, escola de\nwakeboard e wakesurf em Palmas.\n\nQuem assina e a vendedora que atende esse lead; o nome dela vem no contexto.\nEscreva em primeira pessoa, como ela falaria. Ela le o texto antes de enviar:\nse nao soar como ela, ela nao manda, e a mensagem morre ali.\n\nO QUE ESTA MENSAGEM E (leia isto antes de qualquer outra regra)\n\nEsse lead parou de responder. Follow-up serve pra REABRIR a conversa, nao pra\nfechar a venda. Quem sumiu nao sumiu por falta de argumento: mandar mais\ninformacao, mais link e mais chamada pra acao empurra ele pra mais longe.\nO contexto traz o campo MODO, e ele manda no que voce escreve.\n\nMODO REABRIR (o padrao, e a maioria dos casos)\n\nO lead nunca pediu, com as palavras dele, valor, link, horario ou pra marcar.\nEntao:\n- UMA frase curta. So isso. Chame pelo primeiro nome e faca uma pergunta\n  aberta e leve. Os exemplos abaixo mostram o TAMANHO e o TOM certos. NAO\n  copie nenhum deles: escreva a sua, com as palavras dessa conversa. Varias\n  vendedoras leem essa fila no mesmo dia, e texto identico em leads\n  diferentes denuncia que quem escreveu foi um robo.\n    \"Oi Felipe, tudo certo por ai?\"\n    \"Oi Felipe, e ai, seguiu a ideia de fazer a aula?\"\n    \"Felipe, chegou a pensar melhor?\"\n    \"Oi Felipe, some nao. Ainda pensando em vir?\"\n  E so pergunte se ele \"deu uma olhada\" se ele tiver recebido alguma coisa\n  pra olhar. Se nao recebeu, a pergunta nao faz sentido.\n- SEM link. SEM pacote. SEM preco. SEM horario. SEM \"posso te ajudar a\n  escolher\". SEM lembrar do que esta incluso. SEM explicar como funciona.\n  SEM chamada pra acao de nenhum tipo. Nada disso foi pedido.\n- Nao repita o argumento que a equipe ja usou na conversa.\n- Se ja houve toques anteriores, o proximo e ainda mais curto e com outra\n  palavra, nunca com mais informacao.\n\nMODO RETOMAR\n\nO lead pediu algo concreto com as palavras dele e ficou sem concluir (pediu\nvalor, pediu o link, perguntou horario, disse que ia marcar, ou ja tem aula\nmarcada). Entao:\n- Retome SO aquele ponto, em duas frases no maximo.\n- UMA pergunta, e ela tem que ser respondivel numa linha.\n- Link so se ele for literalmente a resposta do que o lead pediu E se ele\n  ainda nao tiver sido mandado. Se ja foi, ele ja esta no celular do lead:\n  remandar nao ajuda, so soa como cobranca.\n- Continua proibido pressionar: nada de \"eu te ajudo a concluir agora\",\n  \"antes que o horario passe\", \"aproveita\", \"so falta voce\".\n\nO MODO do contexto vem da etapa do funil e e so um piso. Voce pode subir de\nREABRIR pra RETOMAR se achar o pedido nas palavras do PROPRIO LEAD na\nconversa (nao no que a equipe ofereceu). Pode descer de RETOMAR pra REABRIR\nse nao achar pedido nenhum. Na duvida, REABRIR: perguntar \"ta por ai?\" nao\ncusta nada, empurrar cedo demais custa o lead.\n\nTOM\n- Proximo, educado, leve, objetivo, confiante. Consultor que conduz, nunca\n  vendedor que empurra.\n- CURTO. Uma frase no modo REABRIR, duas no modo RETOMAR. A pessoa esta no\n  WhatsApp, nao lendo um email.\n- Uma pergunta por mensagem, nunca duas.\n- Termine na pergunta, nunca numa proposta.\n- Sem emoji. Sem travessao.\n- Nunca escreva: acho, talvez, infelizmente, se eu nao me engano, eu acredito,\n  normalmente, eu acho que da.\n- Prefira: pode ficar tranquilo, funciona assim, o mais indicado e, a melhor\n  opcao nesse caso e, nossa experiencia mostra.\n\nREGRAS DURAS\n- NUNCA invente link. Os dois unicos permitidos sao:\n    marcar aula: https://www.wakeclub.com.br/agendar\n    ver valores e comprar pacote: https://www.wakeclub.com.br/carteira\n  Qualquer outro link e removido automaticamente antes de a mensagem chegar\n  em alguem. Se nao precisar de link, nao ponha nenhum. No modo REABRIR nunca\n  precisa.\n- NUNCA remande um link que ja aparece na conversa ou num toque anterior, nao\n  importa quem mandou nem ha quanto tempo. O contexto traz o campo LINKS JA\n  MANDADOS justamente pra voce nao precisar procurar isso no historico. Se for\n  mesmo necessario falar dele, fale em palavras (\"o link que te mandei\"), sem\n  repetir a URL. Muita gente recebe link no comeco da conversa sem ter pedido:\n  insistir nele e a forma mais rapida de empurrar o lead pra longe.\n- NUNCA cite valor, preco, desconto ou cupom, nem repita um que apareca no\n  historico. Para valores, mande o link da carteira, e so no modo RETOMAR.\n- NUNCA invente horario livre, vaga, promocao ou promessa que nao esteja no\n  contexto.\n- NUNCA repita o angulo de um follow-up anterior. Os textos anteriores estao\n  no contexto exatamente pra voce nao repetir. Cada toque tem um angulo novo.\n- Nao se apresente: a conversa ja existe.\n- Nao peca desculpas por estar mandando mensagem e nao diga que esta \"so\n  passando pra lembrar\".\n\nFATOS (so no modo RETOMAR, e so se responderem algo que o lead perguntou.\nNo modo REABRIR nao entra nenhum deles)\n- Aulas todos os dias, 8h as 18h, por agendamento.\n- Fica na Summer Nautica, em Palmas, perto da Praia da Graciosa.\n- Incluso: prancha, colete, barco, combustivel e instrutor. O aluno leva so\n  roupa de banho e toalha.\n- Nao existe aula experimental.\n- Agendamento e pagamento sao pelo aplicativo.\n- Remarcacao com 24h de antecedencia, ou por chuva na hora da aula.",
+          "maxIterations": 2,
+          "enableStreaming": false
+        }
+      },
+      "id": "a4f3c6ba-fefd-424c-afdd-dffee48cf3db",
+      "name": "Redator IA",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        800,
+        -96
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4",
+          "cachedResultName": "gpt-5.4"
+        },
+        "builtInTools": {},
+        "options": {
+          "reasoningEffort": "medium",
+          "timeout": 90000,
+          "maxRetries": 2
+        }
+      },
+      "id": "fbcb2211-036f-4c72-8f5a-d832533966cd",
+      "name": "Modelo do Redator",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        768,
+        128
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "z5yFYKVFsaQSYjw5",
+          "name": "fernando API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"texto\"],\n  \"properties\": {\n    \"texto\": { \"type\": \"string\" }\n  }\n}"
+      },
+      "id": "a1b8cab1-d3a3-44ab-b729-776d9411569d",
+      "name": "Formato do texto",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const ctx = $('Montar prompt do redator').item.json;\nconst cru = $json.output === undefined ? $json : $json.output;\n\nconst PERMITIDOS = [\n  'https://www.wakeclub.com.br/agendar',\n  'https://www.wakeclub.com.br/carteira',\n];\n\nlet texto = String(cru.texto ?? '').trim();\n\ntexto = texto.replace(/(?<!\\/\\/)\\bwww\\.[^\\s)>\\]]+/gi, (u) => 'https://' + u);\n\ntexto = texto.replace(/https?:\\/\\/[^\\s)>\\]]+/gi, (u) => {\n  const limpo = u.replace(/[.,;:!?]+$/, '');\n  return PERMITIDOS.includes(limpo.toLowerCase()) ? limpo : '';\n});\n\ntexto = texto.replace(/[\\u{1F000}-\\u{1FAFF}\\u{2600}-\\u{27BF}\\u{FE0F}\\u{2B00}-\\u{2BFF}]/gu, '');\ntexto = texto.replace(/[—–]/g, ' ');\n\ntexto = texto.replace(/[ \\t]+/g, ' ').replace(/ ?\\n ?/g, '\\n').replace(/\\n{3,}/g, '\\n\\n').trim();\nif (texto.length > 600) {\n  texto = texto.slice(0, 600).replace(/\\s+\\S*$/, '').trim();\n}\n\n// O piso e 10 e nao 20 desde 06/08/2026: no modo REABRIR a mensagem certa e\n// uma frase so (\"Felipe, ta por ai?\" tem 18 caracteres), entao 20 rejeitaria\n// exatamente o texto que passamos a querer.\nif (texto.length < 10) {\n  throw new Error('texto vazio ou curto demais depois da limpeza');\n}\n\nreturn { json: { followup_id: ctx.followup_id, lead_id: ctx.lead_id, texto } };"
+      },
+      "id": "a2c9e7e5-700e-40b5-b141-62f9ad300052",
+      "name": "Validar texto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1152,
+        -64
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with gravado as (\n  update wakeclub.followups f\n     set texto_sugerido = nullif($2, ''),\n         sugerido_em = now()\n   where f.id = $1::uuid\n     and f.texto_sugerido is null\n  returning f.id, f.lead_id, f.tipo\n), notificado as (\n  insert into wakeclub.notificacoes (usuario_id, followup_id, tipo, titulo, corpo, url)\n  select l.atendente_id,\n         g.id,\n         'followup',\n         'Follow-up pronto: ' || coalesce(nullif(l.nome, ''), l.telefone),\n         left($2, 120),\n         '/followups'\n    from gravado g\n    join wakeclub.leads l on l.id = g.lead_id\n   where l.atendente_id is not null\n  returning id\n), evento as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select g.lead_id, 'redator', 'message_generated', 'schedule',\n         'texto sugerido no modo ' || $3::text,\n         null,\n         '{}'::jsonb,\n         jsonb_build_object('texto_sugerido', true),\n         jsonb_build_object(\n           'tamanho', length($2),\n           'tem_link', ($2 like '%http%'),\n           'modo', $3::text,\n           'tipo', g.tipo),\n         'followup', g.id, $4::text,\n         'wf03:' || $4::text || ':' || g.id::text,\n         $5::text, $6::text\n    from gravado g\n  on conflict do nothing\n  returning id\n)\nselect (select count(*) from gravado)::int    as gravados,\n       (select count(*) from notificado)::int as notificados,\n       (select count(*) from evento)::int     as eventos;",
+        "options": {
+          "queryReplacement": "={{ [$json.followup_id, $json.texto, $('Montar prompt do redator').item.json.modo, $execution.id, 'gpt-5.4', 'wf03-redator-2026-08-06'] }}"
+        }
+      },
+      "id": "89faa460-4955-44e3-b3c0-570ca43fd39a",
+      "name": "Gravar texto sugerido",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1376,
+        -144
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update wakeclub.followups\n   set agendado_para = now() + interval '30 minutes'\n where id = $1::uuid\n   and status = 'pendente'\nreturning id, agendado_para;",
+        "options": {
+          "queryReplacement": "={{ [$('Buscar followups a redigir').item.json.followup_id] }}"
+        }
+      },
+      "id": "ac7abbf3-a8b9-4977-8760-22df95ee38d3",
+      "name": "Reagendar apos falha",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1600,
+        224
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.tem_reagendamento }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "40a330c4-d9d0-4311-89b3-a2cfe20811a2",
+      "name": "Porteiro mandou voltar depois?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        576,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with antes as (\n  select id, agendado_para\n    from wakeclub.followups\n   where id = $1::uuid\n), reagendado as (\n  update wakeclub.followups f\n     set agendado_para = ($2::text)::timestamp at time zone 'America/Sao_Paulo',\n         motivo_cancelamento = null\n   where f.id = $1::uuid\n     and f.status = 'pendente'\n  returning f.id, f.lead_id, f.tipo, f.agendado_para\n), evento as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select r.lead_id, 'porteiro', 'followup_rescheduled', 'schedule',\n         'voltar em ' ||\n           to_char(r.agendado_para at time zone 'America/Sao_Paulo',\n                   'YYYY-MM-DD HH24:MI'),\n         nullif($3::text, ''),\n         jsonb_build_object('agendado_para', b.agendado_para),\n         jsonb_build_object(\n           'agendado_para', r.agendado_para,\n           'status', 'pendente'),\n         jsonb_build_object('tipo', r.tipo),\n         'followup', r.id, $4::text,\n         'wf03:' || $4::text || ':' || r.id::text,\n         $5::text, $6::text\n    from reagendado r\n    join antes b on b.id = r.id\n  on conflict do nothing\n  returning id\n)\nselect r.id, r.agendado_para,\n       (select count(*) from evento)::int as eventos\n  from reagendado r;",
+        "options": {
+          "queryReplacement": "={{ [$json.followup_id, $json.reagendar_para, $json.motivo_porteiro, $execution.id, 'gpt-5.4-mini', 'wf03-porteiro-2026-08-06'] }}"
+        }
+      },
+      "id": "2d0d1b62-ca7f-4d06-b8a4-98dd106213ef",
+      "name": "Reagendar followup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        864,
+        304
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with abortado as (\n  update wakeclub.followups f\n     set status = 'abortado',\n         motivo_cancelamento = left($2, 500)\n   where f.id = $1::uuid\n     and f.status = 'pendente'\n  returning f.id, f.lead_id, f.tipo, f.agendado_para, f.motivo_cancelamento\n), evento as (\n  insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\n  select a.lead_id, 'porteiro', 'followup_blocked', 'schedule',\n         'barrou',\n         a.motivo_cancelamento,\n         jsonb_build_object(\n           'status', 'pendente',\n           'tipo', a.tipo,\n           'agendado_para', a.agendado_para),\n         jsonb_build_object('status', 'abortado'),\n         '{}'::jsonb,\n         'followup', a.id, $3::text,\n         'wf03:' || $3::text || ':' || a.id::text,\n         $4::text, $5::text\n    from abortado a\n  on conflict do nothing\n  returning id\n)\nselect a.id, 'abortado' as status, a.motivo_cancelamento,\n       (select count(*) from evento)::int as eventos\n  from abortado a;",
+        "options": {
+          "queryReplacement": "={{ [$json.followup_id, $json.motivo_porteiro, $execution.id, 'gpt-5.4-mini', 'wf03-porteiro-2026-08-06'] }}"
+        }
+      },
+      "id": "c4c1c011-1a70-4f61-b7ca-f0e72b088d99",
+      "name": "Abortar followup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        864,
+        496
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## WF-03 · Porteiro + Redator (Fase 3)\n\nLe followup vencido, decide se ainda faz sentido, escreve o texto e PARA.\nNADA sai pro lead: quem manda e a atendente, pelo botao do painel.\n\nDois prompts de proposito: \"devo mandar?\" e \"o que eu mando?\" sao\nperguntas diferentes, e um prompt que faz as duas tende a justificar o\nenvio so porque ja esta escrevendo o texto.\n\nPORTEIRO (gpt-5.4-mini): default e DEIXAR PASSAR. Barrar demais e o pior\nerro, o projeto volta a ser \"followup que depende da sorte\". Barrou de\nvez = abortado + motivo, que e o numero que diz se ele esta calibrado.\n\nREDATOR (gpt-5.4): unico lugar do projeto com o modelo bom. Volume baixo\ne o texto vai pro cliente depois de uma pessoa ler.\n\nMODO REABRIR vs RETOMAR (06/08/2026): o piso e calculado no Montar prompt\ndo redator, a partir da etapa do funil, e nao no prompt. Sem pedido\nconcreto do lead a mensagem e UMA frase, sem link e sem oferta (\"Oi\nFelipe, tudo certo por ai?\"). Deixado a criterio do modelo, ele sempre\nachava um motivo pra empurrar: os 15 primeiros textos terminaram todos\nem link da carteira ou chamada pra acao.\n\nOS FILTROS DUROS ESTAO NO WHERE, NUNCA NO PROMPT: opt_out,\nsem_atendimento e horario comercial 8h-20h. Mais o corte de lead sem\ndona: sem quem assine, o texto nao serve pra nada.\n\nALLOWLIST DE URL no Validar texto: so wakeclub.com.br/agendar e\n/carteira sobrevivem. Link inventado e apagado em codigo, nao no prompt.\n\nO status CONTINUA pendente depois de escrito, e isso e load-bearing:\nmantem o indice unico e deixa o WF-01 cancelar por \"conversa viva\"\nquando a atendente finalmente mandar.\n\nErro em qualquer ponto vai pro Reagendar apos falha (+30min). Followup\nnao pode sumir por erro de API.",
+        "height": 470,
+        "width": 1300,
+        "color": 5
+      },
+      "id": "f52ceb65-d746-4031-9c8a-e90e62c63ae6",
+      "name": "Sticky Note 78ca0b9c",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1104,
+        -576
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into wakeclub.eventos_automacao\n    (lead_id, agente, tipo_evento, gatilho, decisao, motivo,\n     estado_anterior, estado_novo, metadados,\n     entidade_tipo, entidade_id, origem_id, correlacao_id,\n     modelo, versao_prompt)\nselect ($1::text)::uuid, 'porteiro', 'followup_approved', 'schedule',\n       'liberou',\n       nullif($3::text, ''),\n       '{}'::jsonb,\n       '{}'::jsonb,\n       jsonb_build_object('tipo', $4::text),\n       'followup', ($2::text)::uuid, $5::text,\n       'wf03:' || $5::text || ':' || $2::text,\n       $6::text, $7::text\non conflict do nothing\nreturning id;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, $json.followup_id, $json.motivo_porteiro, $json.tipo, $execution.id, 'gpt-5.4-mini', 'wf03-porteiro-2026-08-06'] }}"
+        }
+      },
+      "id": "ff2c38bb-9465-474f-85e8-aaea1cff6586",
+      "name": "Registrar liberacao",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        304,
+        -320
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "A cada 15 minutos": {
+      "main": [
+        [
+          {
+            "node": "Buscar followups a redigir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar followups a redigir": {
+      "main": [
+        [
+          {
+            "node": "Montar prompt do porteiro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar prompt do porteiro": {
+      "main": [
+        [
+          {
+            "node": "Porteiro IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Porteiro IA": {
+      "main": [
+        [
+          {
+            "node": "Validar decisao do porteiro",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reagendar apos falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo do Porteiro": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Porteiro IA",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formato da decisao": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Porteiro IA",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar decisao do porteiro": {
+      "main": [
+        [
+          {
+            "node": "Porteiro liberou?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Porteiro liberou?": {
+      "main": [
+        [
+          {
+            "node": "Montar prompt do redator",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Registrar liberacao",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Porteiro mandou voltar depois?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar prompt do redator": {
+      "main": [
+        [
+          {
+            "node": "Redator IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redator IA": {
+      "main": [
+        [
+          {
+            "node": "Validar texto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reagendar apos falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo do Redator": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Redator IA",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formato do texto": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Redator IA",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar texto": {
+      "main": [
+        [
+          {
+            "node": "Gravar texto sugerido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reagendar apos falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gravar texto sugerido": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Reagendar apos falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Porteiro mandou voltar depois?": {
+      "main": [
+        [
+          {
+            "node": "Reagendar followup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Abortar followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "805aca64-2af8-42bd-80a5-e504ac050406",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "XmxUzukUvGIgF02E",
+  "tags": []
+}

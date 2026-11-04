@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { exigirAtendente } from "./auth";
+import { type Autoria, autoria } from "./conversas";
 import { getPool } from "./db";
 
 export type MeuLead = {
@@ -23,6 +24,7 @@ export type MensagemDoMeuLead = {
   direcao: "lead" | "equipe" | "ia";
   texto: string | null;
   enviadaEm: string;
+  autoria: Autoria;
 };
 
 type LinhaLead = {
@@ -43,6 +45,8 @@ type LinhaMensagem = {
   direcao: MensagemDoMeuLead["direcao"];
   texto: string | null;
   enviada_em: Date;
+  enviada_por: string | null;
+  autor_nome: string | null;
 };
 
 export const listarMeusLeads = createServerFn({ method: "GET" }).handler(
@@ -89,10 +93,11 @@ export const listarMensagensDoMeuLead = createServerFn({ method: "GET" })
     if (!pertence.rows[0]?.existe) throw new Error("Lead não encontrado.");
 
     const { rows } = await getPool().query<LinhaMensagem>(
-      `select id, direcao, texto, enviada_em
-         from wakeclub.v_mensagens_painel
-        where lead_id = $1::uuid
-        order by enviada_em asc, criado_em asc`,
+      `select m.id, m.direcao, m.texto, m.enviada_em, a.enviada_por, a.autor_nome
+         from wakeclub.v_mensagens_painel m
+         left join wakeclub.v_mensagens_autoria a on a.mensagem_id = m.id
+        where m.lead_id = $1::uuid
+        order by m.enviada_em asc, m.criado_em asc`,
       [data.leadId],
     );
 
@@ -101,5 +106,6 @@ export const listarMensagensDoMeuLead = createServerFn({ method: "GET" })
       direcao: linha.direcao,
       texto: linha.texto,
       enviadaEm: linha.enviada_em.toISOString(),
+      autoria: autoria(linha.enviada_por, linha.autor_nome),
     }));
   });

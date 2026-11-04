@@ -1,6 +1,8 @@
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+import type { Autoria } from "@/server/conversas";
+
 /**
  * Formatação em pt-BR, num lugar só.
  *
@@ -94,4 +96,10 @@ export function iniciais(nome: string | null, fallback = "?"): string {
 /** Plural simples: 1 lead / 2 leads */
 export function plural(n: number, singular: string, plural_: string): string {
   return `${n} ${n === 1 ? singular : plural_}`;
+}
+
+/** Quem mandou a mensagem da equipe, só para leitura no app (design §5.2). */
+export function rotuloAutoria(a: Autoria): string {
+  if (a === null) return "Equipe";
+  return a.tipo === "app" ? a.nome : "enviado pelo ADM";
 }

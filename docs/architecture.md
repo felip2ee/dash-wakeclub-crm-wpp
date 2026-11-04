@@ -1,18 +1,22 @@
 # Arquitetura atual do Wake Club Dashboard
 
-> Snapshot da Fase 0 em 11/08/2026, revisado em 04/11/2026. Descreve o sistema
-> existente; não antecipa a arquitetura desejada e não autoriza novas escritas.
+> Snapshot da Fase 0 em 11/08/2026, revisado em 04/11/2026 para a fase 1 do WakeCRM
+> (motor próprio). As seções de contexto, stack, variáveis, rotas, módulos, dados e
+> roles descrevem o código atual; as marcadas como legado descrevem o que existia antes.
 >
-> **Estado em 04/11/2026:** os workflows n8n descritos aqui estão **parados** e os
-> arquivos deles não estão neste checkout (`../n8n/`, `../db/` e `../CLAUDE.md` não
-> existem aqui). A arquitetura que vai substituí-los está em
-> `docs/superpowers/specs/2026-11-03-wakecrm-motor-proprio-design.md`; até a fase 1
-> dela ser entregue, as regras do fim deste documento continuam valendo.
+> **Estado em 04/11/2026:** a fase 1 está **implementada localmente e não publicada**.
+> Os workflows n8n estão parados e **nunca rodam em paralelo com o motor**; as
+> exportações estão em `docs/n8n-legado/` (só fonte de lógica). O adaptador do Evolution
+> Go depende da captura de eventos reais (Task 13 do plano): sem ele o webhook só grava
+> bruto e o envio pelo app fica desligado. Desenho:
+> `docs/superpowers/specs/2026-11-03-wakecrm-motor-proprio-design.md`; plano:
+> `docs/superpowers/plans/2026-11-04-wakecrm-fase-1.md`.
 
 ## Resumo executivo
 
-O dashboard é uma aplicação TanStack Start que apresenta o CRM mantido por workflows
-n8n em PostgreSQL. O navegador nunca acessa o banco diretamente: as rotas React chamam
+O dashboard é uma aplicação TanStack Start que apresenta o CRM em PostgreSQL. Desde a
+fase 1 o mesmo processo também hospeda o motor que antes era o n8n (fila de webhooks,
+ingestão, distribuição, saúde e notificações). O navegador nunca acessa o banco diretamente: as rotas React chamam
 `createServerFn`, os módulos em `src/server/` consultam views com `painel_ro` e usam
 `painel_rw` apenas nas exceções de escrita explicitamente concedidas.
 
@@ -33,27 +37,34 @@ carregar o workspace de uma oportunidade.
 
 ```mermaid
 flowchart LR
-  WA[WhatsApp Business] <-->|mensagens e ecos| EV[Evolution API]
-  EV -->|webhook| WF01[WF-01 Ingestor]
-  N8N[n8n: WF-01/02/03/07/08/09/11] <-->|leitura e escrita do CRM| PG[(PostgreSQL wakeclub)]
-  WF01 --> PG
+  WA[WhatsApp Business] <-->|mensagens e ecos| EV[Evolution Go]
+  EV -->|POST /api/webhooks/evolution| WH[Endpoints de webhook]
+  VEN[Sistema de vendas] -->|POST /api/webhooks/vendas| WH
+  WH -->|corpo bruto| FILA[(webhook_eventos)]
+  FILA --> MOTOR[Motor: fila, ingestão, distribuição, saúde, push]
+  MOTOR -->|wakecrm_motor| PG[(PostgreSQL wakeclub)]
+  FILA -.- PG
   PG -->|views: painel_ro| SERVER[TanStack Start / Nitro]
   SERVER -->|SSR e createServerFn| WEB[React / PWA]
   WEB -->|sessão, push, toque e admin: painel_rw| PG
-  WEB -->|wa.me com texto preenchido| WA
-  WF09[WF-09 Push] -->|POST /api/push/enviar| SERVER
-  SERVER -->|Web Push / VAPID| DEVICE[Aparelho da equipe]
+  WEB -->|envio pelo app: src/server/envio.ts| SERVER
+  SERVER -->|adaptador, após a Task 13| EV
+  MOTOR -->|Web Push / VAPID| DEVICE[Aparelho da equipe]
 ```
+
+Os webhooks e o motor vivem no mesmo processo Nitro do painel. O envio pelo app depende
+do adaptador do Evolution Go, que ainda não existe (Task 13).
 
 Responsabilidade operacional:
 
-- **n8n:** ingere mensagens, qualifica, mantém campos do CRM, agenda/cancela followups,
-  redige sugestões, distribui leads, gerencia a fila de notificações e chama serviços
-  externos.
-- **dashboard:** lê o CRM, autentica a equipe, registra inscrições e aberturas, entrega
-  Web Push quando solicitado e abre o WhatsApp para a ação humana.
-- **atendente:** decide se edita e se envia o texto. O toque no painel prova apenas a
-  abertura; o eco recebido pelo WF-01 é a evidência de mensagem da equipe.
+- **motor** (`MOTOR_ATIVO=1`): ingere mensagens, distribui leads, mantém a saúde do
+  número e a fila de notificações. Qualificação por IA, transcrição e followups
+  sugeridos voltam em fases posteriores.
+- **dashboard:** lê o CRM, autentica a equipe, registra inscrições e aberturas, envia
+  mensagens pelo app (quando houver adaptador) e entrega Web Push.
+- **atendente:** decide se edita e se envia o texto. A mensagem enviada pelo app grava
+  autoria; a enviada pelo celular do número chega como eco e é marcada `celular`.
+- **n8n:** desligado de vez; histórico em `docs/n8n-legado/`.
 
 ## Stack e execução
 
@@ -61,6 +72,7 @@ Responsabilidade operacional:
 | ----------------- | -------------------------------------------------------------------------------- |
 | Interface         | React 19, TanStack Router/Start, TanStack Query, Tailwind v4 e shadcn/ui         |
 | Servidor          | TanStack Start com Nitro; entrada em `src/server.ts`                             |
+| Motor             | trabalhador da fila e tarefas agendadas no mesmo processo; boot por plugin Nitro |
 | Banco             | PostgreSQL 14, schema `wakeclub`, driver `pg`                                    |
 | Validação         | Zod nas fronteiras de server functions e API                                     |
 | Autenticação      | bcrypt, cookie HttpOnly e token persistido como SHA-256                          |
@@ -73,37 +85,51 @@ Responsabilidade operacional:
 Dependências externas necessárias:
 
 - PostgreSQL do CRM `wakeclub`;
-- n8n com credenciais próprias de PostgreSQL, Evolution e OpenAI;
-- Evolution API para WhatsApp e mídia;
+- Evolution Go para WhatsApp e mídia (adaptador pendente, Task 13);
+- sistema de vendas, que chama `POST /api/webhooks/vendas`;
 - provedores Web Push dos navegadores;
 - GHCR, Docker Swarm/Portainer e Traefik para publicação.
 
 Variáveis consumidas pelo dashboard:
 
-| Variável                | Consumidor              | Finalidade                                                |
-| ----------------------- | ----------------------- | --------------------------------------------------------- |
-| `DATABASE_URL`          | `src/server/db.ts`      | conexão `painel_ro`, forçada read-only                    |
-| `DATABASE_URL_RW`       | `src/server/db.ts`      | conexão limitada `painel_rw`                              |
-| `VITE_VAPID_PUBLIC_KEY` | cliente e servidor      | chave pública da inscrição push                           |
-| `VAPID_PRIVATE_KEY`     | servidor                | assinatura Web Push                                       |
-| `PUSH_DISPATCH_SECRET`  | rota de push            | autenticação server-to-server do WF-09                    |
-| `ADMIN_DATABASE_URL`    | `scripts/painel-db.mjs` | aplicar/verificar roles e views; não usada pela aplicação |
-| `PAINEL_RO_PASSWORD`    | `scripts/painel-db.mjs` | configuração da role de leitura                           |
-| `PAINEL_RW_PASSWORD`    | `scripts/painel-db.mjs` | configuração da role limitada de escrita                  |
+| Variável                   | Consumidor                                    | Finalidade                                                       |
+| -------------------------- | --------------------------------------------- | ---------------------------------------------------------------- |
+| `DATABASE_URL`             | `src/server/db.ts`                            | conexão `painel_ro`, forçada read-only                           |
+| `DATABASE_URL_RW`          | `src/server/db.ts`                            | conexão limitada `painel_rw`                                     |
+| `VITE_VAPID_PUBLIC_KEY`    | cliente e servidor                            | chave pública da inscrição push                                  |
+| `VAPID_PRIVATE_KEY`        | servidor                                      | assinatura Web Push                                              |
+| `PUSH_DISPATCH_SECRET`     | rota de push                                  | autenticação da rota `POST /api/push/enviar` (legado do WF-09)   |
+| `DATABASE_URL_MOTOR`       | `src/server/db.ts`                            | conexão da role `wakecrm_motor` (fila, motor, respostas rápidas) |
+| `WAKECRM_MOTOR_PASSWORD`   | `scripts/migrar.mjs`                          | cria/redefine a senha da role do motor; igual à da URL           |
+| `MOTOR_ATIVO`              | `nitro-plugin.ts`                             | `1` liga fila e tarefas neste processo; vazio desliga            |
+| `WEBHOOK_EVOLUTION_SECRET` | `webhooks/receber.ts`                         | segredo do webhook da Evolution; ausente = 404                   |
+| `WEBHOOK_VENDAS_SECRET`    | `webhooks/receber.ts`                         | segredo do webhook de vendas; ausente = 404                      |
+| `EVOLUTION_INSTANCIA`      | `motor/iniciar.ts`                            | nome da instância (heartbeat e saúde); padrão `wakeclub`         |
+| `ADMIN_DATABASE_URL`       | `scripts/painel-db.mjs`, `scripts/migrar.mjs` | roles, views e migrações; não usada pela aplicação               |
+| `PAINEL_RO_PASSWORD`       | `scripts/painel-db.mjs`                       | configuração da role de leitura                                  |
+| `PAINEL_RW_PASSWORD`       | `scripts/painel-db.mjs`                       | configuração da role limitada de escrita                         |
 
 ## Organização do código
 
 ```text
 src/
-├── routes/        páginas, loaders, guards e a rota HTTP de push
+├── routes/        páginas, loaders, guards e rotas HTTP (push e webhooks)
 ├── server/        createServerFn e SQL server-only
+│   ├── motor/     fila, agenda, ingestão, distribuição, saúde, notificações, boot
+│   ├── evolution/ tipos e ponto único do adaptador do Evolution Go
+│   └── webhooks/  recepção autenticada que grava o corpo bruto na fila
+├── features/      admin, conversa (envio) e respostas-rapidas
 ├── components/    shell, navegação, PWA e componentes shadcn
 ├── lib/           formatação, push cliente e tratamento de erros
 ├── start.ts       middleware global de erro
 └── server.ts      entrada Nitro e normalização de falhas SSR
 ```
 
-`src/server/db.ts` é o único módulo que importa `pg`. `vite.config.ts` inclui os
+`db/migrations/` guarda o schema (`0001_base`, `0002_motor`, `0003_virada`); o runner é
+`scripts/migrar.mjs`.
+
+`src/server/db.ts` é o único módulo que importa `pg` (pools `getPool`, `getPoolRw`,
+`getPoolMotor` e `getPoolWebhook`, este só do endpoint de webhook). `vite.config.ts` inclui os
 módulos com `createServerFn` em `importProtection.client.excludeFiles`; `db.ts` não é
 excluído e, portanto, não pode chegar ao bundle cliente.
 
@@ -112,19 +138,24 @@ O shell em `src/routes/__root.tsx` carrega a sessão e a saúde do número. A na
 
 ## Rotas e superfícies HTTP
 
-| Rota                    | Acesso atual        | Dados/ação principal                                          | Atualização             |
-| ----------------------- | ------------------- | ------------------------------------------------------------- | ----------------------- |
-| `/login`                | pública             | `entrar`, com redirecionamento por papel                      | sob demanda             |
-| `/`                     | admin               | lista de conversas e thread por `getConversas`/`getMensagens` | 30 s                    |
-| `/kanban`               | admin               | cards de `getLeadsPainel` e histórico por `getMensagens`      | 30 s                    |
-| `/wf02`                 | admin               | atividade, motor e followups por `getPainelWf02`              | 30 s                    |
-| `/reports`              | admin               | quatro views agregadas por `getRelatorios`                    | 60 s                    |
-| `/admin`                | admin               | resumo, atendentes, aparelhos e ações administrativas         | loader/refetch por ação |
-| `/followups`            | atendente           | `listarMinhaFila` e `registrarToque`                          | 60 s                    |
-| `/meus-leads`           | atendente           | leads atribuídos e mensagens com validação de posse           | sob demanda             |
-| `/instalar`             | usuário autenticado | instalação PWA, permissão e inscrição push                    | sob demanda             |
-| `/templates`            | admin               | demonstração com `mock-data.ts`; não operacional              | estático                |
-| `POST /api/push/enviar` | WF-09 com segredo   | valida payload e chama `entregarPush`                         | sob demanda             |
+| Rota                           | Acesso atual                                     | Dados/ação principal                                          | Atualização             |
+| ------------------------------ | ------------------------------------------------ | ------------------------------------------------------------- | ----------------------- |
+| `/login`                       | pública                                          | `entrar`, com redirecionamento por papel                      | sob demanda             |
+| `/`                            | admin                                            | lista de conversas e thread por `getConversas`/`getMensagens` | 30 s                    |
+| `/kanban`                      | admin                                            | cards de `getLeadsPainel` e histórico por `getMensagens`      | 30 s                    |
+| `/wf02`                        | admin                                            | atividade, motor e followups por `getPainelWf02`              | 30 s                    |
+| `/reports`                     | admin                                            | quatro views agregadas por `getRelatorios`                    | 60 s                    |
+| `/admin`                       | admin                                            | resumo, atendentes, aparelhos e ações administrativas         | loader/refetch por ação |
+| `/followups`                   | atendente                                        | `listarMinhaFila` e `registrarToque`                          | 60 s                    |
+| `/meus-leads`                  | atendente                                        | leads atribuídos e mensagens com validação de posse           | sob demanda             |
+| `/instalar`                    | usuário autenticado                              | instalação PWA, permissão e inscrição push                    | sob demanda             |
+| `/templates`                   | admin                                            | cadastro real de respostas rápidas (`respostas-rapidas.ts`)   | sob demanda             |
+| `POST /api/push/enviar`        | segredo                                          | valida payload e chama `entregarPush`                         | sob demanda             |
+| `POST /api/webhooks/evolution` | segredo (header `x-webhook-secret` ou `?token=`) | grava o corpo bruto em `webhook_eventos` com chave de ordem   | sob demanda             |
+| `POST /api/webhooks/vendas`    | idem                                             | grava o corpo bruto em `webhook_eventos`                      | sob demanda             |
+
+Os webhooks respondem 404 com segredo inválido ou ausente, 400 para JSON inválido e 413
+acima de 25 MB (nesse caso fica uma linha `falhou` com o tamanho, sem o corpo).
 
 As operações `createServerFn` são RPCs gerados pelo TanStack Start, não endpoints REST
 de domínio mantidos manualmente. Não existe atualmente
@@ -132,33 +163,89 @@ de domínio mantidos manualmente. Não existe atualmente
 
 ## Módulos server-only
 
-| Módulo             | Funções expostas                                                                | Fonte de dados / escrita                                           |
-| ------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `db.ts`            | `getPool`, `getPoolRw`                                                          | cria os dois pools PostgreSQL                                      |
-| `auth.ts`          | `entrar`, `getSessao`, `sair`, `exigirSessao`, `exigirAdmin`, `exigirAtendente` | `usuarios`, `sessoes`, `v_sessao_valida`                           |
-| `leads.ts`         | `getLeadsPainel`                                                                | `v_leads_painel`                                                   |
-| `conversas.ts`     | `getConversas`, `getMensagens`                                                  | `v_conversas_painel`, `v_mensagens_painel`                         |
-| `wf02.ts`          | `getWf02Atividade`, `getWf02Motor`, `getFollowups`, `getPainelWf02`             | views do WF-02, followups e leads                                  |
-| `relatorios.ts`    | `getRelatorios`                                                                 | quatro views de relatório                                          |
-| `saude.ts`         | `getSaudeNumero`                                                                | `v_saude_numero`                                                   |
-| `followups.ts`     | `listarMinhaFila`, `registrarToque`                                             | `v_followups_fila`; INSERT em `followup_toques` após validar posse |
-| `meus-leads.ts`    | `listarMeusLeads`, `listarMensagensDoMeuLead`                                   | views de leads/mensagens filtradas por usuário                     |
-| `push.ts`          | chave pública, inscrição e push de teste                                        | `push_subscriptions`                                               |
-| `admin.ts`         | painel, alteração/cadastro de atendente, remoção de aparelho e push de teste    | views admin, `usuarios`, `push_subscriptions`                      |
-| `push-dispatch.ts` | `entregarPush`                                                                  | aparelhos ativos; atualiza falhas/uso e remove inscrições 404/410  |
+| Módulo                 | Funções expostas                                                                | Fonte de dados / escrita                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `db.ts`                | `getPool`, `getPoolRw`, `getPoolMotor`, `getPoolWebhook`, `comTransacao`        | cria os quatro pools PostgreSQL                                                             |
+| `log.ts`               | `logErro`, `logInfo`                                                            | único lugar com `console`; sem texto de conversa nem segredo                                |
+| `admin-motor.ts`       | monitor da fila, reprocesso, peso/comissão, correção de dono                    | `webhook_eventos`, `usuarios`, `leads`; exige admin                                         |
+| `respostas-rapidas.ts` | listar ativas, listar todas, salvar, remover                                    | `respostas_rapidas` via `wakecrm_motor`                                                     |
+| `envio.ts`             | envio de texto e mídia pelo app                                                 | confere posse, chama o adaptador, grava `mensagens` com autoria; indisponível sem adaptador |
+| `motor/*`              | `iniciarMotor`, `rodarFila`, `agendar`, ingestão, distribuição, saúde, push     | role `wakecrm_motor`; ver "Motor"                                                           |
+| `webhooks/receber.ts`  | `receberWebhook`, `enfileirar`                                                  | INSERT em `webhook_eventos`                                                                 |
+| `evolution/`           | `obterAdaptador` (hoje `null`), `chaveDeOrdemEvolution`, tipos                  | sem rede até a Task 13                                                                      |
+| `auth.ts`              | `entrar`, `getSessao`, `sair`, `exigirSessao`, `exigirAdmin`, `exigirAtendente` | `usuarios`, `sessoes`, `v_sessao_valida`                                                    |
+| `leads.ts`             | `getLeadsPainel`                                                                | `v_leads_painel`                                                                            |
+| `conversas.ts`         | `getConversas`, `getMensagens`                                                  | `v_conversas_painel`, `v_mensagens_painel`, `v_mensagens_autoria`                           |
+| `wf02.ts`              | `getWf02Atividade`, `getWf02Motor`, `getFollowups`, `getPainelWf02`             | views do WF-02, followups e leads                                                           |
+| `relatorios.ts`        | `getRelatorios`                                                                 | quatro views de relatório                                                                   |
+| `saude.ts`             | `getSaudeNumero`                                                                | `v_saude_numero`                                                                            |
+| `followups.ts`         | `listarMinhaFila`, `registrarToque`                                             | `v_followups_fila`; INSERT em `followup_toques` após validar posse                          |
+| `meus-leads.ts`        | `listarMeusLeads`, `listarMensagensDoMeuLead`                                   | views de leads/mensagens filtradas por usuário                                              |
+| `push.ts`              | chave pública, inscrição e push de teste                                        | `push_subscriptions`                                                                        |
+| `admin.ts`             | painel, alteração/cadastro de atendente, remoção de aparelho e push de teste    | views admin, `usuarios`, `push_subscriptions`                                               |
+| `push-dispatch.ts`     | `entregarPush`                                                                  | aparelhos ativos; atualiza falhas/uso e remove inscrições 404/410                           |
 
-## Modelo de dados atual
+## Motor
+
+Código em `src/server/motor/`, banco pela role `wakecrm_motor` (`getPoolMotor()`).
+
+**Boot.** `nitro-plugin.ts` roda no start do Nitro, antes de qualquer requisição, e só
+chama `iniciarMotor()` com `MOTOR_ATIVO=1`. O `src/server.ts` carrega sob demanda,
+então ligar o motor ali deixaria um restart sem tráfego com a fila parada.
+`iniciarMotor()` é idempotente (guarda em `globalThis`).
+
+**Fila.** Os endpoints só inserem em `webhook_eventos`. O trabalhador roda a cada 2 s,
+reivindica até 4 cabeças com `FOR UPDATE SKIP LOCKED` (sem trava global; é seguro entre
+réplicas) e processa cada evento na própria transação.
+
+- Eventos da mesma `chave_ordem` (a conversa) saem em sequência estrita: só a cabeça da
+  chave é elegível, e uma cabeça em `processando` ou com retentativa futura segura a
+  chave. Chaves diferentes rodam em paralelo.
+- Falha: até 5 tentativas, com esperas de 30, 120, 600 e 1800 s; na quinta o status é
+  `falhou`, visível no monitor do admin e reprocessável (`reprocessar`).
+- Órfãos: `processando` há mais de 15 min volta a `pendente`.
+- Origem sem processador não é reivindicada: sem adaptador, eventos da Evolution ficam
+  `pendente` (gravados, não processados). Vendas só são gravadas nesta fase.
+- Corpo acima de 25 MB: 413 e linha `falhou` com tamanho e erro.
+
+**Tarefas agendadas** (`agenda.ts`: intervalo fixo, uma execução por vez, trava
+advisory no banco), registradas em `iniciar.ts`:
+
+| Tarefa         | Intervalo | O que faz                                                |
+| -------------- | --------- | -------------------------------------------------------- |
+| fila           | 2 s       | `rodarFila` em laço até esvaziar (sem trava global)      |
+| `orfaos`       | 5 min     | `devolverOrfaos`                                         |
+| `distribuicao` | 5 min     | `soltarDeInativos` + `redistribuirSoltos` numa transação |
+| `push`         | 1 min     | `enviarPushPendentes` (fila `notificacoes`, sem n8n)     |
+| `heartbeat`    | 5 min     | `gravarHeartbeat`; só existe com adaptador               |
+
+**Distribuição.** Por peso entre vendedores ativos, com atribuição pegajosa (o lead que
+já teve dono fica com ele enquanto estiver ativo) e menção na conversa. Toda mudança de
+dono gera `assignment_changed` com o motivo (`rodizio`, `mencao`, `desativacao`,
+`admin`) e preenche `leads.atribuido_por`.
+
+**Ingestão.** `registrarMensagem` faz upsert do lead, insere a mensagem de forma
+idempotente, trata opt-out (evento `opt_out`), toque e eco e distribui lead sem dono.
+Hoje só processa o tipo `mensagem` do evento normalizado.
+
+**Saúde e notificações.** `saude.ts` mantém `instancia_estado`/`instancia_eventos` a
+partir de eventos de conexão, ack e heartbeat; `notificacoes.ts` cria a fila de push e
+`push` a entrega via `entregarPush`.
+
+## Modelo de dados
 
 ### Entidades do CRM
 
-| Tabela              | Papel                                                         | Relações e observações                                                                                                        |
-| ------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `leads`             | contato + oportunidade + estado comercial no modelo legado    | telefone único; etapa em `etiqueta`; temperatura; responsável; relógio `qualificar_apos`; flags `opt_out` e `sem_atendimento` |
-| `mensagens`         | histórico bruto da conversa                                   | N:1 com lead; direção `lead/equipe/ia`; idempotência por `evolution_msg_id`; ack de entrega e estado de transcrição           |
-| `followups`         | agenda e sugestão produzida pela IA                           | N:1 com lead; no máximo um pendente por lead; possui motivo, ciclo de vida, `texto_sugerido` e `sugerido_em`                  |
-| `crm_outbox`        | outbox para integração futura e trilha atual de qualificações | N:1 com lead; `tipo='qualificacao'` guarda payloads usados por `v_wf02_atividade`                                             |
-| `instancia_eventos` | histórico append-only da saúde Evolution                      | chave lógica por instância e horário                                                                                          |
-| `instancia_estado`  | snapshot da saúde da instância                                | uma linha por instância; conexão, heartbeat e QR                                                                              |
+| Tabela              | Papel                                                         | Relações e observações                                                                                                                    |
+| ------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `leads`             | contato + oportunidade + estado comercial no modelo legado    | telefone único; etapa em `etiqueta`; temperatura; responsável; relógio `qualificar_apos`; flags `opt_out` e `sem_atendimento`             |
+| `mensagens`         | histórico bruto da conversa                                   | N:1 com lead; direção `lead/equipe/ia`; idempotência por `evolution_msg_id`; ack de entrega e estado de transcrição                       |
+| `followups`         | agenda e sugestão produzida pela IA                           | N:1 com lead; no máximo um pendente por lead; possui motivo, ciclo de vida, `texto_sugerido` e `sugerido_em`                              |
+| `crm_outbox`        | outbox para integração futura e trilha atual de qualificações | N:1 com lead; `tipo='qualificacao'` guarda payloads usados por `v_wf02_atividade`                                                         |
+| `instancia_eventos` | histórico append-only da saúde Evolution                      | chave lógica por instância e horário                                                                                                      |
+| `instancia_estado`  | snapshot da saúde da instância                                | uma linha por instância; conexão, heartbeat e QR                                                                                          |
+| `eventos_automacao` | auditoria das decisões do motor                               | criada na 0001; uma linha por decisão, no mesmo comando SQL que muda o dado; nunca guarda raciocínio, prompt ou conversa                  |
+| `webhook_eventos`   | fila de entrada dos webhooks (0002)                           | `origem` (`evolution`/`vendas`), `corpo jsonb`, `status`, `tentativas`, `proxima_tentativa_em`, `chave_ordem`; índice parcial nas abertas |
 
 ### Entidades da equipe
 
@@ -170,6 +257,8 @@ de domínio mantidos manualmente. Não existe atualmente
 | `notificacoes`       | fila persistente controlada pelo WF-09 | destinatário opcional; pode referenciar followup; status inclui `cancelada`            |
 | `followup_toques`    | log de abertura do WhatsApp            | N:1 com followup e usuário; append-only                                                |
 | `whatsapp_labels`    | catálogo retornado por `findLabels`    | não prova labels por conversa; vínculo de usuário é legado/decorativo no desenho atual |
+| `respostas_rapidas`  | textos prontos por `/atalho` (0002)    | cadastro do admin em `/templates`; leitura por qualquer sessão (só ativas)             |
+| `migracoes`          | registro das migrações aplicadas       | por `scripts/migrar.mjs`; cada arquivo roda numa transação e é registrado uma vez      |
 
 ### Relações principais
 
@@ -187,9 +276,15 @@ erDiagram
   USUARIOS ||--o{ NOTIFICACOES : recebe
 ```
 
-Não há autoria individual em `mensagens`: `direcao='equipe'` identifica o número da
-equipe, não a atendente que digitou. Métricas por pessoa são calculadas pelo lead
+Colunas novas da 0002: `usuarios.peso` e `usuarios.comissao_pct` (distribuição e
+comissão), `leads.atribuido_por` (motivo da última atribuição), `mensagens.usuario_id`
+e `mensagens.enviada_por` (`app`, `celular` ou `null` para legado). Mensagens enviadas
+pelo app (`src/server/envio.ts`) levam autoria; as anteriores à virada não têm, e o
+autor não é inventado. Métricas antigas por atendente continuam calculadas pelo lead
 atribuído.
+
+A 0003 é o corte da virada: só se aplica no momento do corte (`--ate 0002` antes disso).
+Ver `docs/runbook-virada.md`.
 
 ## Views expostas ao dashboard
 
@@ -199,6 +294,7 @@ atribuído.
 | `v_saude_numero`             | snapshot e alerta da Evolution                              | shell global             |
 | `v_conversas_painel`         | inbox com última mensagem e contagens                       | `/`                      |
 | `v_mensagens_painel`         | thread com texto e ack                                      | `/`, Kanban e Meus Leads |
+| `v_mensagens_autoria`        | autoria da mensagem da equipe (0002, versionada)            | `/`, Kanban e Meus Leads |
 | `v_wf02_atividade`           | antes/depois das qualificações reconstruído do `crm_outbox` | `/wf02`                  |
 | `v_wf02_motor`               | fila, retries suspeitos e órfãos do qualificador            | `/wf02`                  |
 | `v_followups_painel`         | agenda e status dos followups                               | `/wf02`                  |
@@ -220,11 +316,27 @@ atribuído.
 - a conexão acrescenta `default_transaction_read_only=on`;
 - não acessa diretamente as tabelas do CRM.
 
+### `wakecrm_motor`
+
+Criada por `scripts/migrar.mjs` quando `WAKECRM_MOTOR_PASSWORD` está definida; a 0002
+falha sem ela. Grants:
+
+- SELECT/INSERT/UPDATE em `leads`, `mensagens`, `followups`, `crm_outbox`,
+  `eventos_automacao`, `instancia_eventos`, `instancia_estado`, `notificacoes` e
+  `webhook_eventos`;
+- SELECT/INSERT/UPDATE/DELETE em `respostas_rapidas`;
+- SELECT em `push_subscriptions` e `followup_toques`;
+- SELECT em `v_followups_fila` quando a view existe (só em produção; o push do motor lê);
+- SELECT por coluna em `usuarios` (sem `senha_hash`) e UPDATE de `peso`, `comissao_pct`
+  e `ativo`;
+- USAGE nas sequências do schema. Sem DELETE nas demais tabelas.
+
 ### `painel_rw`
 
 Superfície atual comprovada pelo script:
 
-- SELECT em `usuarios`, usado apenas no servidor para autenticação/admin;
+- SELECT em `usuarios`, usado apenas no servidor para autenticação/admin, mais INSERT e
+  UPDATE de `peso` e `comissao_pct` (0002);
 - INSERT limitado ao cadastro de `usuarios` e UPDATE limitado a
   `ultimo_acesso_em`/`ativo`;
 - SELECT/INSERT/UPDATE/DELETE em `sessoes` e `push_subscriptions`;
@@ -239,7 +351,10 @@ Superfície atual comprovada pelo script:
 `../db/painel-role.sql` documenta a superfície, mas não é aplicado diretamente pelo
 script.
 
-## Workflows n8n presentes no checkout
+## Workflows n8n (legado, parados)
+
+Os arquivos exportados estão em `docs/n8n-legado/`; servem só como fonte para portar
+lógica. A tabela descreve o comportamento original.
 
 | Workflow           | Gatilho                                   | Função e efeitos principais                                                                                                                            |
 | ------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -258,7 +373,7 @@ O checkout não contém implementação do WF-10 de requalificação. A existên
 `ESPEC-BOTAO-NAO-ATENDER.md` documenta o contrato, não prova que o webhook ou a ação do
 dashboard estejam prontos.
 
-### Fluxo de uma conversa até a ação humana
+### Fluxo de uma conversa até a ação humana (legado)
 
 1. Evolution envia o evento ao WF-01.
 2. WF-01 persiste lead/mensagem e move `qualificar_apos` para depois do debounce.
@@ -357,8 +472,8 @@ writer explicitamente definidos antes da implementação.
 
 ## Base existente e regras vigentes do painel
 
-Movido do antigo `AGENTS.md` em 04/11/2026, sem mudança de conteúdo. Vale até a fase 1
-do WakeCRM substituir a responsabilidade dos dados.
+Movido do antigo `AGENTS.md` em 04/11/2026. As duas últimas seções foram reescritas
+na fase 1 do WakeCRM (motor próprio).
 
 ### Base existente — não recriar
 
@@ -372,74 +487,82 @@ do WakeCRM substituir a responsabilidade dos dados.
 - O Kanban já possui `HistoricoDoLead` + `getMensagens`; `/` possui `Thread`/`Bolha`;
   `/meus-leads` possui outra conversa; `/wf02` possui `AbaTimeline`; reutilize esses
   comportamentos antes de criar uma quarta implementação.
-- `src/lib/mock-data.ts` pertence à demonstração de `/templates`. Nunca o use em tela
-  operacional nem como prova de conclusão.
+- `/templates` é o cadastro real de respostas rápidas; não existe dado de demonstração
+  em tela operacional.
 
 Não mova o projeto inteiro para `src/features/` antecipadamente. Extraia um componente
 compartilhado quando uma fase exigir reutilização real; a componentização ampla pertence
 à Fase 12.
 
+### Responsabilidade dos dados (WakeCRM, a partir da fase 1)
 
-### Responsabilidade dos dados
+Decisão do dono em 03/11/2026 (design do WakeCRM, §2): o app assume tudo que o n8n
+fazia. Os workflows ficam desligados de vez; as exportações estão em
+`docs/n8n-legado/` só como fonte para portar lógica. **n8n nunca roda em paralelo com o
+motor.**
 
-O atendimento continua humano pelo WhatsApp. O n8n lê conversas, mantém o CRM,
-qualifica, agenda/cancela followups, redige sugestões e conversa com a Evolution API.
-O painel apresenta o estado, autentica a equipe, registra ações próprias e abre o
-WhatsApp; ele não é um segundo motor de automação.
+Quem escreve o quê:
+
+- **Motor** (`src/server/motor/`, pool `getPoolMotor()`, role `wakecrm_motor`): fila
+  `webhook_eventos`, leads, mensagens, distribuição (`leads.atendente_id`), followups,
+  `eventos_automacao`, saúde do número e fila `notificacoes`. Liga só com
+  `MOTOR_ATIVO=1`.
+- **Endpoints de webhook** (`/api/webhooks/*`): só gravam o corpo bruto em
+  `webhook_eventos`, por um pool próprio (`getPoolWebhook()`, mesma role, máximo 4
+  conexões) para um pico do motor (`getPoolMotor()`, máximo 12) não esgotar a gravação.
+  Não processam nada na requisição.
+- **Envio pelo app** (`src/server/envio.ts`): chama a Evolution e grava a mensagem com
+  autoria (`usuario_id`, `enviada_por = 'app'`).
+- **Telas antigas**: continuam lendo views com `painel_ro` e escrevendo o que a
+  `painel_rw` já podia (sessões, push, toques, `usuarios`, `sem_atendimento`), mais
+  `peso` e `comissao_pct` de `usuarios`.
 
 Regras invioláveis:
 
-1. O painel nunca chama a Evolution API e nunca envia mensagem ao lead.
-2. O painel não altera `mensagens`, `followups`, `crm_outbox`, etapa, temperatura,
-   resumo, `qualificar_apos` ou `leads.atendente_id` diretamente.
-3. As escritas atuais da `painel_rw` ficam limitadas a:
-   - sessões e inscrições push;
-   - `followup_toques` por INSERT append-only;
-   - `usuarios.ultimo_acesso_em`;
-   - administração autenticada de `usuarios.ativo` e cadastro limitado às colunas
-     `nome`, `usuario`, `senha_hash` e `label_id`, conforme os GRANTs atuais;
-   - `leads.sem_atendimento` e `sem_atendimento_motivo`, a segunda exceção nomeada e
-     limitada por coluna registrada em `../db/painel-role.sql` e
-     `scripts/painel-db.mjs`.
-4. Toda nova view ou tabela acessada pelo painel exige GRANT explícito, teste positivo
-   do acesso necessário e teste negativo das duas roles.
-5. `usuarios.senha_hash` é estritamente server-only: nunca aparece em view de leitura,
-   resposta, bundle, erro ou log.
-6. Credenciais, URLs com senha, chaves VAPID e segredos de webhook vivem somente em
-   `.env`; `.env.example` contém apenas placeholders.
-
-As fases futuras não ampliam esses privilégios por implicação:
-
-- `automation_events` deve ser escrito pelos workflows responsáveis e lido pelo painel
-  por uma superfície segura. Não armazene chain-of-thought; só decisão operacional,
-  motivo resumido, estados observáveis e metadados necessários.
-- `followup_feedback` ainda não faz parte da superfície autorizada da `painel_rw`.
-  Antes da Fase 9, definir DDL no fluxo responsável por `../db/`, conceder apenas as
-  colunas/operações necessárias e ampliar `db:check`. A Fase 8 pode guardar apenas o
-  retorno pendente no navegador; isso não é persistência durável nem conclusão da
-  coleta de feedback.
-- `contacts`, `opportunities` e uma etapa própria da oportunidade são decisões das
-  Fases 13 e 14. Até lá, trate `lead` como o modelo legado exposto pelas views; não
-  antecipe tabelas nem drag-and-drop.
-
-Se tabelas esperadas do CRM/equipe não existirem, não as crie pelo dashboard. Informe
-qual schema em `../db/` precisa ser aplicado pelo fluxo autorizado.
+1. Toda decisão do motor vira linha em `eventos_automacao` no mesmo comando SQL que
+   muda o dado. Nunca guardar raciocínio do modelo, prompt ou texto de conversa lá.
+2. A `wakecrm_motor` não lê `usuarios.senha_hash`; o grant é por coluna.
+3. Toda tabela ou view nova exige grant explícito numa migração em `db/migrations/` e
+   teste positivo/negativo no banco de teste (`bun run test:db`).
+4. `usuarios.senha_hash` é estritamente server-only: nunca aparece em view, resposta,
+   bundle, erro ou log.
+5. Credenciais, URLs com senha, chaves VAPID, chave da Evolution e segredos de webhook
+   vivem somente em `.env`; `.env.example` contém apenas placeholders.
+6. Segredo de webhook é comparado de forma resistente a timing; inválido ou ausente
+   responde 404.
+7. Vendedor só lê e responde lead atribuído a ele; lead sem dono só o admin. A posse é
+   conferida no servidor em toda leitura e envio.
+8. Nenhum follow-up sai sem um humano tocar "Enviar" (fase 3).
 
 ### Semântica que não pode ser adulterada
 
-- “Abrir no WhatsApp” significa **abriu**, nunca **enviou**. O envio só é confirmado
-  pelo eco capturado pelo n8n.
-- `followup_toques` é append-only e não altera o ciclo de vida do followup.
-- Mensagens distinguem `lead`, `equipe` e `ia`, mas hoje não identificam qual atendente
-  digitou. Mostre “Equipe” e não invente autora ou ranking individual de resposta.
-- Métricas por atendente são por lead atribuído, não por autoria de mensagem.
-- Uma timeline só mostra fatos sustentados pelos dados. Na Fase 1, alterações históricas
-  de etapa/temperatura ou agentes específicos aparecem apenas quando houver evidência;
-  ausência de evento deve ser visível, não preenchida por inferência.
+- Mensagem da equipe tem três origens: `enviada_por = 'app'` (com `usuario_id`),
+  `'celular'` (saiu do celular do número) e `null` (legado, anterior à virada). As telas
+  de conversa (`/`, `/meus-leads` e a linha do tempo da oportunidade) leem a autoria de
+  `v_mensagens_autoria` e mostram, sob a mensagem, o nome do autor, "enviado pelo ADM" ou
+  "Equipe", respectivamente. Isso é só leitura no app: nada disso vai para o WhatsApp.
+  Não invente autor para mensagem legada.
+- Métricas antigas por atendente são por lead atribuído, não por autoria de mensagem.
+- "Abrir no WhatsApp" (`followup_toques`) significa **abriu**, nunca **enviou**, e vale
+  até a fase 3 trocar esse fluxo pelo envio direto. `followup_toques` é append-only.
+- Lead que já teve dono é desse vendedor enquanto ele estiver ativo. Mudança de dono
+  sempre gera `assignment_changed` com o motivo (`rodizio`, `mencao`, `desativacao`,
+  `admin`); `leads.atribuido_por` guarda o último.
+- Uma timeline só mostra fatos sustentados pelos dados; ausência de evento fica visível,
+  não preenchida por inferência.
 - Followup cancelado não é automaticamente erro; mostre o motivo disponível.
 - Requalificar uma sugestão inadequada não é `sem_atendimento`, não é opt-out e não
-  remove o lead da distribuição. A requalificação pertence ao n8n e deve ser
-  idempotente.
-- As labels do WhatsApp não são fonte legível/confiável na instância atual. A dona do
-  lead vem de `leads.atendente_id`, preenchido pelo rodízio pegajoso do WF-08; não reabra
-  a investigação de labels sem upgrade, repareamento ou outro dado real novo.
+  remove o lead da distribuição.
+- As labels do WhatsApp não são fonte de dado. O WF-08 "Labels" foi descartado.
+
+### Estado da fase 1
+
+Pronto localmente (não publicado): fila com sequência por chave, ingestão, distribuição
+por peso e menção, saúde, notificações push, área de super admin (monitor da fila, peso,
+comissão, correção de dono), respostas rápidas, composer de envio no app, migrações e o
+corte da virada (0003 e runbook).
+
+Depende da Task 13 (captura de eventos reais do Evolution Go): adaptador, normalização
+dos eventos, envio real, download de mídia e confirmação do tamanho dos corpos (limite de
+25 MB e de 16 MB nas server functions). Sem isso, o webhook só grava bruto e o envio pelo
+app responde indisponível.

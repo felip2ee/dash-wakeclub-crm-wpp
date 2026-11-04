@@ -6,7 +6,7 @@ self.addEventListener("activate", (evento) => evento.waitUntil(self.clients.clai
 self.addEventListener("push", (evento) => {
   const dados = evento.data ? evento.data.json() : {};
   const url = dados.url === "/followups" ? "/minha-fila" : (dados.url ?? "/minha-fila");
-  evento.waitUntil(
+  const mostrar = () =>
     self.registration.showNotification(dados.titulo ?? "Wake Club", {
       body: dados.corpo ?? "",
       icon: "/icons/icon-192.png",
@@ -14,7 +14,14 @@ self.addEventListener("push", (evento) => {
       data: { url },
       tag: dados.tag,
       renotify: true,
-    }),
+    });
+  // App aberto e visível: o aviso na tela já basta.
+  evento.waitUntil(
+    dados.seAppFechado
+      ? self.clients
+          .matchAll({ type: "window", includeUncontrolled: true })
+          .then((cs) => (cs.some((c) => c.visibilityState === "visible") ? undefined : mostrar()))
+      : mostrar(),
   );
 });
 

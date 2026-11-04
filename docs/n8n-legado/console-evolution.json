@@ -1,0 +1,221 @@
+{
+  "name": "wakeclubcrm · console Evolution",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a8f09cb0-cfa9-4ab3-8f11-8e832f3b4a56",
+      "name": "Rodar",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "metodo",
+              "name": "metodo",
+              "value": "GET",
+              "type": "string"
+            },
+            {
+              "id": "caminho",
+              "name": "caminho",
+              "value": "/webhook/find/wakeclub",
+              "type": "string"
+            },
+            {
+              "id": "corpo",
+              "name": "corpo",
+              "value": "{}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a30e6957-203a-444d-8fea-8e12ab679240",
+      "name": "Requisicao",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.metodo }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "POST"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9807742f-28a5-42dd-8072-0bf993d336f6",
+      "name": "E POST?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://evolutionapi.agencianovabr.com{{ $json.caminho }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.corpo }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "1830db17-1f76-4a52-b9dc-6d7efc5dfe00",
+      "name": "POST na Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        672,
+        -96
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "yniZfhH31bjuZigh",
+          "name": "evolutionAgenciaNova Global Api KEy"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://evolutionapi.agencianovabr.com{{ $json.caminho }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "6f1372fd-382f-42f6-a493-b5feee317562",
+      "name": "GET na Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        672,
+        112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "yniZfhH31bjuZigh",
+          "name": "evolutionAgenciaNova Global Api KEy"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Console Evolution\n\nIrmao do console SQL, para a Evolution API. Nunca ativar.\nTrocar metodo/caminho/corpo no no Requisicao e rodar.\n\nneverError + fullResponse: 404 e RESPOSTA, nao falha.\n\nReceitas uteis:\n  GET  /webhook/find/wakeclub\n  POST /webhook/set/wakeclub (substitui a config INTEIRA)\n  GET  /label/findLabels/wakeclub\n\nNAO existe rota que devolva a label de um chat: issue #2315,\nfechada como not planned contra esta versao (2.3.7).",
+        "height": 200,
+        "width": 740,
+        "color": 5
+      },
+      "id": "3868c3a1-b139-46f9-a14b-16f56a832a7f",
+      "name": "Sticky Note 0c6c4786",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -304
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Rodar": {
+      "main": [
+        [
+          {
+            "node": "Requisicao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requisicao": {
+      "main": [
+        [
+          {
+            "node": "E POST?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E POST?": {
+      "main": [
+        [
+          {
+            "node": "POST na Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GET na Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "f89c56d1-0fac-4ed2-a52d-2ed7b04b38f0",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "nmrQi3gOp2RuyLnr",
+  "tags": []
+}

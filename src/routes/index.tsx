@@ -31,6 +31,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DonoDoLead } from "@/features/admin/DonoDoLead";
+import { Composer } from "@/features/conversa/Composer";
 import {
   dataHora,
   desde,
@@ -38,6 +40,7 @@ import {
   hora,
   iniciais,
   plural,
+  rotuloAutoria,
   telefone as fmtTelefone,
 } from "@/lib/formato";
 import { cn } from "@/lib/utils";
@@ -49,6 +52,7 @@ import {
   type Mensagem,
 } from "@/server/conversas";
 import { exigirAdmin } from "@/server/auth";
+import { envioDisponivel } from "@/server/envio";
 
 /**
  * Caixa de entrada — ESPELHO, só leitura.
@@ -345,6 +349,10 @@ function Thread({
     queryFn: () => getMensagens({ data: { leadId: c.id } }),
     refetchInterval: RECARREGAR_A_CADA_MS,
   });
+  const { data: podeEnviar } = useQuery({
+    queryKey: ["envio-disponivel"],
+    queryFn: () => envioDisponivel(),
+  });
 
   return (
     <>
@@ -411,13 +419,17 @@ function Thread({
         </div>
       </ScrollArea>
 
-      {/* No lugar do campo de digitação. O painel não envia — ver o topo. */}
-      <div className="border-t border-border bg-card/70 px-3 py-2.5 backdrop-blur sm:px-4">
-        <div className="mx-auto flex max-w-3xl items-center justify-center gap-2 text-[11px] text-muted-foreground">
-          <Eye className="h-3.5 w-3.5 shrink-0" />
-          <span>Painel é espelho — para responder, use o WhatsApp da equipe.</span>
+      {podeEnviar ? (
+        <Composer leadId={c.id} queryKey={["mensagens", c.id]} />
+      ) : (
+        /* Sem adaptador da Evolution não há envio — ver o topo. */
+        <div className="border-t border-border bg-card/70 px-3 py-2.5 backdrop-blur sm:px-4">
+          <div className="mx-auto flex max-w-3xl items-center justify-center gap-2 text-[11px] text-muted-foreground">
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+            <span>Painel é espelho — para responder, use o WhatsApp da equipe.</span>
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }
@@ -461,6 +473,12 @@ function Bolha({ mensagem: m, anterior }: { mensagem: Mensagem; anterior?: Mensa
           <p className="whitespace-pre-wrap leading-relaxed">
             {m.texto ?? <span className="italic opacity-60">(sem texto)</span>}
           </p>
+
+          {m.direcao === "equipe" && (
+            <p className="mt-1 text-[10px] text-primary-foreground/70">
+              {rotuloAutoria(m.autoria)}
+            </p>
+          )}
 
           <div
             className={cn(
@@ -547,6 +565,10 @@ function DetalhesDoLead({ conversa: c }: { conversa: Conversa }) {
           </div>
         </div>
       )}
+
+      <div className="mb-2">
+        <DonoDoLead leadId={c.id} />
+      </div>
 
       <div className="space-y-2 text-sm">
         {/* Tudo daqui pra baixo foi preenchido pela IA (WF-02), não por humano. */}

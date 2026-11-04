@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { dataHoraCompleta, desde, telefone } from "@/lib/formato";
+import { dataHoraCompleta, desde, rotuloAutoria, telefone } from "@/lib/formato";
 import { cn } from "@/lib/utils";
 import type { LeadCard } from "@/server/leads";
 import {
@@ -296,7 +296,11 @@ function Evento({ evento }: { evento: EventoTimeline }) {
   if (evento.tipo === "mensagem") {
     const { mensagem } = evento;
     const autor =
-      mensagem.direcao === "lead" ? "Lead" : mensagem.direcao === "ia" ? "IA" : "Equipe";
+      mensagem.direcao === "lead"
+        ? "Lead"
+        : mensagem.direcao === "ia"
+          ? "IA"
+          : rotuloAutoria(mensagem.autoria);
     return (
       <article
         className={cn(

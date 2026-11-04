@@ -26,11 +26,15 @@ export default defineConfig({
             "**/src/server/followups.ts",
             "**/src/server/admin.ts",
             "**/src/server/opportunities.ts",
+            "**/src/server/admin-motor.ts",
+            "**/src/server/respostas-rapidas.ts",
+            "**/src/server/envio.ts",
           ],
         },
       },
     }),
-    nitro(),
+    // Boot do motor sem esperar a primeira requisição (ver o próprio arquivo).
+    nitro({ plugins: ["./src/server/motor/nitro-plugin.ts"] }),
     viteReact(),
   ],
 });

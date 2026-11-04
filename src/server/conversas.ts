@@ -6,7 +6,7 @@ import { getPool } from "./db";
 
 /**
  * As conversas. Espelha `wakeclub.v_conversas_painel` e
- * `wakeclub.v_mensagens_painel`.
+ * `wakeclub.v_mensagens_painel`, com a autoria de `wakeclub.v_mensagens_autoria`.
  *
  * O texto das mensagens passa por aqui — foi uma reversão consciente da regra
  * original, que mantinha `mensagens.texto` inalcançável para o painel. Ver o
@@ -45,6 +45,18 @@ export type Conversa = {
 
 export type Direcao = "lead" | "equipe" | "ia";
 
+/**
+ * Quem mandou a mensagem da equipe (design §5.2): `app` traz o nome do autor; `celular`
+ * é eco de envio fora do app ("enviado pelo ADM"); `null` é legado, antes da virada.
+ */
+export type Autoria = { tipo: "app"; nome: string } | { tipo: "celular" } | null;
+
+export function autoria(enviadaPor: string | null, autorNome: string | null): Autoria {
+  if (enviadaPor === "app") return { tipo: "app", nome: autorNome ?? "Equipe" };
+  if (enviadaPor === "celular") return { tipo: "celular" };
+  return null;
+}
+
 export type Mensagem = {
   id: string;
   leadId: string;
@@ -54,6 +66,7 @@ export type Mensagem = {
   /** 0 erro · 1 pendente · 2 servidor · 3 entregue · 4 lido · 5 reproduzido */
   entregaNivel: number | null;
   entregaEm: string | null;
+  autoria: Autoria;
 };
 
 type LinhaConversa = {
@@ -90,6 +103,8 @@ type LinhaMensagem = {
   enviada_em: Date;
   entrega_nivel: number | null;
   entrega_em: Date | null;
+  enviada_por: string | null;
+  autor_nome: string | null;
 };
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -144,10 +159,12 @@ export const getMensagens = createServerFn({ method: "GET" })
     await exigirAdmin();
 
     const { rows } = await getPool().query<LinhaMensagem>(
-      `select id, lead_id, direcao, texto, enviada_em, entrega_nivel, entrega_em
-         from wakeclub.v_mensagens_painel
-        where lead_id = $1::uuid
-        order by enviada_em asc, criado_em asc`,
+      `select m.id, m.lead_id, m.direcao, m.texto, m.enviada_em, m.entrega_nivel,
+              m.entrega_em, a.enviada_por, a.autor_nome
+         from wakeclub.v_mensagens_painel m
+         left join wakeclub.v_mensagens_autoria a on a.mensagem_id = m.id
+        where m.lead_id = $1::uuid
+        order by m.enviada_em asc, m.criado_em asc`,
       [data.leadId],
     );
 
@@ -159,5 +176,6 @@ export const getMensagens = createServerFn({ method: "GET" })
       enviadaEm: r.enviada_em.toISOString(),
       entregaNivel: r.entrega_nivel,
       entregaEm: iso(r.entrega_em),
+      autoria: autoria(r.enviada_por, r.autor_nome),
     }));
   });

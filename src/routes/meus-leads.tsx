@@ -8,9 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { desde, hora, plural, telefone } from "@/lib/formato";
+import { Composer } from "@/features/conversa/Composer";
+import { desde, hora, plural, rotuloAutoria, telefone } from "@/lib/formato";
 import { cn } from "@/lib/utils";
 import { exigirSessao } from "@/server/auth";
+import { envioDisponivel } from "@/server/envio";
 import { listarMensagensDoMeuLead, listarMeusLeads, type MeuLead } from "@/server/meus-leads";
 
 export const Route = createFileRoute("/meus-leads")({
@@ -151,6 +153,10 @@ function Conversa({ lead, voltar }: { lead: MeuLead; voltar: () => void }) {
     queryKey: ["mensagens-meu-lead", lead.id],
     queryFn: () => listarMensagensDoMeuLead({ data: { leadId: lead.id } }),
   });
+  const { data: podeEnviar } = useQuery({
+    queryKey: ["envio-disponivel"],
+    queryFn: () => envioDisponivel(),
+  });
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col px-3 py-4 sm:px-6">
@@ -186,6 +192,11 @@ function Conversa({ lead, voltar }: { lead: MeuLead; voltar: () => void }) {
               <p className="whitespace-pre-wrap break-words">
                 {mensagem.texto || "Mensagem sem texto"}
               </p>
+              {mensagem.direcao === "equipe" && (
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  {rotuloAutoria(mensagem.autoria)}
+                </p>
+              )}
               <p
                 className="mt-1 text-right text-[10px] text-muted-foreground"
                 suppressHydrationWarning
@@ -196,9 +207,13 @@ function Conversa({ lead, voltar }: { lead: MeuLead; voltar: () => void }) {
           ))
         )}
       </div>
-      <p className="border-t py-3 text-center text-xs text-muted-foreground">
-        Somente leitura. Responda pelo WhatsApp.
-      </p>
+      {podeEnviar ? (
+        <Composer leadId={lead.id} queryKey={["mensagens-meu-lead", lead.id]} />
+      ) : (
+        <p className="border-t py-3 text-center text-xs text-muted-foreground">
+          Somente leitura. Responda pelo WhatsApp.
+        </p>
+      )}
     </div>
   );
 }

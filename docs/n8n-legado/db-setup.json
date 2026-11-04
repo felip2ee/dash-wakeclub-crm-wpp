@@ -1,0 +1,242 @@
+{
+  "name": "wakeclubcrm · db setup",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "d3901693-2d88-4bfc-a1ca-123573b0d828",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "create schema if not exists wakeclub;\n\nset search_path to wakeclub, public;\n\ncreate table if not exists leads (\n    id                    uuid primary key default gen_random_uuid(),\n    telefone              text not null unique,\n    nome                  text,\n    etiqueta              text not null default 'Novo Lead',\n    origem                text,\n    interesse             text,\n    objecao               text,\n    data_agendada         timestamptz,\n    resumo                text,\n    temperatura           text,\n    ultima_msg_lead_em    timestamptz,\n    ultima_msg_equipe_em  timestamptz,\n    qualificar_apos       timestamptz,\n    n_toques              int not null default 0,\n    opt_out               boolean not null default false,\n    crm_externo_id        text,\n    criado_em             timestamptz not null default now(),\n    atualizado_em         timestamptz not null default now(),\n    constraint leads_telefone_e164\n        check (telefone ~ '^[+][1-9][0-9]{7,14}$'),\n    constraint leads_etiqueta_valida check (etiqueta in (\n        'Novo Lead',\n        'Atendimento',\n        'Link enviado',\n        'Aguardando pagamento',\n        'Agendado',\n        'Aula realizada',\n        'Follow-up',\n        'Negociação encerrada'\n    )),\n    constraint leads_temperatura_valida\n        check (temperatura is null or temperatura in ('quente', 'morno', 'frio')),\n    constraint leads_n_toques_nao_negativo check (n_toques >= 0)\n);\n\ncreate index if not exists leads_data_agendada_idx\n    on leads (data_agendada)\n    where data_agendada is not null and opt_out = false;\n\ncreate index if not exists leads_ultima_msg_lead_idx\n    on leads (ultima_msg_lead_em)\n    where opt_out = false;\n\ncreate index if not exists leads_etiqueta_idx on leads (etiqueta);\n\ncreate index if not exists leads_fila_qualificacao_idx\n    on leads (qualificar_apos)\n    where qualificar_apos is not null;\n\ncreate table if not exists mensagens (\n    id                uuid primary key default gen_random_uuid(),\n    lead_id           uuid not null references leads (id) on delete cascade,\n    direcao           text not null,\n    texto             text,\n    enviada_em        timestamptz not null,\n    evolution_msg_id  text unique,\n    criado_em         timestamptz not null default now(),\n    constraint mensagens_direcao_valida\n        check (direcao in ('lead', 'equipe', 'ia'))\n);\n\ncreate index if not exists mensagens_lead_recentes_idx\n    on mensagens (lead_id, enviada_em desc);\n\ncreate table if not exists followups (\n    id                    uuid primary key default gen_random_uuid(),\n    lead_id               uuid not null references leads (id) on delete cascade,\n    agendado_para         timestamptz not null,\n    tipo                  text not null,\n    motivo                text,\n    status                text not null default 'pendente',\n    motivo_cancelamento   text,\n    texto_enviado         text,\n    criado_em             timestamptz not null default now(),\n    atualizado_em         timestamptz not null default now(),\n    enviado_em            timestamptz,\n    constraint followups_tipo_valido check (tipo in (\n        'reengajar',\n        'lembrete_d1',\n        'lembrete_dia',\n        'pos_aula',\n        'reativacao'\n    )),\n    constraint followups_status_valido\n        check (status in ('pendente', 'enviando', 'enviado', 'cancelado', 'abortado'))\n);\n\ncreate unique index if not exists followups_um_pendente_por_lead\n    on followups (lead_id)\n    where status = 'pendente';\n\ncreate index if not exists followups_fila_idx\n    on followups (agendado_para)\n    where status = 'pendente';\n\ncreate index if not exists followups_status_criado_idx\n    on followups (status, criado_em desc);\n\ncreate table if not exists crm_outbox (\n    id              bigserial primary key,\n    lead_id         uuid not null references leads (id) on delete cascade,\n    tipo            text not null,\n    payload         jsonb not null default '{}'::jsonb,\n    sincronizado    boolean not null default false,\n    sincronizado_em timestamptz,\n    criado_em       timestamptz not null default now()\n);\n\ncreate index if not exists crm_outbox_pendentes_idx\n    on crm_outbox (criado_em)\n    where sincronizado = false;\n\ncreate table if not exists instancia_eventos (\n    id             bigserial primary key,\n    instancia      text not null,\n    evento         text not null,\n    estado         text,\n    status_reason  int,\n    detalhe        jsonb not null default '{}'::jsonb,\n    ocorrido_em    timestamptz not null default now(),\n    criado_em      timestamptz not null default now(),\n    constraint instancia_eventos_estado_valido\n        check (estado is null or estado in ('open', 'connecting', 'close'))\n);\n\ncreate index if not exists instancia_eventos_recentes_idx\n    on instancia_eventos (instancia, ocorrido_em desc);\n\ncreate table if not exists instancia_estado (\n    instancia            text primary key,\n    estado               text,\n    status_reason        int,\n    ultimo_evento_em     timestamptz,\n    ultimo_heartbeat_em  timestamptz,\n    heartbeat_ok         boolean,\n    heartbeat_erro       text,\n    conectado_desde      timestamptz,\n    desconectado_desde   timestamptz,\n    qr_pendente          boolean not null default false,\n    qr_desde             timestamptz,\n    qr_contador          int not null default 0,\n    atualizado_em        timestamptz not null default now(),\n    constraint instancia_estado_estado_valido\n        check (estado is null or estado in ('open', 'connecting', 'close'))\n);\n\nalter table mensagens add column if not exists entrega_nivel smallint;\nalter table mensagens add column if not exists entrega_em    timestamptz;\n\ndo $$\nbegin\n    if not exists (\n        select 1 from pg_constraint\n         where conname = 'mensagens_entrega_nivel_valido'\n           and conrelid = 'wakeclub.mensagens'::regclass\n    ) then\n        alter table mensagens\n            add constraint mensagens_entrega_nivel_valido\n            check (entrega_nivel is null or entrega_nivel between 0 and 5);\n    end if;\nend\n$$;\n\ncreate index if not exists mensagens_entrega_idx\n    on mensagens (enviada_em desc)\n    where direcao in ('equipe', 'ia') and evolution_msg_id is not null;\n\ncreate or replace function set_atualizado_em() returns trigger as $$\nbegin\n    new.atualizado_em = now();\n    return new;\nend;\n$$ language plpgsql;\n\ndrop trigger if exists leads_atualizado_em on leads;\ncreate trigger leads_atualizado_em\n    before update on leads\n    for each row execute function set_atualizado_em();\n\ndrop trigger if exists followups_atualizado_em on followups;\ncreate trigger followups_atualizado_em\n    before update on followups\n    for each row execute function set_atualizado_em();\n\ndrop trigger if exists instancia_estado_atualizado_em on instancia_estado;\ncreate trigger instancia_estado_atualizado_em\n    before update on instancia_estado\n    for each row execute function set_atualizado_em();\n\ncreate or replace view v_saude_numero as\nwith entrega as (\n    select\n        count(*) as enviadas_24h,\n        count(*) filter (where entrega_nivel >= 3) as entregues_24h,\n        count(*) filter (\n            where coalesce(entrega_nivel, 0) < 3\n              and enviada_em < now() - interval '30 minutes'\n        ) as travadas_24h\n      from mensagens\n     where direcao in ('equipe', 'ia')\n       and evolution_msg_id is not null\n       and enviada_em > now() - interval '24 hours'\n)\nselect\n    e.instancia,\n    e.estado,\n    e.status_reason,\n    e.ultimo_evento_em,\n    e.ultimo_heartbeat_em,\n    e.heartbeat_ok,\n    e.heartbeat_erro,\n    round(extract(epoch from now() - e.ultimo_heartbeat_em) / 60)::int\n        as minutos_sem_heartbeat,\n    e.conectado_desde,\n    e.desconectado_desde,\n    e.qr_pendente,\n    e.qr_desde,\n    e.qr_contador,\n    x.enviadas_24h,\n    x.entregues_24h,\n    x.travadas_24h,\n    case when x.enviadas_24h > 0\n         then round(x.entregues_24h * 100.0 / x.enviadas_24h, 1)\n    end as taxa_entrega_24h,\n    case\n        when e.ultimo_heartbeat_em is null then 'sem heartbeat'\n        when e.ultimo_heartbeat_em < now() - interval '10 minutes'\n            then 'evolution muda'\n        when e.heartbeat_ok is false then 'evolution respondendo erro'\n        when e.estado is distinct from 'open' then 'desconectado'\n        when e.qr_pendente then 'qr pendente'\n        when x.enviadas_24h >= 5\n             and x.travadas_24h * 2 > x.enviadas_24h then 'entrega travada'\n        else 'ok'\n    end as alerta\n  from instancia_estado e\n cross join entrega x;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "4d672afb-a3d0-44ac-ba3f-7f388bcda566",
+      "name": "Run Schema DDL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "set search_path to wakeclub, public;\n\n-- Atualizada em 03/08/2026: ganhou as colunas de atribuicao (§15). Depende de\n-- `usuarios`, que o no anterior cria. As outras 10 views do painel sao\n-- aplicadas por `bun run db:apply` (db/painel-views.sql), nao por aqui.\n--\n-- DROP e nao CREATE OR REPLACE: o replace so aceita coluna nova NO FIM, e as\n-- colunas de atendente entram no meio. Consequencia do drop: o GRANT some\n-- junto, e sem ele a tela do painel vem VAZIA SEM ERRO. Por isso o regrant\n-- logo abaixo, guardado por existencia da role.\ndrop view if exists v_leads_painel;\n\ncreate view v_leads_painel as\nselect\n    l.id,\n    l.nome,\n    l.telefone,\n    l.etiqueta,\n    coalesce(o.ordem, 99)                                   as etiqueta_ordem,\n    l.temperatura,\n    l.origem,\n    l.interesse,\n    l.objecao,\n    l.resumo,\n    l.data_agendada,\n    l.n_toques,\n    l.opt_out,\n\n    l.atendente_id,\n    a.nome                                                  as atendente_nome,\n    l.atribuido_em,\n\n    l.sem_atendimento,\n    l.sem_atendimento_motivo,\n\n    l.ultima_msg_lead_em,\n    l.ultima_msg_equipe_em,\n    greatest(l.ultima_msg_lead_em, l.ultima_msg_equipe_em)  as ultima_msg_em,\n\n    (l.ultima_msg_lead_em is not null\n        and (l.ultima_msg_equipe_em is null\n             or l.ultima_msg_lead_em > l.ultima_msg_equipe_em))\n                                                            as aguardando_equipe,\n\n    case\n        when l.ultima_msg_lead_em is not null\n         and (l.ultima_msg_equipe_em is null\n              or l.ultima_msg_lead_em > l.ultima_msg_equipe_em)\n        then floor(extract(epoch from now() - l.ultima_msg_lead_em) / 3600)::int\n    end                                                     as horas_esperando,\n\n    f.agendado_para                                         as followup_em,\n    f.tipo                                                  as followup_tipo,\n\n    l.criado_em\n  from leads l\n  left join usuarios a on a.id = l.atendente_id\n  left join (values\n        ('Novo Lead',            1),\n        ('Atendimento',          2),\n        ('Link enviado',         3),\n        ('Aguardando pagamento', 4),\n        ('Agendado',             5),\n        ('Aula realizada',       6),\n        ('Follow-up',            7),\n        ('Negociação encerrada', 8)\n    ) as o (etiqueta, ordem) on o.etiqueta = l.etiqueta\n  left join lateral (\n        select agendado_para, tipo\n          from followups\n         where lead_id = l.id\n           and status = 'pendente'\n         order by agendado_para\n         limit 1\n  ) f on true;\n\ndo $$\nbegin\n    if exists (select 1 from pg_roles where rolname = 'painel_ro') then\n        grant select on wakeclub.v_leads_painel to painel_ro;\n    end if;\nend\n$$;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "86f71bee-916e-4084-a131-9478f4dbbd6f",
+      "name": "Run Painel Views",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "set search_path to wakeclub, public;\n\ncreate table if not exists usuarios (\n    id               uuid primary key default gen_random_uuid(),\n    nome             text not null,\n    usuario          text not null unique,\n    senha_hash       text not null,\n    papel            text not null default 'atendente',\n    label_id         text,\n    ativo            boolean not null default true,\n    ultimo_acesso_em timestamptz,\n    criado_em        timestamptz not null default now(),\n    atualizado_em    timestamptz not null default now(),\n    constraint usuarios_papel_valido\n        check (papel in ('admin', 'atendente')),\n    constraint usuarios_usuario_normalizado\n        check (usuario = lower(usuario) and usuario !~ '\\s' and length(usuario) >= 3)\n);\n\ncreate unique index if not exists usuarios_label_unica\n    on usuarios (label_id)\n    where label_id is not null;\n\ncreate index if not exists usuarios_rodizio_idx\n    on usuarios (papel)\n    where ativo = true and label_id is not null;\n\ncreate table if not exists sessoes (\n    id          uuid primary key default gen_random_uuid(),\n    usuario_id  uuid not null references usuarios (id) on delete cascade,\n    token_hash  text not null unique,\n    expira_em   timestamptz not null,\n    revogada    boolean not null default false,\n    user_agent  text,\n    criado_em   timestamptz not null default now(),\n    usado_em    timestamptz\n);\n\ncreate index if not exists sessoes_lookup_idx\n    on sessoes (token_hash)\n    where revogada = false;\n\ncreate index if not exists sessoes_usuario_idx on sessoes (usuario_id);\n\ncreate index if not exists sessoes_expiradas_idx on sessoes (expira_em);\n\ncreate table if not exists push_subscriptions (\n    id          uuid primary key default gen_random_uuid(),\n    usuario_id  uuid not null references usuarios (id) on delete cascade,\n    endpoint    text not null unique,\n    p256dh      text not null,\n    auth        text not null,\n    apelido     text,\n    falhas      int  not null default 0,\n    ultimo_erro text,\n    criado_em   timestamptz not null default now(),\n    usado_em    timestamptz\n);\n\ncreate index if not exists push_subscriptions_usuario_idx\n    on push_subscriptions (usuario_id);\n\ncreate table if not exists notificacoes (\n    id          bigserial primary key,\n    usuario_id  uuid references usuarios (id) on delete cascade,\n    tipo        text not null,\n    titulo      text not null,\n    corpo       text,\n    url         text,\n    status      text not null default 'pendente',\n    erro        text,\n    criado_em   timestamptz not null default now(),\n    enviada_em  timestamptz,\n    constraint notificacoes_status_valido\n        check (status in ('pendente', 'enviando', 'enviada', 'falhou'))\n);\n\ncreate index if not exists notificacoes_fila_idx\n    on notificacoes (criado_em)\n    where status = 'pendente';\n\ncreate index if not exists notificacoes_usuario_idx\n    on notificacoes (usuario_id, criado_em desc);\n\ncreate table if not exists followup_toques (\n    id           uuid primary key default gen_random_uuid(),\n    followup_id  uuid not null references followups (id) on delete cascade,\n    usuario_id   uuid not null references usuarios (id) on delete cascade,\n    aberto_em    timestamptz not null default now()\n);\n\ncreate index if not exists followup_toques_followup_idx\n    on followup_toques (followup_id, aberto_em desc);\n\ncreate table if not exists whatsapp_labels (\n    label_id      text primary key,\n    nome          text not null,\n    cor           text,\n    nao_atender   boolean not null default false,\n    ativa         boolean not null default true,\n    atualizado_em timestamptz not null default now()\n);\n\nalter table leads add column if not exists atendente_id uuid references usuarios (id);\nalter table leads add column if not exists atribuido_em timestamptz;\nalter table leads add column if not exists sem_atendimento boolean not null default false;\nalter table leads add column if not exists sem_atendimento_motivo text;\nalter table leads add column if not exists labels_whatsapp jsonb;\n\ncreate index if not exists leads_distribuir_idx\n    on leads (criado_em)\n    where atendente_id is null and sem_atendimento = false and opt_out = false;\n\ncreate index if not exists leads_atendente_idx\n    on leads (atendente_id)\n    where opt_out = false;\n\nalter table followups add column if not exists texto_sugerido text;\nalter table followups add column if not exists sugerido_em    timestamptz;\n\ncreate index if not exists followups_a_redigir_idx\n    on followups (agendado_para)\n    where status = 'pendente' and texto_sugerido is null;\n\ndrop trigger if exists usuarios_atualizado_em on usuarios;\ncreate trigger usuarios_atualizado_em\n    before update on usuarios\n    for each row execute function set_atualizado_em();\n\ndrop trigger if exists whatsapp_labels_atualizado_em on whatsapp_labels;\ncreate trigger whatsapp_labels_atualizado_em\n    before update on whatsapp_labels\n    for each row execute function set_atualizado_em();",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "98acda21-c375-4dc7-a87d-9bc5d0ab8b6b",
+      "name": "Run Schema Equipe",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      },
+      "notes": "db/schema-equipe.sql — tabelas da equipe (§15/§16). Roda DEPOIS do schema base: referencia leads e followups."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "set search_path to wakeclub, public;\n\n-- Tipo de midia: o normalizador do WF-01 ja calculava isto e descartava.\nalter table mensagens add column if not exists tipo text;\n\n-- Fila de transcricao, no mesmo espirito de `leads.qualificar_apos`: o estado\n-- vive no Postgres, nunca numa execucao n8n suspensa.\n--   pendente / transcrevendo / ok / falhou / sem_midia\n-- `sem_midia` e terminal e sem culpa: a Evolution nao devolveu o audio porque\n-- a midia expirou no WhatsApp. Nao adianta tentar de novo.\nalter table mensagens add column if not exists transcricao_status     text;\nalter table mensagens add column if not exists transcrito_em          timestamptz;\nalter table mensagens add column if not exists transcricao_erro       text;\nalter table mensagens add column if not exists transcricao_tentativas smallint not null default 0;\n\ndo $$\nbegin\n    if not exists (\n        select 1 from pg_constraint\n         where conname = 'mensagens_transcricao_status_valido'\n           and conrelid = 'wakeclub.mensagens'::regclass\n    ) then\n        alter table mensagens\n            add constraint mensagens_transcricao_status_valido\n            check (transcricao_status is null\n                   or transcricao_status in ('pendente', 'transcrevendo',\n                                             'ok', 'falhou', 'sem_midia'));\n    end if;\nend\n$$;\n\n-- A fila do WF-11. `evolution_msg_id not null` porque e a chave que o\n-- getBase64FromMediaMessage exige: sem ela nao ha o que buscar.\ncreate index if not exists mensagens_a_transcrever_idx\n    on mensagens (enviada_em)\n    where transcricao_status = 'pendente' and evolution_msg_id is not null;\n\n-- Varredura de orfas: 'transcrevendo' preso e execucao que morreu no meio.\ncreate index if not exists mensagens_transcrevendo_idx\n    on mensagens (transcrito_em)\n    where transcricao_status = 'transcrevendo';\n\n-- Backfill das que ja estao no banco. Casa por igualdade literal, nao LIKE,\n-- para nao pegar um lead que por acaso escreveu \"[audio]\" na mao.\nupdate mensagens\n   set tipo = 'audio',\n       transcricao_status = coalesce(transcricao_status, 'pendente')\n where texto = '[audio]'\n   and tipo is distinct from 'audio';",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "91c11437-3e12-467d-810a-b3b11e36ca28",
+      "name": "Run Schema Audio",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        176
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      },
+      "notes": "db/schema-audio.sql — tipo de midia e fila de transcricao (WF-11). Roda DEPOIS do schema base: altera `mensagens`."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "set search_path to wakeclub, public;\n\nalter table notificacoes\n    add column if not exists followup_id uuid references followups (id) on delete cascade;\n\ncreate index if not exists notificacoes_followup_idx\n    on notificacoes (followup_id)\n    where followup_id is not null;\n\ndo $$\nbegin\n    if exists (select 1 from pg_constraint\n                where conname = 'notificacoes_status_valido'\n                  and conrelid = 'wakeclub.notificacoes'::regclass) then\n        alter table notificacoes drop constraint notificacoes_status_valido;\n    end if;\n    alter table notificacoes\n        add constraint notificacoes_status_valido\n        check (status in ('pendente','enviando','enviada','falhou','cancelada'));\nend\n$$;\n\nupdate notificacoes n\n   set followup_id = (\n        select f.id from followups f join leads l on l.id = f.lead_id\n         where n.usuario_id = l.atendente_id\n           and n.titulo = 'Follow-up pronto: ' || coalesce(nullif(l.nome,''), l.telefone)\n           and f.sugerido_em is not null and f.sugerido_em <= n.criado_em\n         order by f.sugerido_em desc limit 1)\n where n.followup_id is null and n.tipo = 'followup';",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "b7dd7ac9-25ed-4d3e-a59a-386d4a5ab0b8",
+      "name": "Run Schema Push",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        896,
+        176
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      },
+      "notes": "db/schema-push.sql - followup_id e status cancelada em notificacoes (WF-09). O porque esta no .sql."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "set search_path to wakeclub, public;\n\n-- Auditoria explicita das decisoes das IAs (Qualificador, Porteiro, Redator).\n-- O evento nasce NO MESMO COMANDO SQL da mudanca de negocio, a partir do CTE\n-- que alterou a linha. Nao existe workflow generico de logging.\n--\n-- NUNCA guardar chain-of-thought, prompt, conversa ou texto_sugerido aqui.\n-- `motivo` e justificativa curta sobre sinais observaveis; `metadados` e so\n-- tecnico. O texto sugerido vive em followups.texto_sugerido.\n--\n-- Sem CHECK em agente/tipo_evento: vocabulario aberto, e um CHECK estourando\n-- derrubaria a execucao inteira do WF-02, que grava no mesmo statement da\n-- qualificacao.\ncreate table if not exists eventos_automacao (\n    id              bigserial primary key,\n    lead_id         uuid not null references leads (id) on delete cascade,\n\n    agente          text not null,\n    tipo_evento     text not null,\n    ocorrido_em     timestamptz not null default now(),\n\n    gatilho         text,\n    decisao         text,\n    motivo          text,\n\n    estado_anterior jsonb not null default '{}'::jsonb,\n    estado_novo     jsonb not null default '{}'::jsonb,\n    metadados       jsonb not null default '{}'::jsonb,\n\n    entidade_tipo   text not null,\n    entidade_id     uuid not null,\n\n    origem_tipo     text not null default 'n8n',\n    origem_id       text,\n    correlacao_id   text not null,\n\n    modelo          text,\n    versao_prompt   text,\n\n    criado_em       timestamptz not null default now(),\n\n    constraint eventos_automacao_entidade_valida\n        check (entidade_tipo in ('lead', 'followup'))\n);\n\n-- Segunda camada da idempotencia. A primeira, e a que de fato protege, e o\n-- evento nascer do CTE que mudou o dado. Formato do correlacao_id:\n-- '<wf>:<execucao>:<entidade_id>' - inclui a entidade porque uma execucao do\n-- WF-02 processa varios leads.\ncreate unique index if not exists eventos_automacao_unico\n    on eventos_automacao (correlacao_id, tipo_evento, entidade_tipo, entidade_id);\n\ncreate index if not exists eventos_automacao_lead_idx\n    on eventos_automacao (lead_id, ocorrido_em desc);\n\ncreate index if not exists eventos_automacao_recentes_idx\n    on eventos_automacao (ocorrido_em desc);\n\n-- Superficie de leitura do painel. View e nao tabela: a painel_ro nao tem\n-- acesso a tabela nenhuma. Junta o nome do lead porque a timeline sempre\n-- precisa dele e obrigar o join daria acesso a `leads`.\ncreate or replace view v_eventos_automacao_painel as\nselect\n    e.id,\n    e.lead_id,\n    l.nome     as lead_nome,\n    l.telefone as lead_telefone,\n    e.agente,\n    e.tipo_evento,\n    e.ocorrido_em,\n    e.gatilho,\n    e.decisao,\n    e.motivo,\n    e.estado_anterior,\n    e.estado_novo,\n    e.metadados,\n    e.entidade_tipo,\n    e.entidade_id,\n    e.origem_tipo,\n    e.origem_id,\n    e.correlacao_id,\n    e.modelo,\n    e.versao_prompt\n  from eventos_automacao e\n  join leads l on l.id = e.lead_id;\n\n-- Guardado por existencia da role: quem cria a painel_ro e o painel-db.mjs, e\n-- grant para role inexistente derrubaria o schema inteiro. A painel_rw NAO\n-- aparece aqui: o painel le auditoria e nao escreve.\ndo $$\nbegin\n    if exists (select 1 from pg_roles where rolname = 'painel_ro') then\n        grant select on wakeclub.v_eventos_automacao_painel to painel_ro;\n    end if;\nend\n$$;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "3ee96c52-d9e9-443b-a339-9600ba4b6eef",
+      "name": "Run Schema Eventos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1120,
+        176
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      },
+      "notes": "db/schema-eventos-automacao.sql - auditoria das IAs (Fase 3). O porque esta no .sql. Roda DEPOIS do schema base: referencia leads."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Run Schema DDL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Schema DDL": {
+      "main": [
+        [
+          {
+            "node": "Run Schema Equipe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Schema Equipe": {
+      "main": [
+        [
+          {
+            "node": "Run Schema Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Schema Audio": {
+      "main": [
+        [
+          {
+            "node": "Run Schema Push",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Schema Push": {
+      "main": [
+        [
+          {
+            "node": "Run Schema Eventos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Schema Eventos": {
+      "main": [
+        [
+          {
+            "node": "Run Painel Views",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "a07e6a7e-17a2-4559-abbd-d4553742f6e6",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "UU3FvtxIrcSxUZLi",
+  "tags": []
+}

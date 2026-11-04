@@ -8,16 +8,16 @@ nomes técnicos exigidos por bibliotecas, APIs e pelo plano ficam como estão.
 
 - Produto, escopo e roadmap: `PRODUCT.md`.
 - Arquitetura atual, dados, roles e **regras de dados vigentes**: `docs/architecture.md`.
-- Próxima arquitetura (motor próprio, sem n8n): `docs/superpowers/specs/2026-11-03-wakecrm-motor-proprio-design.md`.
-  Enquanto a fase 1 desse design não for entregue, valem as regras de dados de
-  `docs/architecture.md`; a fase 1 começa atualizando-as.
+- Arquitetura do motor próprio (sem n8n): `docs/superpowers/specs/2026-11-03-wakecrm-motor-proprio-design.md`,
+  com plano da fase 1 em `docs/superpowers/plans/2026-11-04-wakecrm-fase-1.md`. As regras
+  de dados de `docs/architecture.md` já refletem o motor próprio.
 - UX de referência: `plan(2).md`. Contratos já implementados: `ESPEC-PAINEL-EQUIPE.md`
   e `ESPEC-BOTAO-NAO-ATENDER.md`.
 - Interface: `docs/design.md`. Preparação local: `docs/onboarding.md`. Checagens:
   `docs/quality.md`. Ferramentas e evidência do setup: `docs/setup.md`.
 - `../CLAUDE.md`, `../db/` e `../n8n/`, citados em documentos antigos, **não existem
-  neste checkout**. Os workflows n8n exportados estão fora do repositório; a fase 1 do
-  WakeCRM os copia para `docs/n8n-legado/`. Não presuma conteúdo desses caminhos.
+  neste checkout**. Os workflows n8n exportados estão em `docs/n8n-legado/` (só fonte,
+  nunca reativar). Migrações do schema: `db/migrations/`.
 
 Se uma tarefa exigir nova escrita, nova fonte de estado ou mudança de responsabilidade
 que nenhum documento acima autoriza, pare e proponha a menor decisão explícita.
@@ -38,7 +38,9 @@ PostgreSQL 14 via `pg` (sem ORM), Zod, Bun (`bun.lock`). Container `oven/bun:1.3
 - Self-check das regras locais: `bun run quality:rules`
 - Build: `bun run build`
 - Verificação combinada (sem rede, banco ou build): `bun run check`
-- Banco (exige `.env` e autorização para o ambiente alvo): `bun run db:check`, `bun run db:apply`
+- Banco (exige `.env` e autorização para o ambiente alvo): `bun run db:check`, `bun run db:apply`,
+  `bun run db:migrate`
+- Testes de banco (Docker local): `bash scripts/banco-teste.sh && bun run test:db`
 - Mudança só documental: `git diff --check` e revisão do diff.
 
 Se o `proto` não achar versão do Bun, veja `docs/onboarding.md`.

@@ -1,0 +1,329 @@
+{
+  "name": "wakeclubcrm · WF-11 Transcritor de audio",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "fa4d6cdb-b11d-41e4-9c06-ec91a1bebebf",
+      "name": "A cada minuto",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -464,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "url",
+              "name": "evolution_url",
+              "value": "https://evolutionapi.agencianovabr.com",
+              "type": "string"
+            },
+            {
+              "id": "inst",
+              "name": "instancia",
+              "value": "wakeclub",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3a123bf3-31eb-4257-b668-0cc9b3687548",
+      "name": "Config da instancia",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with orfas as (\n  update wakeclub.mensagens\n     set transcricao_status = 'pendente'\n   where transcricao_status = 'transcrevendo'\n     and transcrito_em < now() - interval '15 minutes'\n  returning 1\n),\ndesistir as (\n  update wakeclub.mensagens\n     set transcricao_status = 'falhou',\n         transcricao_erro = coalesce(transcricao_erro, 'desistiu apos 3 tentativas')\n   where transcricao_status = 'pendente'\n     and transcricao_tentativas >= 3\n  returning 1\n),\nalvo as (\n  select m.id\n    from wakeclub.mensagens m\n   where m.transcricao_status = 'pendente'\n     and m.evolution_msg_id is not null\n     and m.transcricao_tentativas < 3\n   order by m.enviada_em desc\n   limit 5\n   for update skip locked\n)\nupdate wakeclub.mensagens m\n   set transcricao_status = 'transcrevendo',\n       transcricao_tentativas = m.transcricao_tentativas + 1,\n       transcrito_em = now()\n  from alvo a\n where m.id = a.id\nreturning m.id as mensagem_id, m.lead_id, m.evolution_msg_id, m.direcao,\n          to_char(m.enviada_em at time zone 'America/Sao_Paulo', 'DD/MM HH24:MI') as enviada_em_br;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "b01a7e05-8a0f-40ff-a0da-078c7f1570f6",
+      "name": "Reivindicar audios",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        128
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config da instancia').first().json.evolution_url }}/chat/getBase64FromMediaMessage/{{ $('Config da instancia').first().json.instancia }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: { key: { id: $json.evolution_msg_id } }, convertToMp4: false }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "11880137-c76b-4192-982f-89915837a3cc",
+      "name": "Baixar audio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        128
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "yniZfhH31bjuZigh",
+          "name": "evolutionAgenciaNova Global Api KEy"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update wakeclub.mensagens\n   set transcricao_status = case\n         when transcricao_tentativas >= 3 then 'falhou'\n         else 'pendente' end,\n       transcricao_erro = left($2::text, 500)\n where id = $1::uuid\nreturning id as mensagem_id, transcricao_status, transcricao_tentativas, transcricao_erro;",
+        "options": {
+          "queryReplacement": "={{ [$json.mensagem_id || $('Reivindicar audios').item.json.mensagem_id, $json.error ? String($json.error.message || $json.error) : 'falha sem mensagem'] }}"
+        }
+      },
+      "id": "68b91903-3e30-4a84-8047-c323190ed639",
+      "name": "Marcar falha",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1104,
+        128
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "base64",
+        "options": {
+          "fileName": "={{ 'audio.' + (($json.mimetype || 'audio/ogg').split(';')[0].split('/')[1] || 'ogg') }}",
+          "mimeType": "={{ ($json.mimetype || 'audio/ogg').split(';')[0] }}"
+        }
+      },
+      "id": "6d23cdde-1be5-485f-989f-e4c1ee98b930",
+      "name": "Audio em binario",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        432,
+        48
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {
+          "language": "pt"
+        }
+      },
+      "id": "5db40964-19c0-4ff7-a610-f86f4c22ba2e",
+      "name": "Transcrever",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        656,
+        -16
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "z5yFYKVFsaQSYjw5",
+          "name": "fernando API"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with t as (\n  update wakeclub.mensagens\n     set texto = nullif($2::text, ''),\n         transcricao_status = 'ok',\n         transcrito_em = now(),\n         transcricao_erro = null\n   where id = $1::uuid\n  returning lead_id, texto\n)\nupdate wakeclub.leads l\n   set qualificar_apos = now() + interval '2 minutes'\n  from t\n where l.id = t.lead_id\n   and l.opt_out = false\n   and l.sem_atendimento = false\nreturning l.id as lead_id, l.nome, t.texto as transcricao, l.qualificar_apos;",
+        "options": {
+          "queryReplacement": "={{ [$('Reivindicar audios').item.json.mensagem_id, $json.text] }}"
+        }
+      },
+      "id": "29d9bd7c-10e0-4284-8ac1-c3120d7da2a8",
+      "name": "Gravar transcricao",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        -96
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "content": "## WF-11 · Transcritor de audio\n\nO WF-02 lia `[audio]` e qualificava no escuro. Medido em 05/08/2026: 72 audios\nem 569 mensagens, 26 dos 39 leads, e **52 dos 72 eram da EQUIPE** -- a IA nao\nperdia so o que o lead falou, perdia a resposta da atendente.\n\n**A transcricao SOBRESCREVE `mensagens.texto`.** Nenhum outro workflow muda:\nWF-02, WF-03 e o painel ja leem `texto`. A coluna `tipo` guarda que aquilo\nnasceu como audio.\n\nDepois de gravar, empurra `leads.qualificar_apos` -- senao a transcricao\nchegaria DEPOIS da qualificacao e nao serviria pra nada.\n\nNao envia nada ao lead. So le a Evolution.",
+        "height": 392,
+        "width": 1400,
+        "color": 4
+      },
+      "id": "27217c6e-9884-45a4-b6f4-260c9d46bf4e",
+      "name": "Sticky Note bc29c8d1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -448
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "A cada minuto": {
+      "main": [
+        [
+          {
+            "node": "Config da instancia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config da instancia": {
+      "main": [
+        [
+          {
+            "node": "Reivindicar audios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reivindicar audios": {
+      "main": [
+        [
+          {
+            "node": "Baixar audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar audio": {
+      "main": [
+        [
+          {
+            "node": "Audio em binario",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcar falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audio em binario": {
+      "main": [
+        [
+          {
+            "node": "Transcrever",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcar falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcrever": {
+      "main": [
+        [
+          {
+            "node": "Gravar transcricao",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcar falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gravar transcricao": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Marcar falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "3f25b088-df87-4227-9346-bcff806a7a5d",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "TI5AirlzDba3D6LR",
+  "tags": []
+}

@@ -8,7 +8,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { exigirAdmin } from "./auth";
-import { getPool, getPoolRw } from "./db";
+import { comTransacao, getPool, getPoolRw } from "./db";
+import { redistribuirSoltos, soltarDeInativos } from "./motor/distribuicao";
 
 export type ResumoAdmin = {
   filaAgora: number;
@@ -40,6 +41,8 @@ export type AtendenteAdmin = {
   ativo: boolean;
   ultimoAcessoEm: string | null;
   labelId: string | null;
+  peso: number;
+  comissaoPct: number;
   naFila: number;
   vencidos: number;
   parados2h: number;
@@ -66,25 +69,32 @@ export const getPainelAdmin = createServerFn({ method: "GET" }).handler(
   async (): Promise<PainelAdmin> => {
     await exigirAdmin();
 
-    const [resumoResultado, atendentesResultado, aparelhosResultado, labelsResultado] =
-      await Promise.all([
-        getPool().query("select * from wakeclub.v_admin_resumo"),
-        getPool().query(
-          `select *
+    const [
+      resumoResultado,
+      atendentesResultado,
+      aparelhosResultado,
+      labelsResultado,
+      pesosResultado,
+    ] = await Promise.all([
+      getPool().query("select * from wakeclub.v_admin_resumo"),
+      getPool().query(
+        `select *
            from wakeclub.v_admin_atendentes
           order by parados_2h desc, nome asc`,
-        ),
-        getPoolRw().query(
-          `select id, usuario_id, apelido, falhas, ultimo_erro, criado_em, usado_em
+      ),
+      getPoolRw().query(
+        `select id, usuario_id, apelido, falhas, ultimo_erro, criado_em, usado_em
            from wakeclub.push_subscriptions
           order by criado_em desc`,
-        ),
-        getPool().query(
-          `select label_id, nome, cor
+      ),
+      getPool().query(
+        `select label_id, nome, cor
            from wakeclub.v_admin_labels_disponiveis
           order by nome asc`,
-        ),
-      ]);
+      ),
+      getPoolRw().query("select id, peso, comissao_pct from wakeclub.usuarios"),
+    ]);
+    const pesos = new Map(pesosResultado.rows.map((r) => [r.id, r]));
 
     const resumo = resumoResultado.rows[0];
     if (!resumo) throw new Error("A view administrativa não devolveu o resumo da equipe.");
@@ -122,6 +132,8 @@ export const getPainelAdmin = createServerFn({ method: "GET" }).handler(
           ativo: registro.ativo,
           ultimoAcessoEm: iso(registro.ultimo_acesso_em),
           labelId: registro.label_id,
+          peso: Number(pesos.get(registro.usuario_id)?.peso ?? 1),
+          comissaoPct: Number(pesos.get(registro.usuario_id)?.comissao_pct ?? 0),
           naFila: Number(registro.na_fila ?? 0),
           vencidos: Number(registro.vencidos ?? 0),
           parados2h: Number(registro.parados_2h ?? 0),
@@ -159,6 +171,9 @@ export const alterarAtendente = createServerFn({ method: "POST" })
       [data.usuarioId, data.ativo],
     );
     if (rowCount !== 1) throw new Error("Atendente não encontrada.");
+    // Quem sai do rodízio devolve os leads na mesma requisição.
+    if (!data.ativo)
+      await comTransacao((c) => soltarDeInativos(c).then(() => redistribuirSoltos(c)));
     return { alterado: true };
   });
 
@@ -172,7 +187,9 @@ const criarAtendenteSchema = z.object({
     .max(100)
     .regex(/^[a-z0-9._-]+$/, "Use apenas letras sem acento, números, ponto, hífen ou sublinhado."),
   senha: z.string().min(8).max(200),
-  labelId: z.string().trim().min(1).max(100),
+  labelId: z.string().trim().min(1).max(100).optional(),
+  peso: z.number().int().min(0).max(10).default(1),
+  comissaoPct: z.number().min(0).max(100).default(0),
 });
 
 export const criarAtendente = createServerFn({ method: "POST" })
@@ -180,14 +197,16 @@ export const criarAtendente = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ criado: true }> => {
     await exigirAdmin();
 
-    const label = await getPool().query(
-      `select 1
-         from wakeclub.v_admin_labels_disponiveis
-        where label_id = $1::text
-        limit 1`,
-      [data.labelId],
-    );
-    if (!label.rows[0]) throw new Error("A label não está disponível para uma nova atendente.");
+    if (data.labelId) {
+      const label = await getPool().query(
+        `select 1
+           from wakeclub.v_admin_labels_disponiveis
+          where label_id = $1::text
+          limit 1`,
+        [data.labelId],
+      );
+      if (!label.rows[0]) throw new Error("A label não está disponível para uma nova atendente.");
+    }
 
     const { default: bcrypt } = await import("bcryptjs");
     const senhaHash = await bcrypt.hash(data.senha, 12);
@@ -195,9 +214,9 @@ export const criarAtendente = createServerFn({ method: "POST" })
     try {
       await getPoolRw().query(
         `insert into wakeclub.usuarios
-           (nome, usuario, senha_hash, label_id)
-         values ($1::text, $2::text, $3::text, $4::text)`,
-        [data.nome, data.usuario, senhaHash, data.labelId],
+           (nome, usuario, senha_hash, label_id, peso, comissao_pct)
+         values ($1::text, $2::text, $3::text, $4::text, $5::smallint, $6::numeric)`,
+        [data.nome, data.usuario, senhaHash, data.labelId ?? null, data.peso, data.comissaoPct],
       );
     } catch (erro) {
       if (typeof erro === "object" && erro && "code" in erro && erro.code === "23505") {

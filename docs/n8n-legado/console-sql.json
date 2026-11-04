@@ -1,0 +1,84 @@
+{
+  "name": "wakeclubcrm · console SQL",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a8585a64-03d8-4d63-b6ef-00bcdc198d72",
+      "name": "Rodar",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select agente, tipo_evento, count(*)::int as total, to_char(max(ocorrido_em) at time zone 'America/Sao_Paulo','DD/MM HH24:MI') as ultimo from wakeclub.eventos_automacao group by agente, tipo_evento order by agente, tipo_evento;",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "acfa2c72-9611-49b9-905e-5806440b8d37",
+      "name": "Consulta",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Console SQL do CRM\n\nWorkflow de inspecao e manutencao, nunca ativado. Trocar a query do no\nConsulta e rodar. Aponta para o banco wakeclub, schema wakeclub.\n\nNao usar para DDL de producao: o schema oficial vive em db/schema.sql e e\naplicado pelo workflow wakeclubcrm db setup.",
+        "height": 200,
+        "width": 520,
+        "color": 5
+      },
+      "id": "ddec89ac-4d63-4173-bd4e-30bb1a456926",
+      "name": "Sticky Note 4cc01b1f",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -208
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Rodar": {
+      "main": [
+        [
+          {
+            "node": "Consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "15c7ab16-e859-4b16-ac9c-d4b007ad3713",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "E9NZKeH1rCvGlorC",
+  "tags": []
+}

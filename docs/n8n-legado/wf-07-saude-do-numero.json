@@ -1,0 +1,391 @@
+{
+  "name": "wakeclubcrm · WF-07 Saude do numero",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "b03b2a9e-318b-4f35-b936-639f5e068058",
+      "name": "Evento vindo do WF-01",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -464,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function nivelDoAck(bruto) {\n  const t = String(bruto === null || bruto === undefined ? '' : bruto).toUpperCase();\n  if (t === 'ERROR' || t === '0') return 0;\n  if (t === 'PENDING' || t === '1') return 1;\n  if (t === 'SERVER_ACK' || t === 'SERVER' || t === '2') return 2;\n  if (t === 'DELIVERY_ACK' || t === 'DELIVERED' || t === '3') return 3;\n  if (t === 'READ' || t === '4') return 4;\n  if (t === 'PLAYED' || t === '5') return 5;\n  return null;\n}\n\nfunction estadoValido(bruto) {\n  const s = String(bruto || '').toLowerCase();\n  if (s === 'open' || s === 'connecting' || s === 'close') return s;\n  return '';\n}\n\nfunction ignorar(motivo, extra) {\n  return { json: Object.assign({ classe: 'ignorar', motivo_ignorado: motivo }, extra || {}) };\n}\n\nconst saida = [];\n\nfor (const item of $input.all()) {\n  const corpo = item.json.body || item.json;\n  const evento = String(corpo.event || '').toLowerCase().replace(/_/g, '.');\n  const instancia = String(corpo.instance || corpo.instanceName || corpo.instanceId || '');\n\n  if (!instancia) {\n    saida.push(ignorar('evento sem instancia', { evento: evento }));\n    continue;\n  }\n\n  const bruto = corpo.data !== undefined ? corpo.data : null;\n\n  if (evento === 'messages.update' || evento === 'messages.edited') {\n    const lista = Array.isArray(bruto) ? bruto : bruto ? [bruto] : [];\n    if (lista.length === 0) {\n      saida.push(ignorar('ack sem data', { evento: evento }));\n      continue;\n    }\n    for (const d of lista) {\n      const chave = d.key || {};\n      const msgId = String(d.keyId || chave.id || d.messageId || '');\n      const nivel = nivelDoAck(d.status !== undefined ? d.status : d.ack);\n      if (!msgId || nivel === null) {\n        saida.push(ignorar('ack sem id ou status conhecido', {\n          evento: evento,\n          instancia: instancia,\n          status_bruto: d.status !== undefined ? d.status : d.ack,\n        }));\n        continue;\n      }\n      saida.push({\n        json: {\n          classe: 'ack',\n          instancia: instancia,\n          evento: evento,\n          evolution_msg_id: msgId,\n          entrega_nivel: nivel,\n        },\n      });\n    }\n    continue;\n  }\n\n  const d = Array.isArray(bruto) ? bruto[0] || {} : bruto || {};\n\n  if (evento === 'connection.update' || evento === 'application.startup') {\n    const estado = estadoValido(d.state || d.connection);\n    if (!estado) {\n      saida.push(ignorar('connection.update sem estado conhecido', {\n        evento: evento,\n        instancia: instancia,\n        estado_bruto: d.state || d.connection || null,\n      }));\n      continue;\n    }\n    const razao = d.statusReason !== undefined ? d.statusReason : d.reason;\n    saida.push({\n      json: {\n        classe: 'estado',\n        instancia: instancia,\n        evento: evento,\n        estado: estado,\n        status_reason: razao === null || razao === undefined ? '' : String(razao),\n        qr_pendente: false,\n        detalhe: JSON.stringify({ evento: evento, bruto: d }).slice(0, 8000),\n      },\n    });\n    continue;\n  }\n\n  if (evento === 'qrcode.updated') {\n    saida.push({\n      json: {\n        classe: 'estado',\n        instancia: instancia,\n        evento: evento,\n        estado: '',\n        status_reason: '',\n        qr_pendente: true,\n        detalhe: JSON.stringify({ evento: evento, tentativa: d.count || null }).slice(0, 8000),\n      },\n    });\n    continue;\n  }\n\n  if (evento === 'logout.instance' || evento === 'remove.instance') {\n    saida.push({\n      json: {\n        classe: 'estado',\n        instancia: instancia,\n        evento: evento,\n        estado: 'close',\n        status_reason: '',\n        qr_pendente: false,\n        detalhe: JSON.stringify({ evento: evento, bruto: d }).slice(0, 8000),\n      },\n    });\n    continue;\n  }\n\n  saida.push(ignorar('evento nao monitorado: ' + evento, {\n    evento: evento,\n    instancia: instancia,\n  }));\n}\n\nreturn saida;"
+      },
+      "id": "b2e68104-93ec-4305-aa81-9f617a7936d5",
+      "name": "Normalizar evento de saude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e-estado",
+                    "leftValue": "={{ $json.classe }}",
+                    "rightValue": "estado",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e-ack",
+                    "leftValue": "={{ $json.classe }}",
+                    "rightValue": "ack",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "76f508a5-d6af-4f4b-94bd-bba3645e1a30",
+      "name": "Estado ou ack",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -16,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with evt as (\n  insert into wakeclub.instancia_eventos (instancia, evento, estado, status_reason, detalhe)\n  values ($1, $2, nullif($3, ''), nullif($4, '')::int,\n          coalesce(nullif($5, '')::jsonb, '{}'::jsonb))\n  returning id\n)\ninsert into wakeclub.instancia_estado as e (\n  instancia, estado, status_reason, ultimo_evento_em,\n  conectado_desde, desconectado_desde, qr_pendente, qr_desde, qr_contador\n) values (\n  $1, nullif($3, ''), nullif($4, '')::int, now(),\n  case when $3 = 'open' then now() end,\n  case when $3 = 'close' then now() end,\n  $6::boolean,\n  case when $6::boolean then now() end,\n  case when $6::boolean then 1 else 0 end\n)\non conflict (instancia) do update set\n  estado = coalesce(nullif($3, ''), e.estado),\n  status_reason = case when $3 = '' then e.status_reason\n                       else nullif($4, '')::int end,\n  ultimo_evento_em = now(),\n  conectado_desde = case when $3 = 'open' and e.estado is distinct from 'open'\n                         then now() else e.conectado_desde end,\n  desconectado_desde = case when $3 = 'close' and e.estado is distinct from 'close'\n                            then now() else e.desconectado_desde end,\n  qr_pendente = case when $3 = 'open' then false\n                     else (e.qr_pendente or $6::boolean) end,\n  qr_desde = case when $3 = 'open' then null\n                  when $6::boolean and not e.qr_pendente then now()\n                  else e.qr_desde end,\n  qr_contador = case when $3 = 'open' then 0\n                     when $6::boolean then e.qr_contador + 1\n                     else e.qr_contador end\nreturning e.instancia, e.estado, e.status_reason, e.qr_pendente, e.qr_contador;",
+        "options": {
+          "queryReplacement": "={{ [$json.instancia, $json.evento, $json.estado, $json.status_reason, $json.detalhe, $json.qr_pendente] }}"
+        }
+      },
+      "id": "31b257e4-10e8-4952-9810-1e9eacd4f585",
+      "name": "Gravar estado da instancia",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        -128
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update wakeclub.mensagens\n   set entrega_nivel = greatest(coalesce(entrega_nivel, -1), $2::smallint),\n       entrega_em = case\n         when $2::smallint > coalesce(entrega_nivel, -1) then now()\n         else entrega_em end\n where evolution_msg_id = nullif($1, '')\nreturning id as mensagem_id, evolution_msg_id, direcao, entrega_nivel;",
+        "options": {
+          "queryReplacement": "={{ [$json.evolution_msg_id, $json.entrega_nivel] }}"
+        }
+      },
+      "id": "5c61a5e0-60ff-491b-899a-fd3a18530bf7",
+      "name": "Gravar ack de entrega",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        128
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "evolution-url",
+              "name": "evolution_url",
+              "value": "https://evolutionapi.agencianovabr.com",
+              "type": "string"
+            },
+            {
+              "id": "instancia",
+              "name": "instancia",
+              "value": "wakeclub",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dd9da068-832c-4076-bc20-57b644df4ba4",
+      "name": "Config da instancia",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.evolution_url }}/instance/connectionState/{{ $json.instancia }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "c617b6c7-5762-41d3-baed-495294abec63",
+      "name": "Consultar connectionState",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -16,
+        464
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "yniZfhH31bjuZigh",
+          "name": "evolutionAgenciaNova Global Api KEy"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into wakeclub.instancia_estado as e (\n  instancia, ultimo_heartbeat_em, heartbeat_ok, heartbeat_erro\n) values ($1, now(), false, left(nullif($2, ''), 500))\non conflict (instancia) do update set\n  ultimo_heartbeat_em = now(),\n  heartbeat_ok = false,\n  heartbeat_erro = left(nullif($2, ''), 500)\nreturning e.instancia, e.estado, e.heartbeat_ok, e.heartbeat_erro;",
+        "options": {
+          "queryReplacement": "={{ [$(\"Config da instancia\").item.json.instancia, String(($json.error && ($json.error.message || $json.error)) || $json.message || \"sem detalhe\")] }}"
+        }
+      },
+      "id": "32e61b20-66a9-42d8-b052-e2dcaba6fa3a",
+      "name": "Gravar heartbeat com falha",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        592
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with antes as (\n  select estado from wakeclub.instancia_estado where instancia = $1\n),\nnovo as (\n  insert into wakeclub.instancia_estado as e (\n    instancia, estado, ultimo_heartbeat_em, heartbeat_ok, heartbeat_erro,\n    conectado_desde, desconectado_desde\n  ) values (\n    $1, nullif($2, ''), now(), true, null,\n    case when $2 = 'open' then now() end,\n    case when $2 <> 'open' then now() end\n  )\n  on conflict (instancia) do update set\n    estado = coalesce(nullif($2, ''), e.estado),\n    ultimo_heartbeat_em = now(),\n    heartbeat_ok = true,\n    heartbeat_erro = null,\n    conectado_desde = case when $2 = 'open' and e.estado is distinct from 'open'\n                           then now() else e.conectado_desde end,\n    desconectado_desde = case when $2 <> 'open' and e.estado is distinct from nullif($2, '')\n                              then now() else e.desconectado_desde end,\n    qr_pendente = case when $2 = 'open' then false else e.qr_pendente end,\n    qr_desde = case when $2 = 'open' then null else e.qr_desde end,\n    qr_contador = case when $2 = 'open' then 0 else e.qr_contador end\n  returning e.instancia, e.estado\n),\nevt as (\n  insert into wakeclub.instancia_eventos (instancia, evento, estado, detalhe)\n  select $1, 'heartbeat.mudou', nullif($2, ''),\n         jsonb_build_object('de', (select estado from antes),\n                            'para', nullif($2, ''))\n   where (select estado from antes) is distinct from nullif($2, '')\n  returning id\n)\nselect n.instancia,\n       n.estado,\n       (select count(*) from evt) as mudou\n  from novo n;",
+        "options": {
+          "queryReplacement": "={{ [$(\"Config da instancia\").item.json.instancia, ($json.instance && $json.instance.state) || $json.state || \"\"] }}"
+        }
+      },
+      "id": "d969110b-2647-4e18-bf6d-ad7c385a2e18",
+      "name": "Gravar heartbeat ok",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        368
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## WF-07 · Saude do numero (eventos)\n\nSub-workflow. Quem chama e o WF-01, que e a porta de entrada unica do\nwebhook da Evolution: a Evolution so aceita uma URL por instancia, entao\no WF-01 roteia por event e manda para ca o que nao e messages.upsert.\n\nTrata connection.update, qrcode.updated, logout.instance (estado) e\nmessages.update (ack de entrega). O que nao for isso cai no fallback do\nswitch e morre ali, com motivo_ignorado preenchido para auditoria.\n\nO ack e o sinal mais precoce de restricao silenciosa: o numero segue\nopen e mesmo assim as mensagens param no nivel 2 (servidor) e nunca\nchegam em 3 (entregue). entrega_nivel usa greatest() porque o ack chega\nfora de ordem - um READ pode vir antes do DELIVERY_ACK.",
+        "height": 392,
+        "width": 920,
+        "color": 4
+      },
+      "id": "fa3e09a1-add2-4367-a192-63c770b7cf4b",
+      "name": "Sticky Note 15fe1307",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1216,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Heartbeat ativo\n\nANTES DE ATIVAR: preencher evolution_url no no Config da instancia e\nconferir o nome da instancia (hoje wakeclub). A credencial Evolution API\ne do tipo Header Auth: Name = apikey, Value = a apikey da Evolution.\n\nIsto existe porque o webhook nao cobre o pior caso: se a Evolution\ninteira morre, nenhum evento chega e um painel so de webhook mostra\ntudo bem para sempre. Ausencia de evento e indistinguivel de nada mudou.\n\nHeartbeat que confirma o mesmo estado NAO vira linha em\ninstancia_eventos - so carimba ultimo_heartbeat_em. Se virasse, a tabela\nseria uma linha a cada 5 min para sempre, sem dizer nada.\n\nFalha de HTTP nao mexe em estado de proposito: a Evolution nao\nrespondeu, entao nao sabemos o estado do numero. Fica heartbeat_ok =\nfalse e a v_saude_numero mostra evolution respondendo erro.",
+        "height": 420,
+        "width": 920,
+        "color": 3
+      },
+      "id": "429c7485-9284-4600-9300-d3b1bfedd359",
+      "name": "Sticky Note 451f69ef",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1248,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "032977b8-68ab-49bf-b44f-cf6f21f240cd",
+      "name": "A cada 30 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -480,
+        464
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Evento vindo do WF-01": {
+      "main": [
+        [
+          {
+            "node": "Normalizar evento de saude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar evento de saude": {
+      "main": [
+        [
+          {
+            "node": "Estado ou ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Estado ou ack": {
+      "main": [
+        [
+          {
+            "node": "Gravar estado da instancia",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gravar ack de entrega",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config da instancia": {
+      "main": [
+        [
+          {
+            "node": "Consultar connectionState",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar connectionState": {
+      "main": [
+        [
+          {
+            "node": "Gravar heartbeat ok",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gravar heartbeat com falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A cada 30 minutos": {
+      "main": [
+        [
+          {
+            "node": "Config da instancia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "357aa7d8-c701-4f24-a41e-d1a7fd8212a9",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "9U38Mxy8gcljdhkN",
+  "tags": []
+}

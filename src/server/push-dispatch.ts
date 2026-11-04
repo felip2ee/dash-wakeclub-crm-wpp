@@ -12,6 +12,8 @@ export type PayloadPush = {
   corpo?: string;
   url?: string;
   tag?: string;
+  /** Pede ao service worker que não mostre o aviso se o app estiver visível. */
+  seAppFechado?: boolean;
 };
 
 export type ResultadoPush = { enviados: number; removidos: number; falhas: number };
@@ -52,6 +54,7 @@ export async function entregarPush(payload: PayloadPush): Promise<ResultadoPush>
     // Compatibilidade enquanto o WF-09 ainda publica a rota antiga.
     url: payload.url === "/followups" ? "/minha-fila" : (payload.url ?? "/minha-fila"),
     tag: payload.tag,
+    seAppFechado: payload.seAppFechado ?? false,
   });
 
   for (const inscricao of rows) {

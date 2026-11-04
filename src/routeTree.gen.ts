@@ -21,6 +21,8 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as Wf02RouteImport } from './routes/wf02'
 import { Route as ApiPushEnviarRouteImport } from './routes/api/push/enviar'
+import { Route as ApiWebhooksEvolutionRouteImport } from './routes/api/webhooks/evolution'
+import { Route as ApiWebhooksVendasRouteImport } from './routes/api/webhooks/vendas'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -82,6 +84,16 @@ const ApiPushEnviarRoute = ApiPushEnviarRouteImport.update({
   path: '/api/push/enviar',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebhooksEvolutionRoute = ApiWebhooksEvolutionRouteImport.update({
+  id: '/api/webhooks/evolution',
+  path: '/api/webhooks/evolution',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksVendasRoute = ApiWebhooksVendasRouteImport.update({
+  id: '/api/webhooks/vendas',
+  path: '/api/webhooks/vendas',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -96,6 +108,8 @@ export interface FileRoutesByFullPath {
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
   '/api/push/enviar': typeof ApiPushEnviarRoute
+  '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
+  '/api/webhooks/vendas': typeof ApiWebhooksVendasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +124,8 @@ export interface FileRoutesByTo {
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
   '/api/push/enviar': typeof ApiPushEnviarRoute
+  '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
+  '/api/webhooks/vendas': typeof ApiWebhooksVendasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +141,8 @@ export interface FileRoutesById {
   '/templates': typeof TemplatesRoute
   '/wf02': typeof Wf02Route
   '/api/push/enviar': typeof ApiPushEnviarRoute
+  '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
+  '/api/webhooks/vendas': typeof ApiWebhooksVendasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +159,8 @@ export interface FileRouteTypes {
     | '/templates'
     | '/wf02'
     | '/api/push/enviar'
+    | '/api/webhooks/evolution'
+    | '/api/webhooks/vendas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +175,8 @@ export interface FileRouteTypes {
     | '/templates'
     | '/wf02'
     | '/api/push/enviar'
+    | '/api/webhooks/evolution'
+    | '/api/webhooks/vendas'
   id:
     | '__root__'
     | '/'
@@ -169,6 +191,8 @@ export interface FileRouteTypes {
     | '/templates'
     | '/wf02'
     | '/api/push/enviar'
+    | '/api/webhooks/evolution'
+    | '/api/webhooks/vendas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -184,6 +208,8 @@ export interface RootRouteChildren {
   TemplatesRoute: typeof TemplatesRoute
   Wf02Route: typeof Wf02Route
   ApiPushEnviarRoute: typeof ApiPushEnviarRoute
+  ApiWebhooksEvolutionRoute: typeof ApiWebhooksEvolutionRoute
+  ApiWebhooksVendasRoute: typeof ApiWebhooksVendasRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -272,6 +298,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPushEnviarRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/evolution': {
+      id: '/api/webhooks/evolution'
+      path: '/api/webhooks/evolution'
+      fullPath: '/api/webhooks/evolution'
+      preLoaderRoute: typeof ApiWebhooksEvolutionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/vendas': {
+      id: '/api/webhooks/vendas'
+      path: '/api/webhooks/vendas'
+      fullPath: '/api/webhooks/vendas'
+      preLoaderRoute: typeof ApiWebhooksVendasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -288,6 +328,8 @@ const rootRouteChildren: RootRouteChildren = {
   TemplatesRoute: TemplatesRoute,
   Wf02Route: Wf02Route,
   ApiPushEnviarRoute: ApiPushEnviarRoute,
+  ApiWebhooksEvolutionRoute: ApiWebhooksEvolutionRoute,
+  ApiWebhooksVendasRoute: ApiWebhooksVendasRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

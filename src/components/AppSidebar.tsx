@@ -10,6 +10,7 @@ import {
   ListTodo,
   ShieldCheck,
   Smartphone,
+  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -26,13 +27,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { sair, type Sessao } from "@/server/auth";
 
-/** `demo` marca a tela que ainda roda em dado falso — ver /templates. */
 const navAdmin = [
   { title: "Visão geral", url: "/admin", icon: ShieldCheck },
   { title: "Conversas", url: "/", icon: MessageSquareText },
   { title: "Todos os leads", url: "/kanban", icon: KanbanSquare },
   { title: "IA e followups", url: "/wf02", icon: Bot },
   { title: "Relatórios", url: "/reports", icon: BarChart3 },
+  { title: "Respostas rápidas", url: "/templates", icon: Zap },
   { title: "Instalar app", url: "/instalar", icon: Smartphone },
 ] as const;
 

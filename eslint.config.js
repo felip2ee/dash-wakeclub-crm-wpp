@@ -65,7 +65,7 @@ export default tseslint.config(
         "error",
         {
           selector:
-            "MemberExpression[object.property.name='env'][property.name=/^(DATABASE_URL|DATABASE_URL_RW)$/]",
+            "MemberExpression[object.property.name='env'][property.name=/^(DATABASE_URL|DATABASE_URL_RW|DATABASE_URL_MOTOR)$/]",
           message: "Só src/server/db.ts pode ler a URL do banco.",
         },
       ],
@@ -128,12 +128,17 @@ export default tseslint.config(
         "error",
         {
           modules: ["@/server/db", "~/server/db"],
-          bindings: ["getPool", "getPoolRw"],
+          bindings: ["getPool", "getPoolRw", "getPoolMotor", "getPoolWebhook", "comTransacao"],
           layers: ["/src/components/", "/src/routes/", "/src/features/"],
           extensions: [".tsx"],
         },
       ],
     },
+  },
+  {
+    // O adaptador de log é o único lugar que fala direto com o console.
+    files: ["src/server/log.ts"],
+    rules: { "quality/no-direct-console": "off" },
   },
   {
     files: testFiles,

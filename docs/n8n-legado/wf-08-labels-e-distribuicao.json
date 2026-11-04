@@ -1,0 +1,466 @@
+{
+  "name": "wakeclubcrm · WF-08 Labels e distribuicao",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "1f6c3887-1496-4f7c-a1e7-d14aa246c8ba",
+      "name": "A cada 5 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -688,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "evolution-url",
+              "name": "evolution_url",
+              "value": "https://evolutionapi.agencianovabr.com",
+              "type": "string"
+            },
+            {
+              "id": "instancia",
+              "name": "instancia",
+              "value": "wakeclub",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ceda9cf9-34fb-4807-ad03-9205ddcb14c7",
+      "name": "Config da instancia",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -464,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.evolution_url }}/label/findLabels/{{ $json.instancia }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "4056553d-1488-4f4a-8c31-5509041f7793",
+      "name": "Buscar labels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -240,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "yniZfhH31bjuZigh",
+          "name": "evolutionAgenciaNova Global Api KEy"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const itens = $input.all().map((i) => i.json);\nlet brutas = [];\nif (itens.length === 1 && Array.isArray(itens[0].labels)) { brutas = itens[0].labels; }\nelse if (itens.length === 1 && Array.isArray(itens[0].data)) { brutas = itens[0].data; }\nelse { brutas = itens; }\nconst labels = brutas.map((l) => ({\n  label_id: String(l.labelId || l.id || ''),\n  nome: String(l.name || l.nome || ''),\n  cor: l.color === undefined || l.color === null ? null : String(l.color),\n})).filter((l) => l.label_id !== \"\");\n// Zero label e resultado legitimo. Mandar assim mesmo: o SQL usa a lista\n// pra saber o que DESATIVAR.\nreturn [{ json: { labels } }];"
+      },
+      "id": "8ded533f-2e21-4d66-926e-047dd137a761",
+      "name": "Normalizar labels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with entrada as (\n    select x.label_id, x.nome, x.cor\n      from jsonb_to_recordset($1::jsonb) as x(label_id text, nome text, cor text)\n), gravadas as (\n    insert into wakeclub.whatsapp_labels (label_id, nome, cor, ativa)\n    select label_id, nome, cor, true from entrada\n    on conflict (label_id) do update\n       set nome = excluded.nome, cor = excluded.cor, ativa = true, atualizado_em = now()\n    returning label_id\n), sumidas as (\n    update wakeclub.whatsapp_labels w set ativa = false, atualizado_em = now()\n     where w.ativa = true and not exists (select 1 from entrada e where e.label_id = w.label_id)\n    returning w.label_id\n)\nselect (select count(*) from gravadas)::int as sincronizadas,\n       (select count(*) from sumidas)::int  as desativadas;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($json.labels)] }}"
+        }
+      },
+      "id": "cef10620-ba6c-4f0b-ac96-5c926073328f",
+      "name": "Sincronizar labels",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select l.id, l.telefone, l.atendente_id\n  from wakeclub.leads l\n where l.opt_out = false\n   and (l.atendente_id is null or greatest(l.ultima_msg_lead_em, l.ultima_msg_equipe_em) > now() - interval '1 hour')\n order by (l.atendente_id is null) desc, l.criado_em\n limit 30;",
+        "options": {}
+      },
+      "id": "3a04e7e4-a09d-4b46-8274-935ceab9c983",
+      "name": "Buscar leads a sincronizar",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        432,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with entrada as (select $1::uuid as lead_id, $2::jsonb as labels)\n, chat_labels as (select jsonb_array_elements_text((select labels from entrada)) as label_id)\n, bloqueio as (select 1 from chat_labels c join wakeclub.whatsapp_labels w on w.label_id = c.label_id where w.nao_atender)\n, donas as (select u.id from chat_labels c join wakeclub.usuarios u on u.label_id = c.label_id where u.ativo)\n, rodizio as (\n    select u.id from wakeclub.usuarios u\n      left join lateral (select count(*)::int as n from wakeclub.leads l where l.atendente_id = u.id and l.opt_out = false) carga on true\n     where u.ativo and u.papel = 'atendente' and u.label_id is not null\n     order by carga.n asc, random() limit 1\n)\n, decisao as (\n    select exists (select 1 from bloqueio) as bloquear,\n           coalesce((select d.id from donas d where d.id = (select atendente_id from wakeclub.leads where id = (select lead_id from entrada))),\n                    (select d.id from donas d limit 1)) as dona_label,\n           (select id from rodizio) as dona_rodizio\n)\nupdate wakeclub.leads l\n   set labels_whatsapp = (select labels from entrada),\n       sem_atendimento = d.bloquear,\n       sem_atendimento_motivo = case when d.bloquear then 'label nao_atender' end,\n       atendente_id = case when d.bloquear then l.atendente_id when d.dona_label is not null then d.dona_label when l.atendente_id is not null then l.atendente_id else d.dona_rodizio end,\n       atribuido_em = case when d.bloquear then l.atribuido_em when coalesce(d.dona_label, case when l.atendente_id is null then d.dona_rodizio end) is distinct from l.atendente_id then now() else l.atribuido_em end\n  from decisao d\n where l.id = (select lead_id from entrada)\nreturning l.id as lead_id, l.telefone, l.atendente_id, l.sem_atendimento,\n          (select u.label_id from wakeclub.usuarios u where u.id = l.atendente_id) as label_atendente,\n          (not d.bloquear and d.dona_label is null and l.atendente_id is not null) as etiquetar;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, JSON.stringify($json.labels)] }}"
+        }
+      },
+      "id": "8a9c12ae-3d30-4762-978e-c5ce253989fc",
+      "name": "Resolver dona do lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1312,
+        128
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "3hUb94vSssNviUYu",
+          "name": "wakeclubcrm - postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.etiquetar }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "leftValue": "={{ $json.label_atendente }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5ccd7267-ecb1-4735-abd4-dc40eec6e0d2",
+      "name": "Rodizio decidiu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1520,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config da instancia').first().json.evolution_url }}/label/handleLabel/{{ $('Config da instancia').first().json.instancia }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.telefone.replace(/\\D/g, \"\"), labelId: $json.label_atendente, action: \"add\" }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "0b7df623-095f-477d-b848-e3b1441068b7",
+      "name": "Etiquetar chat no WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1744,
+        32
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "yniZfhH31bjuZigh",
+          "name": "evolutionAgenciaNova Global Api KEy"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "1f204129-73f5-403c-8e29-a3d0b92755fc",
+      "name": "Loop de leads",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config da instancia').first().json.evolution_url }}/chat/findChats/{{ $('Config da instancia').first().json.instancia }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "d17723e6-cf85-4c14-a0ce-0f882ab7d25d",
+      "name": "Buscar chats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        640,
+        -160
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "executeOnce": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "yniZfhH31bjuZigh",
+          "name": "evolutionAgenciaNova Global Api KEy"
+        }
+      },
+      "notes": "UMA chamada por rodada, nao uma por lead: o findChatByRemoteJid nao existe nesta versao da Evolution (404 confirmado em 03/08/2026) e, mesmo que existisse, 30 chamadas por rodada no numero que atende de verdade e risco a toa."
+    },
+    {
+      "parameters": {
+        "jsCode": "const leads = $('Buscar leads a sincronizar').all().map((i) => i.json);\n\n// A Evolution ja devolveu formato diferente do documentado neste projeto\n// (o findChatByRemoteJid nem existe). Aceita as formas plausiveis.\nconst itens = $input.all().map((i) => i.json);\nlet chats = [];\nif (itens.length === 1 && Array.isArray(itens[0].chats)) chats = itens[0].chats;\nelse if (itens.length === 1 && Array.isArray(itens[0].data)) chats = itens[0].data;\nelse if (itens.length === 1 && Array.isArray(itens[0])) chats = itens[0];\nelse chats = itens;\n\nconst porNumero = new Map();\nfor (const c of chats) {\n  if (!c || typeof c !== 'object') continue;\n  const jid = String(c.remoteJid || c.id || c.jid || '');\n  const numero = jid.split('@')[0].replace(/\\D/g, '');\n  if (!numero) continue;\n  const cru = Array.isArray(c.labels) ? c.labels : [];\n  const labels = cru\n    .map((l) => (typeof l === 'string' ? l : String((l && (l.labelId || l.id)) || '')))\n    .filter((l) => l !== '');\n  porNumero.set(numero, labels);\n}\n\nconst saida = [];\nfor (const l of leads) {\n  const numero = String(l.telefone || '').replace(/\\D/g, '');\n  if (!porNumero.has(numero)) continue; // sem dado = sem decisao\n  saida.push({ json: { lead_id: l.id, telefone: l.telefone, labels: porNumero.get(numero) } });\n}\nreturn saida;"
+      },
+      "id": "91b7ba5b-3ab9-4fc9-b3c7-231a512b721c",
+      "name": "Cruzar leads e chats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        -160
+      ],
+      "notes": "Lead que nao aparece na lista de chats e PULADO, nao zerado. Decidir dona com base em ausencia de dado seria inventar: labels_whatsapp vazio e indistinguivel de 'nao veio na resposta'."
+    },
+    {
+      "parameters": {
+        "content": "## PARCIALMENTE PRONTO — leia antes de ativar\n\n**Funciona e foi testado ao vivo (03/08/2026, exec 6657):**\nO trecho ate `Sincronizar labels`. Trouxe as 17 labels reais da\ninstancia e gravou em `whatsapp_labels`.\n\n**NAO funciona: ler as labels DE CADA CHAT.**\nDuas tentativas, as duas contra a instancia real:\n\n- `POST /chat/findChatByRemoteJid/{inst}` -> **404**, a rota nao\n  existe nesta versao (o CLAUDE.md citava ela; estava errado).\n- `POST /chat/findChats/{inst}` -> **200, mas inutil**: devolveu 2\n  chats e nenhum campo `labels`.\n\n**Caminho recomendado (nao implementado):** o evento de webhook\n`labels.association`, que a Evolution emite quando alguem etiqueta\num chat no celular. Encaixa no desenho que ja existe — o WF-01 e a\nporta de entrada unica e ja roteia evento por tipo (§9 Fase 1) — e\nacaba com a necessidade de varrer chat. Falta so o backfill inicial.\n\nEnquanto isso o `Cruzar leads e chats` devolve 0 itens e o loop nao\nroda. Nada quebra, nada e decidido no escuro.",
+        "height": 420,
+        "width": 620,
+        "color": 3
+      },
+      "id": "f24d4f76-8926-4548-8bc0-4af712098027",
+      "name": "Sticky Achados",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        624,
+        -608
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "A cada 5 minutos": {
+      "main": [
+        [
+          {
+            "node": "Config da instancia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config da instancia": {
+      "main": [
+        [
+          {
+            "node": "Buscar labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar labels": {
+      "main": [
+        [
+          {
+            "node": "Normalizar labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar labels": {
+      "main": [
+        [
+          {
+            "node": "Sincronizar labels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sincronizar labels": {
+      "main": [
+        [
+          {
+            "node": "Buscar leads a sincronizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolver dona do lead": {
+      "main": [
+        [
+          {
+            "node": "Rodizio decidiu?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rodizio decidiu?": {
+      "main": [
+        [
+          {
+            "node": "Etiquetar chat no WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop de leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etiquetar chat no WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Loop de leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar leads a sincronizar": {
+      "main": [
+        [
+          {
+            "node": "Buscar chats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar chats": {
+      "main": [
+        [
+          {
+            "node": "Cruzar leads e chats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cruzar leads e chats": {
+      "main": [
+        [
+          {
+            "node": "Loop de leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop de leads": {
+      "main": [
+        null,
+        [
+          {
+            "node": "Resolver dona do lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "9889ed81-8fd6-436d-93f6-1fd336e4fbc0",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "751e8f02c96d275dadd35fc35c85cfcb5c908578edded769e70092b68fd50edc"
+  },
+  "nodeGroups": [],
+  "id": "C4gIDJqp38Zi7O60",
+  "tags": []
+}

@@ -34,6 +34,7 @@ const VIEWS_ESPERADAS = [
   "v_saude_numero",
   "v_conversas_painel",
   "v_mensagens_painel",
+  "v_mensagens_autoria",
   "v_wf02_atividade",
   "v_wf02_motor",
   "v_followups_painel",
@@ -664,6 +665,17 @@ async function apply() {
     await admin.query(
       `grant select (id, sem_atendimento, sem_atendimento_motivo)
          on wakeclub.leads to painel_rw`,
+    );
+    // O drop/create de v_followups_fila no painel-views.sql apaga o grant que a 0002 deu ao motor.
+    await admin.query(
+      `do $$
+       begin
+         if exists (select 1 from pg_roles where rolname = 'wakecrm_motor')
+            and to_regclass('wakeclub.v_followups_fila') is not null then
+           grant select on wakeclub.v_followups_fila to wakecrm_motor;
+         end if;
+       end
+       $$`,
     );
     console.log(cor.ok("  ✓ GRANTs explícitos aplicados"));
 

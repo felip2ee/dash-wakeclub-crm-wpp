@@ -15,6 +15,7 @@ describe("timeline da oportunidade", () => {
         enviadaEm: "2026-08-11T10:00:00.000Z",
         entregaNivel: 3,
         entregaEm: null,
+        autoria: null,
       },
       {
         id: "m2",
@@ -24,6 +25,7 @@ describe("timeline da oportunidade", () => {
         enviadaEm: "2026-08-11T11:00:00.000Z",
         entregaNivel: null,
         entregaEm: null,
+        autoria: null,
       },
     ] satisfies Mensagem[];
     const qualificacoes = [
