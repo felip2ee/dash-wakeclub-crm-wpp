@@ -14,7 +14,13 @@ describe.skipIf(!bancoTesteAtivo)("admin do motor no banco", () => {
       "update wakeclub.webhook_eventos set status='falhou', tentativas=5, erro='boom' where id=$1::bigint",
       [id],
     );
-    expect((await lerMonitorFila(db())).falhas.find((f) => f.id === id)?.tentativas).toBe(5);
+    const comFalha = await lerMonitorFila(db());
+    expect(comFalha.falhas.find((f) => f.id === id)?.tentativas).toBe(5);
+    // Contagem própria, sem o limite de 50 da lista.
+    const { rows: total } = await db().query(
+      "select count(*)::int as n from wakeclub.webhook_eventos where status = 'falhou'",
+    );
+    expect(comFalha.falhos).toBe(total[0].n);
 
     await reprocessarOuFalhar(db(), id);
     const { rows } = await db().query(
@@ -22,6 +28,7 @@ describe.skipIf(!bancoTesteAtivo)("admin do motor no banco", () => {
       [id],
     );
     expect(rows[0]).toEqual({ status: "pendente", tentativas: 0, erro: null });
+    expect((await lerMonitorFila(db())).falhos).toBe(comFalha.falhos - 1);
     await expect(reprocessarOuFalhar(db(), id)).rejects.toThrow();
   });
 });

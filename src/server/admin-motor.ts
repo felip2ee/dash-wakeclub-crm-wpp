@@ -14,6 +14,8 @@ import { reprocessar } from "./motor/fila";
 export type MonitorFila = {
   pendentes: number;
   atrasados: number;
+  /** Total com falha; `falhas` traz só as 50 mais recentes. */
+  falhos: number;
   falhas: {
     id: number;
     origem: string;
@@ -30,9 +32,10 @@ export async function lerMonitorFila(db: ClienteDb): Promise<MonitorFila> {
               count(*) filter (where (status = 'pendente'
                                       and proxima_tentativa_em < now() - interval '5 minutes')
                                   or (status = 'processando'
-                                      and processando_desde < now() - interval '15 minutes'))::int as atrasados
+                                      and processando_desde < now() - interval '15 minutes'))::int as atrasados,
+              count(*) filter (where status = 'falhou')::int as falhos
          from wakeclub.webhook_eventos
-        where status in ('pendente', 'processando')`,
+        where status in ('pendente', 'processando', 'falhou')`,
     ),
     db.query(
       `select id, origem, erro, recebido_em, tentativas
@@ -45,6 +48,7 @@ export async function lerMonitorFila(db: ClienteDb): Promise<MonitorFila> {
   return {
     pendentes: Number(contagem.rows[0].pendentes),
     atrasados: Number(contagem.rows[0].atrasados),
+    falhos: Number(contagem.rows[0].falhos),
     falhas: falhas.rows.map((r) => ({
       id: Number(r.id),
       origem: r.origem,
