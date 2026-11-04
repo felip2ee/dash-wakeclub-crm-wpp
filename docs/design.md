@@ -64,8 +64,10 @@ duplique valores aqui; mude o token na fonte.
 
 | Tema           | Primária (claro / escuro)                          | Degradê primário (135°)                            |
 | -------------- | -------------------------------------------------- | -------------------------------------------------- |
-| verde (padrão) | `oklch(0.55 0.16 158)` / `oklch(0.7 0.17 158)`      | `oklch(0.45 0.15 158)` → `oklch(0.54 0.16 152)`    |
-| rosa           | `oklch(0.62 0.25 15)`                              | `oklch(0.58 0.25 15)` → `oklch(0.585 0.2 35)`      |
+| verde (padrão) | `oklch(0.52 0.16 158)` / `oklch(0.7 0.17 158)`      | `oklch(0.45 0.15 158)` → `oklch(0.54 0.16 152)`    |
+| rosa           | `oklch(0.56 0.22 15)` / `oklch(0.62 0.25 15)` (texto do acento escuro `oklch(0.15 0.03 15)`) | `oklch(0.58 0.25 15)` → `oklch(0.585 0.2 35)`      |
+
+Contraste medido ≥ 4,5:1 nos quatro casos: verde claro 4,68; rosa claro 5,02; rosa escuro 4,57 como texto e 4,80 no badge.
 
 O seletor `:root[data-tema="rosa"]` vence `.dark` na especificidade; por isso
 `:root[data-tema="rosa"].dark` devolve os valores do escuro (acento e texto do acento).
