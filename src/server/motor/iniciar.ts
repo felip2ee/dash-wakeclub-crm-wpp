@@ -3,6 +3,8 @@
  *
  * Só é chamado pelo plugin de boot `nitro-plugin.ts` com `MOTOR_ATIVO=1`. Idempotente: o HMR do dev
  * reavalia módulos, e dois trabalhadores no mesmo processo seriam desperdício.
+ * `pararMotor()` desliga tudo no encerramento (SIGTERM): para os timers e espera as rodadas
+ * em curso, para o processo sair sozinho.
  */
 import { registrarExecucao } from "../admin-ia";
 import { obterAdaptador } from "../evolution";
@@ -28,13 +30,50 @@ declare global {
 }
 
 const MINUTO = 60_000;
+const ESPERA_PARADA_MS = 8_000;
+
+const intervalos: ReturnType<typeof setInterval>[] = [];
+const emCurso = new Set<Promise<unknown>>();
+let parando = false;
+let parada: Promise<void> | undefined;
+
+function rastrear<T>(p: Promise<T>): Promise<T> {
+  emCurso.add(p);
+  const sair = () => emCurso.delete(p);
+  void p.then(sair, sair);
+  return p;
+}
 
 // Toda tarefa grava a última execução, que o painel de IA do admin mostra.
 function agendar(nome: string, intervaloMs: number, tarefa: () => Promise<void>) {
-  agendarSemRegistro(nome, intervaloMs, async () => {
-    await tarefa();
-    await registrarExecucao(getPoolMotor(), nome);
-  });
+  intervalos.push(
+    agendarSemRegistro(nome, intervaloMs, async () => {
+      if (parando) return;
+      await rastrear(
+        (async () => {
+          await tarefa();
+          await registrarExecucao(getPoolMotor(), nome);
+        })(),
+      );
+    }),
+  );
+}
+
+/**
+ * Idempotente. Para os timers e espera as rodadas em curso por até 8 s. Não fecha os pools:
+ * o HTTP ainda drena e usa os mesmos; com `allowExitOnIdle` eles não seguram o processo.
+ */
+export function pararMotor(): Promise<void> {
+  parada ??= (async () => {
+    parando = true;
+    for (const i of intervalos) clearInterval(i);
+    await Promise.race([
+      Promise.allSettled([...emCurso]),
+      new Promise((r) => setTimeout(r, ESPERA_PARADA_MS).unref()),
+    ]);
+    logInfo("motor.parado", { rodadasPendentes: emCurso.size });
+  })();
+  return parada;
 }
 
 // Fases 2-3: ritmo, expiração, envio dos aprovados e as tarefas de IA.
@@ -77,19 +116,22 @@ export function iniciarMotor(): void {
 
   // A fila não usa trava global: a reivindicação com SKIP LOCKED já é segura entre réplicas.
   let rodando = false;
-  setInterval(() => {
-    if (rodando) return;
+  const fila = setInterval(() => {
+    if (rodando || parando) return;
     rodando = true;
-    void (async () => {
-      try {
-        while ((await rodarFila(processadores)) > 0);
-      } catch (erro) {
-        logErro("fila.rodada", erro);
-      } finally {
-        rodando = false;
-      }
-    })();
+    void rastrear(
+      (async () => {
+        try {
+          while (!parando && (await rodarFila(processadores)) > 0);
+        } catch (erro) {
+          logErro("fila.rodada", erro);
+        } finally {
+          rodando = false;
+        }
+      })(),
+    );
   }, 2_000);
+  intervalos.push(fila.unref());
 
   agendar("orfaos", 5 * MINUTO, async () => void (await devolverOrfaos(getPoolMotor())));
   agendar("distribuicao", 5 * MINUTO, async () => {

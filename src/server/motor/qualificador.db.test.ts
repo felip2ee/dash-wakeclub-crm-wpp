@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { comTransacao, getPoolMotor } from "../db";
 import { clienteIaFalso } from "../ia/falso";
+import type { ClienteIa } from "../ia/tipos";
 import { VERSAO_PROMPT } from "../ia/prompts/qualificador";
 import { bancoTesteAtivo, telefoneUnico } from "./banco-teste";
 import { registrarMensagem } from "./ingestao";
@@ -84,7 +85,82 @@ const resposta = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+/** IA que só responde ao lead da `marca` e roda `durante` antes de responder (no meio da IA). */
+function iaDoLead(marca: string, durante: () => Promise<void>): ClienteIa {
+  return {
+    async chatJson<T>(p: { usuario: string }) {
+      if (!p.usuario.includes(marca)) throw new Error("outro lead");
+      await durante();
+      return resposta() as T;
+    },
+    transcrever: async () => "",
+  };
+}
+
+const minutosAte = async (id: string) => {
+  const { rows } = await db().query<{ m: number | null }>(
+    `select extract(epoch from qualificar_apos - now()) / 60 as m
+       from wakeclub.leads where id = $1::uuid`,
+    [id],
+  );
+  return rows[0].m === null ? null : Number(rows[0].m);
+};
+
 describe.skipIf(!bancoTesteAtivo)("qualificador", () => {
+  test("lead reivindicado e não gravado volta em 15 min", async () => {
+    const marca = randomUUID();
+    const id = await leadVencido("quero aula " + marca);
+    let duranteIa: number | null = -1;
+    await tarefaQualificador({
+      ia: iaDoLead(marca, async () => void (duranteIa = await minutosAte(id))),
+    });
+    // Se o processo cair aqui, o lead não some da fila: volta quando o lease vencer.
+    expect(duranteIa).toBeGreaterThan(14);
+    expect(duranteIa).toBeLessThanOrEqual(15);
+    expect(await minutosAte(id)).toBeNull();
+  });
+
+  test("mensagem durante a IA mantém qualificar_apos novo", async () => {
+    const marca = randomUUID();
+    const id = await leadVencido("quero aula " + marca);
+    const { rows } = await db().query<{ telefone: string }>(
+      "select telefone from wakeclub.leads where id = $1::uuid",
+      [id],
+    );
+    const ia = iaDoLead(marca, async () => {
+      await comTransacao((c) =>
+        registrarMensagem(c, {
+          tipo: "mensagem",
+          telefone: rows[0].telefone,
+          nome: null,
+          daEquipe: false,
+          texto: "e no domingo?",
+          tipoMidia: "texto",
+          enviadaEm: new Date().toISOString(),
+          evolutionMsgId: randomUUID(),
+        }),
+      );
+    });
+    await tarefaQualificador({ ia });
+    const m = await minutosAte(id);
+    expect(m).toBeGreaterThan(1);
+    expect(m).toBeLessThanOrEqual(2);
+  });
+
+  test("falha com mensagem durante a IA mantém o +2 min", async () => {
+    const marca = randomUUID();
+    const id = await leadVencido("quero aula " + marca);
+    const ia = iaDoLead(marca, async () => {
+      await db().query(
+        "update wakeclub.leads set qualificar_apos = now() + interval '2 minutes' where id = $1::uuid",
+        [id],
+      );
+      throw new Error("timeout");
+    });
+    await tarefaQualificador({ ia });
+    expect(await minutosAte(id)).toBeLessThanOrEqual(2);
+  });
+
   test("qualifica e grava eventos", async () => {
     const id = await leadVencido();
     const quando = await carimbo("2 days");

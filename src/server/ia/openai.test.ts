@@ -93,6 +93,32 @@ describe("cliente OpenAI", () => {
     expect(f.chamadas).toHaveLength(1);
   });
 
+  test("401 não leva o corpo (chave mascarada) para a mensagem do erro", async () => {
+    const corpo = {
+      error: {
+        message: "Incorrect API key provided: sk-proj-AbCd************wxyz.",
+        type: "invalid_request_error",
+        code: "invalid_api_key",
+      },
+    };
+    const f = fetchFalso([new Response(JSON.stringify(corpo), { status: 401 })]);
+    const erro = (await criarClienteOpenAi(f.fn)
+      ?.chatJson(PEDIDO)
+      .catch((e: unknown) => e)) as ErroIa;
+    expect(erro).toBeInstanceOf(ErroIa);
+    expect(erro.status).toBe(401);
+    expect(erro.message).toBe("OpenAI respondeu 401 (invalid_api_key, invalid_request_error)");
+    expect(erro.message).not.toContain("sk-");
+  });
+
+  test("erro sem JSON fica só com o status", async () => {
+    const f = fetchFalso([new Response("<html>sk-segredo</html>", { status: 400 })]);
+    const erro = (await criarClienteOpenAi(f.fn)
+      ?.chatJson(PEDIDO)
+      .catch((e: unknown) => e)) as ErroIa;
+    expect(erro.message).toBe("OpenAI respondeu 400");
+  });
+
   test("timeout retenta e depois lança", async () => {
     let n = 0;
     const travado = (_url: string, init: RequestInit) => {

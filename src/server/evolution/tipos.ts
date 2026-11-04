@@ -69,3 +69,18 @@ export interface AdaptadorEvolution {
   baixarMidia(evolutionMsgId: string): Promise<{ mime: string; dados: Uint8Array } | null>;
   estadoConexao(): Promise<EstadoConexao>;
 }
+
+/**
+ * Erro do `enviar`. O adaptador diz se tem certeza de que a mensagem não saiu (recusa antes
+ * de chegar ao WhatsApp): só aí o motor tenta de novo. `incerto` (timeout, 5xx, resposta
+ * ilegível) pode ter saído; o follow-up é abortado e o vendedor confere, nunca reenviado.
+ */
+export class ErroEnvio extends Error {
+  constructor(
+    mensagem: string,
+    readonly certeza: "nao_saiu" | "incerto",
+  ) {
+    super(mensagem);
+    this.name = "ErroEnvio";
+  }
+}

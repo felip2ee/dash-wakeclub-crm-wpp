@@ -129,6 +129,13 @@ const TEMPERATURAS = ["quente", "morno", "frio"];
 const TIPOS = ["reengajar", "lembrete_d1", "lembrete_dia", "pos_aula"];
 const CARIMBO = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
 
+/** "AAAA-MM-DD HH:MI" que existe no calendário: 2026-02-30 ou 25:61 não passam. */
+export function carimboValido(s: string): boolean {
+  if (!CARIMBO.test(s)) return false;
+  const [a, m, d, h, min] = s.split(/[- :]/).map(Number);
+  return new Date(Date.UTC(a, m - 1, d, h, min)).toISOString().slice(0, 16) === s.replace(" ", "T");
+}
+
 function texto(v: unknown, max: number): string {
   if (v === null || v === undefined) return "";
   const s = String(v).trim();
@@ -142,7 +149,7 @@ function validarFollowup(f: unknown, ctx: Contexto): Qualificacao["followup"] {
   let quando = texto(o.quando, 16);
   let tipo = texto(o.tipo, 30).toLowerCase();
   const motivo = texto(o.motivo, 500);
-  if (!CARIMBO.test(quando)) return null;
+  if (!carimboValido(quando)) return null;
   if (TIPOS.indexOf(tipo) === -1) tipo = "reengajar";
   if (quando < ctx.minimoLocal) quando = ctx.minimoLocal;
   if (quando > ctx.limiteLocal) quando = ctx.limiteLocal;
@@ -165,7 +172,7 @@ export function validarQualificacao(cru: unknown, ctx: Contexto): Qualificacao |
   if (!resumo) return { erro: "a IA nao devolveu resumo" };
 
   let dataAgendada = texto(c.data_agendada, 16);
-  if (dataAgendada && !CARIMBO.test(dataAgendada)) dataAgendada = "";
+  if (dataAgendada && !carimboValido(dataAgendada)) dataAgendada = "";
 
   const followup = validarFollowup(c.followup, ctx);
 
@@ -198,16 +205,19 @@ with vencidos as (
    limit 8
    for update skip locked
 ),
+-- Lease de 15 min, não null: se o processo cair no meio da IA, o lead volta sozinho.
+-- Devolvido em texto para a comparação exata (microssegundos) na gravação.
 reivindicados as (
   update wakeclub.leads l
-     set qualificar_apos = null
+     set qualificar_apos = now() + interval '15 minutes'
     from vencidos v
    where l.id = v.id
-  returning l.id, l.telefone, l.nome, l.etiqueta, l.origem, l.interesse,
+  returning l.qualificar_apos::text as lease, l.id, l.telefone, l.nome, l.etiqueta, l.origem, l.interesse,
             l.objecao, l.temperatura, l.resumo, l.data_agendada,
             l.ultima_msg_lead_em, l.ultima_msg_equipe_em, l.n_toques
 )
 select r.id as lead_id,
+       r.lease,
        r.telefone,
        r.nome,
        r.etiqueta,
@@ -241,9 +251,12 @@ select r.id as lead_id,
                  limit 40) h) as historico
   from reivindicados r`;
 
+// Só mexe se o lease ainda é o desta rodada: mensagem que chegou durante a IA (+2 min) fica.
 const SQL_REAGENDAR = `
 update wakeclub.leads
-   set qualificar_apos = now() + interval '10 minutes'
+   set qualificar_apos = case when qualificar_apos = $2::timestamptz
+                              then now() + interval '10 minutes'
+                              else qualificar_apos end
  where id = $1::uuid
    and opt_out = false`;
 
@@ -264,7 +277,9 @@ atualizado as (
          data_agendada   = nullif($6::text, '')::timestamp
                              at time zone 'America/Sao_Paulo',
          resumo          = nullif($7, ''),
-         horas_estimadas = $12::smallint
+         horas_estimadas = $12::smallint,
+         qualificar_apos = case when l.qualificar_apos = $13::timestamptz
+                                then null else l.qualificar_apos end
    where l.id = $1::uuid
      and l.opt_out = false
   returning l.id, l.etiqueta, l.temperatura, l.interesse, l.objecao,
@@ -433,7 +448,12 @@ select c.lead_id, 'qualificador', 'followup_created', 'schedule',
   from criado c
 on conflict do nothing`;
 
-async function gravar(db: PoolClient, leadId: string, q: Qualificacao, rodada: string) {
+async function gravar(
+  db: PoolClient,
+  { lead_id: leadId, lease }: { lead_id: string; lease: string },
+  q: Qualificacao,
+  rodada: string,
+) {
   const { rowCount } = await db.query(SQL_GRAVAR, [
     leadId,
     q.etiqueta,
@@ -447,6 +467,7 @@ async function gravar(db: PoolClient, leadId: string, q: Qualificacao, rodada: s
     MODELO,
     VERSAO_PROMPT,
     q.horasEstimadas,
+    lease,
   ]);
   // Lead virou opt_out entre a reivindicação e a gravação: nada de follow-up.
   if (!rowCount || !q.followup) return;
@@ -462,13 +483,13 @@ async function gravar(db: PoolClient, leadId: string, q: Qualificacao, rodada: s
 }
 
 /**
- * Uma rodada: reivindica até 8 leads vencidos e qualifica cada um na própria transação.
- * Falha da IA, da validação ou da gravação reagenda o lead em +10 min. Devolve quantos
+ * Uma rodada: reivindica até 8 leads vencidos (lease de 15 min) e qualifica cada um na
+ * própria transação. Falha da IA, da validação ou da gravação reagenda o lead em +10 min. Devolve quantos
  * leads foram qualificados.
  */
 export async function tarefaQualificador(deps: { ia: ClienteIa }): Promise<number> {
   const rodada = randomUUID();
-  const { rows } = await getPoolMotor().query<LinhaLead>(SQL_REIVINDICAR);
+  const { rows } = await getPoolMotor().query<LinhaLead & { lease: string }>(SQL_REIVINDICAR);
   let qualificados = 0;
   for (const l of rows) {
     try {
@@ -487,12 +508,12 @@ export async function tarefaQualificador(deps: { ia: ClienteIa }): Promise<numbe
         limiteLocal: l.limite_local,
       });
       if ("erro" in q) throw new Error(q.erro);
-      await comTransacao((c) => gravar(c, l.lead_id, q, rodada));
+      await comTransacao((c) => gravar(c, l, q, rodada));
       qualificados++;
     } catch (erro) {
       logErro("qualificador.falha", erro, { leadId: l.lead_id });
       await getPoolMotor()
-        .query(SQL_REAGENDAR, [l.lead_id])
+        .query(SQL_REAGENDAR, [l.lead_id, l.lease])
         .catch((e: unknown) => logErro("qualificador.reagendar", e, { leadId: l.lead_id }));
     }
   }

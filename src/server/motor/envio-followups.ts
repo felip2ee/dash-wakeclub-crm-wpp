@@ -4,11 +4,14 @@
  * último `enviado`. A reivindicação (`enviando`) é commitada antes de chamar a Evolution,
  * e o envio roda fora de transação: se o registro depois do envio falhar, o follow-up fica
  * `enviando` e vira órfão, que é abortado com aviso ao vendedor, nunca reenviado sozinho.
+ * Erro do adaptador só volta a `aprovado` com `ErroEnvio` "nao_saiu"; qualquer outro pode
+ * ter saído e aborta como órfão. Fila da Evolution atrasada segura o envio (spec I3): sem
+ * os eventos em dia, o motor não sabe se o lead respondeu.
  */
 import { telefone } from "../../lib/formato";
 import { comTransacao, getPoolMotor, type PoolClient } from "../db";
-import type { AdaptadorEvolution } from "../evolution/tipos";
-import { logErro } from "../log";
+import { type AdaptadorEvolution, ErroEnvio } from "../evolution/tipos";
+import { logErro, logInfo } from "../log";
 import { registrarMensagem } from "./ingestao";
 import { dentroDaJanela, lerRitmo, MODOS } from "./ritmo";
 
@@ -102,6 +105,20 @@ export async function tarefaEnvioFollowups(deps: {
   );
   if (intervalo[0].cedo) return 0;
 
+  const { rows: fila } = await db.query<{ atrasada: boolean }>(
+    `select exists (
+       select 1 from wakeclub.webhook_eventos
+        where origem = 'evolution'
+          and ((status in ('pendente', 'processando')
+                and recebido_em < now() - interval '2 minutes')
+               or (status = 'falhou' and recebido_em > now() - interval '30 minutes'))
+     ) as atrasada`,
+  );
+  if (fila[0].atrasada) {
+    logInfo("envio.fila_atrasada");
+    return 0;
+  }
+
   const f = await comTransacao(async (c) => {
     const { rows } = await c.query<Reivindicado>(
       `with alvo as (
@@ -138,19 +155,23 @@ export async function tarefaEnvioFollowups(deps: {
       texto,
     }));
   } catch (erro) {
-    logErro("envio-followups.falha", erro, { followupId: f.id });
+    // A mensagem do erro pode trazer corpo da Evolution: 200 caracteres bastam.
+    const mensagem = (erro instanceof Error ? erro.message : String(erro)).slice(0, 200);
+    const naoSaiu = erro instanceof ErroEnvio && erro.certeza === "nao_saiu";
+    logErro("envio-followups.falha", mensagem, { followupId: f.id, naoSaiu });
     await comTransacao(async (c) => {
-      const { rows } = await c.query<{ tentativas_envio: number }>(
+      const { rows } = await c.query<{ status: string }>(
         `update wakeclub.followups
             set tentativas_envio = tentativas_envio + 1,
-                erro_envio = left($2::text, 500),
-                status = case when tentativas_envio + 1 >= $3::int then status else 'aprovado' end
+                erro_envio = $2::text,
+                status = case when $4::boolean and tentativas_envio + 1 < $3::int
+                              then 'aprovado' else status end
           where id = $1::uuid and status = 'enviando'
-        returning tentativas_envio`,
-        [f.id, erro instanceof Error ? erro.message : String(erro), MAX_TENTATIVAS],
+        returning status`,
+        [f.id, mensagem, MAX_TENTATIVAS, naoSaiu],
       );
-      if ((rows[0]?.tentativas_envio ?? 0) >= MAX_TENTATIVAS) {
-        await abortar(c, f.id, "falha no envio", "enviando");
+      if (rows[0]?.status === "enviando") {
+        await abortar(c, f.id, naoSaiu ? "falha no envio" : ORFAO, "enviando");
       }
     });
     return 0;

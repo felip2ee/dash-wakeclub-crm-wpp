@@ -40,6 +40,8 @@ function createPool(): Pool {
     connectionString,
     max: 4,
     idleTimeoutMillis: 30_000,
+    // Cliente ocioso não segura o processo no SIGTERM (vale para os quatro pools).
+    allowExitOnIdle: true,
     connectionTimeoutMillis: 5_000,
     options: "-c default_transaction_read_only=on",
   });
@@ -77,6 +79,7 @@ export function getPoolRw(): Pool {
       connectionString,
       max: 4,
       idleTimeoutMillis: 30_000,
+      allowExitOnIdle: true,
       connectionTimeoutMillis: 5_000,
     });
   }
@@ -101,6 +104,7 @@ export function getPoolMotor(): Pool {
       connectionString,
       max: 12,
       idleTimeoutMillis: 30_000,
+      allowExitOnIdle: true,
       connectionTimeoutMillis: 5_000,
     });
   }
@@ -125,6 +129,7 @@ export function getPoolWebhook(): Pool {
       connectionString,
       max: 4,
       idleTimeoutMillis: 30_000,
+      allowExitOnIdle: true,
       connectionTimeoutMillis: 5_000,
     });
   }

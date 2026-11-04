@@ -39,7 +39,19 @@ async function tentar(fetchFn: FetchFn, url: string, init: RequestInit, timeoutM
     clearTimeout(timer);
   }
   if (status < 200 || status >= 300) {
-    throw new ErroIa(`OpenAI respondeu ${status}: ${texto.slice(0, 300)}`, status);
+    // Só código e tipo: a mensagem da OpenAI ecoa a chave mascarada no 401 e vai para log
+    // e `transcricao_erro`.
+    let detalhe = "";
+    try {
+      const e = (JSON.parse(texto) as { error?: { code?: unknown; type?: unknown } }).error;
+      detalhe = [e?.code, e?.type]
+        .filter((v) => typeof v === "string" && v)
+        .map((v) => String(v).slice(0, 60))
+        .join(", ");
+    } catch {
+      // corpo que não é JSON: fica só o status
+    }
+    throw new ErroIa(`OpenAI respondeu ${status}${detalhe ? ` (${detalhe})` : ""}`, status);
   }
   try {
     return JSON.parse(texto) as unknown;

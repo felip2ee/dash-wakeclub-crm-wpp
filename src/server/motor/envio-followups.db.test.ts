@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 
 import { getPoolMotor } from "../db";
-import type { AdaptadorEvolution, Envio } from "../evolution/tipos";
+import { type AdaptadorEvolution, type Envio, ErroEnvio } from "../evolution/tipos";
 import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./banco-teste";
 import { tarefaEnvioFollowups } from "./envio-followups";
 
@@ -12,8 +12,8 @@ const db = () => getPoolMotor();
 const MEIO_DIA = () => new Date("2026-11-04T15:00:00Z");
 const NOITE = () => new Date("2026-11-04T23:30:00Z");
 
-/** Adaptador falso: registra cada envio e lança quando `falhar` é true. */
-function adaptadorFalso(falhar = false) {
+/** Adaptador falso: registra cada envio e lança `falhar` quando houver. */
+function adaptadorFalso(falhar?: Error) {
   const chamadas: Envio[] = [];
   const adaptador: AdaptadorEvolution = {
     chaveDeOrdem: () => null,
@@ -22,7 +22,7 @@ function adaptadorFalso(falhar = false) {
     estadoConexao: async () => "open",
     enviar: async (envio) => {
       chamadas.push(envio);
-      if (falhar) throw new Error("evolution fora do ar");
+      if (falhar) throw falhar;
       return { evolutionMsgId: randomUUID() };
     },
   };
@@ -101,6 +101,11 @@ describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
   // este banco ao mesmo tempo. O banco é compartilhado entre testes: tira da frente os aprovados/enviando que
   // sobraram e afasta o último envio para o intervalo não segurar o próximo teste.
   beforeEach(async () => {
+    // Eventos da Evolution que outros testes deixaram abertos ou falhos travariam o envio.
+    await db().query(
+      `update wakeclub.webhook_eventos set status = 'processado'
+        where origem = 'evolution' and status in ('pendente', 'processando', 'falhou')`,
+    );
     await db().query(
       `update wakeclub.followups
           set status = 'cancelado', motivo_cancelamento = 'limpeza do teste'
@@ -172,9 +177,11 @@ describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
     expect((await followup(followupId)).status).toBe("aprovado");
   });
 
-  test("falha volta a aprovado com erro e na terceira aborta", async () => {
+  test("nao_saiu volta a aprovado com erro e na terceira aborta", async () => {
     const { dono, followupId } = await cenario();
-    const { chamadas, adaptador } = adaptadorFalso(true);
+    const { chamadas, adaptador } = adaptadorFalso(
+      new ErroEnvio("evolution fora do ar", "nao_saiu"),
+    );
 
     expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
     expect(await followup(followupId)).toMatchObject({
@@ -208,6 +215,63 @@ describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
     // Abortado não volta a ser tentado.
     expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
     expect(chamadas).toHaveLength(3);
+  });
+
+  for (const [nome, erro] of [
+    ["incerto", new ErroEnvio("timeout depois de mandar", "incerto")],
+    ["erro genérico", new Error("x".repeat(1000))],
+  ] as const) {
+    test(`${nome} aborta sem retentar e avisa`, async () => {
+      const { dono, followupId } = await cenario();
+      const { chamadas, adaptador } = adaptadorFalso(erro);
+
+      expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
+      const f = await followup(followupId);
+      expect(f).toMatchObject({
+        status: "abortado",
+        motivo_cancelamento: "envio sem confirmação",
+        tentativas_envio: 1,
+        n_toques: 2,
+      });
+      expect(f.erro_envio.length).toBeLessThanOrEqual(200);
+      expect(await eventos(followupId)).toEqual(["followup_aborted"]);
+      expect(await avisos(dono)).toMatchObject([
+        { titulo: "Follow-up sem confirmação: Lead Envio" },
+      ]);
+      expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
+      expect(chamadas).toHaveLength(1);
+    });
+  }
+
+  test("fila da Evolution atrasada ou com falha recente segura o envio", async () => {
+    const { followupId } = await cenario();
+    const { chamadas, adaptador } = adaptadorFalso();
+    const evento = async (status: string, ha: string) => {
+      const { rows } = await db().query<{ id: string }>(
+        `insert into wakeclub.webhook_eventos (origem, corpo, status, recebido_em)
+         values ('evolution', '{}'::jsonb, $1::text, now() - $2::interval) returning id`,
+        [status, ha],
+      );
+      return rows[0].id;
+    };
+    const resolver = (id: string) =>
+      db().query("update wakeclub.webhook_eventos set status = 'processado' where id = $1", [id]);
+
+    // Pendente recente (menos de 2 min) e falha antiga (mais de 30 min) não seguram.
+    const recente = await evento("pendente", "30 seconds");
+    const falhaAntiga = await evento("falhou", "31 minutes");
+    const atrasado = await evento("processando", "3 minutes");
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
+    await resolver(atrasado);
+    const falhou = await evento("falhou", "5 minutes");
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
+    expect(chamadas).toHaveLength(0);
+    expect((await followup(followupId)).status).toBe("aprovado");
+
+    await resolver(falhou);
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(1);
+    await resolver(recente);
+    await resolver(falhaAntiga);
   });
 
   test("envio ignora cancelado", async () => {

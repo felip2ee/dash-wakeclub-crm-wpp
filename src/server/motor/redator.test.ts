@@ -69,6 +69,28 @@ describe("validarTexto", () => {
     ).toBe("Oi Felipe, olha e https://www.wakeclub.com.br/carteira");
   });
 
+  test("remove domínio nu proibido e completa o permitido", () => {
+    const v = (texto: string) => validarTexto({ texto });
+    expect(v("Oi Felipe, veja wakeclub.com.br/promo agora")).toBe("Oi Felipe, veja agora");
+    expect(v("Oi Felipe, clique bit.ly/x.")).toBe("Oi Felipe, clique .");
+    expect(v("Oi Felipe, paga no pix.com ok")).toBe("Oi Felipe, paga no ok");
+    expect(v("Agende em wakeclub.com.br/agendar")).toBe(
+      "Agende em https://www.wakeclub.com.br/agendar",
+    );
+    expect(v("Valores em WAKECLUB.COM.BR/CARTEIRA")).toBe(
+      "Valores em https://www.wakeclub.com.br/carteira",
+    );
+    expect(v("Promo em Wakeclub.com.br/PROMO hoje")).toBe("Promo em hoje");
+    expect(v("Oi Felipe, veja WAKE.COM hoje")).toBe("Oi Felipe, veja hoje");
+    expect(v("Oi Felipe, veja wake.com/x hoje")).toBe("Oi Felipe, veja hoje");
+    expect(v("Oi Felipe, veja Wake.Com/x hoje")).toBe("Oi Felipe, veja hoje");
+  });
+
+  test("domínio nu: falsos positivos ficam", () => {
+    const t = "Fica R$ 1.500, tudo.Bem? O pix.combo vale. Se fica.Me avisa.";
+    expect(validarTexto({ texto: t })).toBe(t);
+  });
+
   test("tira emoji e travessão", () => {
     expect(validarTexto({ texto: "Oi Felipe 🙂 — tudo certo por aí?" })).toBe(
       "Oi Felipe tudo certo por aí?",
@@ -106,6 +128,12 @@ describe("validarPorteiro", () => {
       ctx,
     );
     expect(tarde.reagendarPara).toBe("2026-12-04 10:00");
+    for (const impossivel of ["2026-02-30 10:00", "2026-11-10 25:61"]) {
+      expect(
+        validarPorteiro({ enviar: false, motivo: "m", reagendar_para: impossivel }, ctx)
+          .reagendarPara,
+      ).toBe("");
+    }
     expect(validarPorteiro({ enviar: false, reagendar_para: "amanhã" }, ctx)).toEqual({
       enviar: false,
       motivo: "o porteiro barrou sem dizer o motivo",

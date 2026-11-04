@@ -48,6 +48,17 @@ describe("validação tolerante", () => {
     expect(ok({ ...base, followup: f }).followup).toBeNull();
   });
 
+  test("data impossível no CARIMBO é descartada (followup e data_agendada)", () => {
+    for (const quando of ["2026-02-30 10:00", "2026-11-10 25:61"]) {
+      const r = ok({ ...base, data_agendada: quando, followup: { quando, tipo: "reengajar" } });
+      expect(r.followup).toBeNull();
+      expect(r.dataAgendada).toBe("");
+    }
+    expect(ok({ ...base, data_agendada: "2026-11-10 09:00" }).dataAgendada).toBe(
+      "2026-11-10 09:00",
+    );
+  });
+
   test("quando abaixo do mínimo vira o mínimo; acima do limite, o limite; tipo inválido, reengajar", () => {
     const cedo = ok({ ...base, followup: { quando: "2026-11-04 09:00", tipo: "x", motivo: "m" } });
     expect(cedo.followup).toEqual({ quando: "2026-11-04 10:30", tipo: "reengajar", motivo: "m" });

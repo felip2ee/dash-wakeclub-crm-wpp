@@ -2,16 +2,18 @@
  * Tarefas periódicas do motor, dentro do próprio processo (design §4.2).
  *
  * Cada execução pega um advisory lock por nome num cliente dedicado; se outra réplica
- * já está rodando a mesma tarefa, esta rodada pula. Erro é logado e a próxima rodada
+ * já está rodando a mesma tarefa, esta rodada pula. A chave tem o prefixo `wakecrm:tarefa:`
+ * para não colidir com as travas de domínio: a tarefa "distribuicao" chama código que pega
+ * `wakecrm:distribuicao` noutra conexão e, com a mesma chave, esperaria por si mesma. Erro é logado e a próxima rodada
  * tenta de novo, sem derrubar o processo.
  */
 import { getPoolMotor } from "../db";
 import { logErro } from "../log";
 
-/** Roda `tarefa` só se conseguir a trava `wakecrm:<nome>`. Devolve se rodou. */
+/** Roda `tarefa` só se conseguir a trava `wakecrm:tarefa:<nome>`. Devolve se rodou. */
 export async function tentarRodar(nome: string, tarefa: () => Promise<void>): Promise<boolean> {
   const cliente = await getPoolMotor().connect();
-  const chave = `wakecrm:${nome}`;
+  const chave = `wakecrm:tarefa:${nome}`;
   try {
     const { rows } = await cliente.query<{ ok: boolean }>(
       "select pg_try_advisory_lock(hashtext($1::text)) as ok",
@@ -43,5 +45,6 @@ export function agendar(nome: string, intervaloMs: number, tarefa: () => Promise
     }
   };
   void tick();
-  return setInterval(() => void tick(), intervaloMs);
+  // unref: o timer sozinho não segura o processo no encerramento.
+  return setInterval(() => void tick(), intervaloMs).unref();
 }

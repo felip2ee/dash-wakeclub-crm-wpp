@@ -9,6 +9,10 @@ import { registrarMensagem } from "./motor/ingestao";
 
 const db = () => getPoolMotor();
 
+// Meio-dia de São Paulo do dia em que o texto do cenário ficou pronto (10h).
+const SUGERIDO = new Date("2026-11-04T10:00:00-03:00");
+const AGORA = new Date("2026-11-04T12:00:00-03:00");
+
 const sessao = (usuarioId: string, papel: Sessao["papel"] = "atendente"): Sessao => ({
   usuarioId,
   nome: "T",
@@ -43,9 +47,9 @@ async function cenario(texto = "Oi, ainda quer agendar a aula?") {
   const { rows } = await db().query<{ id: string }>(
     `insert into wakeclub.followups
        (lead_id, agendado_para, tipo, status, texto_sugerido, sugerido_em)
-     values ($1::uuid, now(), 'reengajar', 'aguardando_aprovacao', $2::text, now())
+     values ($1::uuid, now(), 'reengajar', 'aguardando_aprovacao', $2::text, $3::timestamptz)
      returning id`,
-    [leadId, texto],
+    [leadId, texto, SUGERIDO],
   );
   return { dono, leadId, telefone, followupId: rows[0].id };
 }
@@ -182,13 +186,18 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
   test("enviar grava aprovado, texto_enviado, aprovado_por, avaliacao e evento", async () => {
     const { dono, followupId } = await cenario();
     await comTransacao((c) =>
-      decidir(c, sessao(dono), {
-        followupId,
-        decisao: "enviar",
-        texto: "Oi! Ainda quer agendar?",
-        motivos: ["Ajustei o texto"],
-        textoLivre: "mais curto",
-      }),
+      decidir(
+        c,
+        sessao(dono),
+        {
+          followupId,
+          decisao: "enviar",
+          texto: "Oi! Ainda quer agendar?",
+          motivos: ["Ajustei o texto"],
+          textoLivre: "mais curto",
+        },
+        AGORA,
+      ),
     );
     const f = await followup(followupId);
     expect(f).toMatchObject({
@@ -214,7 +223,7 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
   test("enviar sem texto usa o sugerido", async () => {
     const { dono, followupId } = await cenario();
     await comTransacao((c) =>
-      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: ["Texto certo"] }),
+      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: ["Texto certo"] }, AGORA),
     );
     expect((await followup(followupId)).texto_enviado).toBe("Oi, ainda quer agendar a aula?");
   });
@@ -225,7 +234,9 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
       followupId,
     ]);
     await expect(
-      comTransacao((c) => decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] })),
+      comTransacao((c) =>
+        decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, AGORA),
+      ),
     ).rejects.toThrow("sem texto");
     expect((await followup(followupId)).status).toBe("aguardando_aprovacao");
   });
@@ -250,7 +261,7 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
   test("pular grava avaliacao com motivos vazios", async () => {
     const { dono, followupId } = await cenario();
     await comTransacao((c) =>
-      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }),
+      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, AGORA),
     );
     expect(await avaliacoes(followupId)).toMatchObject([
       { decisao: "enviar", motivos: [], texto_livre: null },
@@ -260,9 +271,33 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
   test("so decide follow-up aguardando aprovacao", async () => {
     const { dono, followupId } = await cenario();
     const decidirUma = () =>
-      comTransacao((c) => decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }));
+      comTransacao((c) =>
+        decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, AGORA),
+      );
     await decidirUma();
     await expect(decidirUma()).rejects.toThrow("não está mais aguardando");
     expect(await avaliacoes(followupId)).toHaveLength(1);
+  });
+
+  test("enviar depois das 19h59 de SP é recusado; recusar ainda vale", async () => {
+    const { dono, followupId } = await cenario();
+    const noite = new Date("2026-11-04T20:00:00-03:00");
+    await expect(
+      comTransacao((c) =>
+        decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, noite),
+      ),
+    ).rejects.toThrow("Follow-up expirou: a IA prepara um novo amanhã");
+    const amanha = new Date("2026-11-05T09:00:00-03:00");
+    await expect(
+      comTransacao((c) =>
+        decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, amanha),
+      ),
+    ).rejects.toThrow("Follow-up expirou");
+    expect((await followup(followupId)).status).toBe("aguardando_aprovacao");
+    expect(await avaliacoes(followupId)).toHaveLength(0);
+    await comTransacao((c) =>
+      decidir(c, sessao(dono), { followupId, decisao: "recusar", motivos: [] }, noite),
+    );
+    expect((await followup(followupId)).status).toBe("abortado");
   });
 });

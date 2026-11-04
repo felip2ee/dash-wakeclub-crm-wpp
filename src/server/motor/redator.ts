@@ -27,6 +27,7 @@ import {
 } from "./redator-sql";
 
 export type { Avaliacao, LinhaFollowup };
+import { carimboValido } from "./qualificador";
 import { dentroDaJanela, lerRitmo, MODOS, preparadosHoje } from "./ritmo";
 import { valorEsperado } from "./valor";
 
@@ -108,8 +109,6 @@ export function montarPromptPorteiro(d: LinhaFollowup, avaliacoes: string) {
   };
 }
 
-const CARIMBO = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
-
 /** Literal do nó "Validar decisao do porteiro". */
 export function validarPorteiro(
   cru: unknown,
@@ -124,7 +123,7 @@ export function validarPorteiro(
 
   if (enviar) quando = "";
 
-  if (quando && !CARIMBO.test(quando)) quando = "";
+  if (quando && !carimboValido(quando)) quando = "";
   if (quando) {
     if (quando < ctx.minimo_local) quando = ctx.minimo_local;
     if (quando > ctx.limite_local) quando = ctx.limite_local;
@@ -226,6 +225,20 @@ export function montarPromptRedator(d: LinhaFollowup, avaliacoes: string) {
 
 const PERMITIDOS = ["https://www.wakeclub.com.br/agendar", "https://www.wakeclub.com.br/carteira"];
 
+// Domínio sem www nem http (wakeclub.com.br/promo, bit.ly/x, WAKE.COM). Lookbehind barra
+// e-mail e o meio de uma URL já tratada; o \b depois do TLD deixa passar "pix.combo".
+const DOMINIO_NU =
+  /(?<![\w@/.-])(?:[a-z0-9-]+\.)+(?:com|net|org|io|me|ly|link|app|co|site|online|info|xyz|br)(?:\.br)?\b(?:\/[^\s)>\]]*)?/gi;
+
+// Fica só se, completado com https://www., for um permitido; a pontuação colada é mantida.
+// Exceção: sem caminho e com o "TLD" em Title case é frase sem espaço ("fica.Me avisa").
+function trocarDominioNu(u: string): string {
+  const limpo = u.replace(/[.,;:!?]+$/, "");
+  if (!limpo.includes("/") && /^[^.]+\.[A-Z][a-z]+$/.test(limpo)) return u;
+  const cheio = ("https://www." + limpo).toLowerCase();
+  return (PERMITIDOS.includes(cheio) ? cheio : "") + u.slice(limpo.length);
+}
+
 /** Literal do nó "Validar texto": links, emoji, travessão, 10..600 caracteres. */
 export function validarTexto(cru: unknown): string {
   const c = (cru && typeof cru === "object" ? cru : {}) as Record<string, unknown>;
@@ -237,6 +250,8 @@ export function validarTexto(cru: unknown): string {
     const limpo = u.replace(/[.,;:!?]+$/, "");
     return PERMITIDOS.includes(limpo.toLowerCase()) ? limpo : "";
   });
+
+  texto = texto.replace(DOMINIO_NU, trocarDominioNu);
 
   // eslint-disable-next-line no-misleading-character-class -- literal do legado: o FE0F solto sai.
   texto = texto.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{2B00}-\u{2BFF}]/gu, "");

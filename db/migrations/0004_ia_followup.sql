@@ -3,7 +3,9 @@
 -- Horas estimadas do lead, configurações do motor (ritmo, preço da hora), o ciclo
 -- de vida do follow-up com aprovação humana, a autoria do envio e as avaliações
 -- que voltam ao prompt. Spec: docs/superpowers/specs/2026-11-04-wakecrm-fases-2-3-ia-followup.md
--- §4, §5, §7, §8. Idempotente: reaplicar por cima não muda nada.
+-- §4, §5, §7, §8. O runner (scripts/migrar.mjs) aplica uma vez só. Os `if not exists` só
+-- protegem uma reaplicação antes da 0005; depois dela, reaplicar esta por cima devolve as
+-- constraints de eventos_automacao (entidade e lead obrigatório) à versão da 0004.
 
 -- Tamanho do pacote em horas, devolvido pelo qualificador. null = ainda não qualificado.
 alter table leads add column if not exists horas_estimadas smallint;

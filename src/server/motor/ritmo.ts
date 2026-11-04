@@ -31,6 +31,17 @@ export function dentroDaJanela(agora: Date): boolean {
   return hora >= 8 && hora <= 19;
 }
 
+const DIA_SP = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
+
+/**
+ * Mesmo predicado de `tarefaExpirarFollowups`: o texto ficou pronto noutro dia de São Paulo
+ * ou já passou das 19h59. `sugeridoEm` null só expira pelo horário, como no SQL.
+ */
+export function expiradoPorHorario(sugeridoEm: Date | null, agora: Date): boolean {
+  const outroDia = sugeridoEm !== null && DIA_SP.format(sugeridoEm) < DIA_SP.format(agora);
+  return outroDia || Number(HORA_SP.format(agora)) >= 20;
+}
+
 export async function lerRitmo(db: ClienteDb): Promise<{ modo: Modo; ligadoEm: string | null }> {
   const { rows } = await db.query<{ modo: string | null; ligado_em: string | null }>(
     `select valor->>'modo' as modo, valor->>'ligado_em' as ligado_em
