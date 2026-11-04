@@ -5,8 +5,8 @@
  * sem decisão. Datas sempre em America/Sao_Paulo, no SQL ou por Intl, nunca no fuso
  * do processo.
  */
-import { randomUUID } from "node:crypto";
-
+// crypto global (Web Crypto), não `node:crypto`: este módulo chega ao bundle do cliente via
+// aprovacao.ts e admin-ia.ts, e o import do Node quebra a hidratação.
 import type { ClienteDb } from "../db";
 
 export const MODOS = {
@@ -75,7 +75,7 @@ export async function definirRitmo(db: ClienteDb, modo: Modo, usuarioId: string)
             'config', $3::uuid, 'painel', $2::text,
             'painel:ritmo:' || $4::text
        from novo n`,
-    [modo, usuarioId, CONFIG_ID, randomUUID()],
+    [modo, usuarioId, CONFIG_ID, crypto.randomUUID()],
   );
 }
 
@@ -92,7 +92,7 @@ export async function preparadosHoje(db: ClienteDb): Promise<number> {
 
 /** Aquecido ligado antes da meia-noite de hoje (SP) volta a conservador. Devolve 1 ou 0. */
 export async function tarefaRitmoMeiaNoite(db: ClienteDb): Promise<number> {
-  const rodada = randomUUID();
+  const rodada = crypto.randomUUID();
   const { rowCount } = await db.query(
     `with antes as (
        select valor
@@ -128,7 +128,7 @@ export async function tarefaRitmoMeiaNoite(db: ClienteDb): Promise<number> {
  * a notificação pendente dele é cancelada. Devolve quantos expiraram.
  */
 export async function tarefaExpirarFollowups(db: ClienteDb, agora = new Date()): Promise<number> {
-  const rodada = randomUUID();
+  const rodada = crypto.randomUUID();
   const { rowCount } = await db.query(
     `with expirados as (
        update wakeclub.followups f

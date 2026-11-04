@@ -9,7 +9,6 @@ import { z } from "zod";
 import { exigirAdmin } from "./auth";
 import { type ClienteDb, comTransacao, getPoolMotor, getPoolRw } from "./db";
 import { corrigirDono } from "./motor/distribuicao";
-import { reprocessar } from "./motor/fila";
 
 export type MonitorFila = {
   pendentes: number;
@@ -60,6 +59,9 @@ export async function lerMonitorFila(db: ClienteDb): Promise<MonitorFila> {
 }
 
 export async function reprocessarOuFalhar(db: ClienteDb, id: number): Promise<void> {
+  // Import dinâmico: no dev o Vite não faz tree-shaking e um import estático levaria
+  // o motor (e o `pg`) ao bundle do navegador.
+  const { reprocessar } = await import("./motor/fila");
   if (!(await reprocessar(db, id))) throw new Error("O evento não está mais com falha.");
 }
 

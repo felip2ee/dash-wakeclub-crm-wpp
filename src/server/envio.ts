@@ -12,7 +12,6 @@ import { comTransacao, getPoolMotor, type PoolClient } from "./db";
 import { obterAdaptador } from "./evolution";
 import type { EventoMensagem } from "./evolution/tipos";
 import { logErro } from "./log";
-import { registrarMensagem } from "./motor/ingestao";
 
 const MAX_BYTES = 16 * 1024 * 1024;
 
@@ -95,7 +94,7 @@ function textoDoEnvio(envio: EnvioApp): string {
 }
 
 /** Grava o que foi enviado; se o eco da Evolution chegou antes, a linha vira do app. */
-export function gravarEnvio(
+export async function gravarEnvio(
   db: PoolClient,
   telefone: string,
   envio: EnvioApp,
@@ -111,6 +110,9 @@ export function gravarEnvio(
     enviadaEm: new Date().toISOString(),
     evolutionMsgId: enviada.evolutionMsgId,
   };
+  // Import dinâmico: no dev o Vite não faz tree-shaking e um import estático levaria
+  // o motor (e o `pg`) ao bundle do navegador.
+  const { registrarMensagem } = await import("./motor/ingestao");
   return registrarMensagem(db, evento, { usuarioId: enviada.usuarioId });
 }
 
