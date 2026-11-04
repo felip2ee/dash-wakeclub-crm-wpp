@@ -68,3 +68,19 @@
 
 **Files:** Modify `docs/architecture.md`, `docs/runbook-virada.md` (captura do webhook de vendas e calibração do normalizador), `PRODUCT.md`, este plano (handoff).
 - [ ] `bun run check`, `bun run test:db`, `bun run build`, `git diff --check` → exit 0.
+
+## Handoff (05/11/2026)
+
+- Objetivo e aceite: dinheiro (spec `docs/superpowers/specs/2026-11-05-wakecrm-fase-4-dinheiro.md`): vendas por webhook, cruzamento com o lead, categorias, comissão congelada, fechamento do dia 10 com lançamentos e painéis. Aceite: testes de banco e puros passando; formato do webhook calibrado com o payload real (pendente).
+- Estado verificado: `main` em `a1b678e` (commits locais, sem push). Commits: `25ee7f6` (migração 0005 e regras), `32ce1f0` (processador de vendas), `d4a46a7` (resumo, painel do vendedor, ranking), `42bf111` (fechamento e lançamentos), `a1b678e` (telas de dinheiro). Árvore com mudanças não commitadas de outros agentes (correções da revisão final); a revisão final da interface e da fase 4 estava em andamento.
+- Concluído: Tasks 1 a 5 e esta Task 6 (docs fundidas numa tarefa única): `docs/architecture.md` ("Vendas e dinheiro", tabelas da 0005, grants), `docs/runbook-virada.md` (0005 junto com 0003 e 0004; gates), `PRODUCT.md`.
+- Evidência (rodada por mim em 05/11/2026, na árvore com mudanças de outros agentes em curso): `PROTO_BUN_VERSION=1.3.11 bun run check` → 0 erros de lint, 63 avisos herdados, tipos ok, 157 testes puros passam, self-check das regras ok. `NOME=wakecrm-teste-docs PORTA=54390 bash scripts/banco-teste.sh && PORTA=54390 bun run test:db` → 310 pass, 0 fail, 51 arquivos (contêiner removido). `bun run build` → build ok. `git diff --check` → limpo. Não rodado: `lint:typed`, `db:check` (sem banco real), qualquer teste em aparelho, Evolution ou OpenAI reais.
+- Pendente (minors deferidos, por tema):
+  - Normalizador (formato provisório): `Date.parse` americano; data gigante lança `RangeError`; telefone descartado sem decisão registrada; horas fora de `smallint`; "4hs"; cobertura de `decisoes`; regex de milhar casa "0.500"; ambiguidade de "1.500" (decimal de 3 casas) é decisão provisória; percentual fora de múltiplos de 0,5 pode errar meio centavo (ex.: 0,7%). Calibrar com o payload real antes da virada.
+  - Processador: venda que chega estornada grava `comissao_valor`; estouro de faixa tratado como transitório; telefone casa com CPF divergente sem registro; corrida em `anterior` (duas compras paralelas viram espontânea); listas com `limit` sem aviso e sem validar `de <= ate`; `ErroPermanente` sem `name`; corrida de eventos iguais só analisada; teste de idempotência da 0005.
+  - Fechamento: `aPagarDia10` do admin soma sem `max(0)` por vendedor (revisão final cuida; conferir); teste de encadeamento de saldo negativo (-36, +20, -16, -16); selo "Mês pago" exige marcar vendedores com R$ 0.
+  - Painéis e telas: percentual inteiro; `vendasRecentes` limite 1000; bordas dos testes com +30 s; posse testada só no helper; ranking expõe `vendedorId`; período sem refine de `de <= ate`; estorno invalida só `["vendas"]`; "Vendido no período" no Pipeline conta o mês corrente; selo "n sem vínculo"; ranking top 3 com medalhas; `aria-label` em `div`.
+  - Decisões aceitas: vínculo manual de mês pago gera lançamento positivo; estorno de venda atrasada gera negativo; pendentes consumidos pelo primeiro mês pago; trava advisory por (vendedor, mês); ranking inclui ativos com zero e usa `rank()`.
+- Bloqueios: payload real do sistema de vendas (formato provisório); a virada (0003 + 0004 + 0005 juntas) depende da Task 13 da fase 1 e de autorização para publicar.
+- Recursos: nenhum processo, porta ou contêiner meu ativo; `.output/` regenerado pelo build.
+- Contexto a revisitar: suposições do normalizador (eventos `sale_received.decisoes`), % de comissão por vendedor, regra da janela de 48 h, ledger em `.superpowers/sdd/2026-11-05-wakecrm-fase-4/progress.md`.

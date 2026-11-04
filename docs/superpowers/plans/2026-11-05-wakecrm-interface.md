@@ -97,3 +97,21 @@
 **Depends-on:** todas.
 - [ ] Capturas de cada tela nos dois temas (quando possível) e comparação com as referências; lista do que ainda difere.
 - [ ] `bun run check`, `bun run build`, `git diff --check` → exit 0.
+
+## Handoff (05/11/2026)
+
+- Objetivo e aceite: tokens, temas (verde padrão, rosa opcional), densidade e telas iguais às referências de `docs/ref/ui/` (spec `docs/superpowers/specs/2026-11-05-wakecrm-interface.md`). Aceite: telas implementadas, contraste medido, build e testes passando; validação visual com login real ainda pendente.
+- Estado verificado: `main` em `a1b678e` (commits locais, sem push). Commits: `3fa1224` (tokens, temas, preferências), `8ae1aa5` (shell), `e53ff90` (Para avaliar), `62098b7` (conversa e lista), `30cdd41` (Pipeline), `f741310` (Visão geral), `051d518` (Configurações e Equipe). Árvore com mudanças não commitadas de outros agentes (inclui `src/styles.css` e `src/routes/configuracoes.tsx`, da revisão final da interface); a revisão final da interface e da fase 4 estava em andamento.
+- Concluído: Tasks 1 a 7 e esta Task 8 (docs fundidas numa tarefa única). Documentação nova em `docs/design.md` (tokens, temas, densidade, componentes, contraste) e `docs/architecture.md` (shell, rotas, preferências, leitores pelo pool do motor).
+- Evidência (rodada por mim em 05/11/2026, na árvore com mudanças de outros agentes em curso): `PROTO_BUN_VERSION=1.3.11 bun run check` → 0 erros de lint, 63 avisos herdados, tipos ok, 157 testes puros passam, self-check das regras ok. `NOME=wakecrm-teste-docs PORTA=54390 bash scripts/banco-teste.sh && PORTA=54390 bun run test:db` → 310 pass, 0 fail, 51 arquivos (contêiner removido). `bun run build` → build ok. `git diff --check` → limpo. Não rodado: `lint:typed`, `db:check` (sem banco real), qualquer teste em aparelho, Evolution ou OpenAI reais.
+- Pendente (minors deferidos, por tema):
+  - Contraste e tokens: `--serie-*` não revalidadas no escuro; folga pequena no degradê verde (4,61:1), remedir se mexer.
+  - Shell e layout: telas legadas com `h-[calc(100dvh-3.5rem)]` ficam sob a barra inferior até rolar; área útil no iPhone instalado (`pb-20` menor que barra + safe-area); `h-[calc(100dvh-8.5rem)]` mágico na folha; `matchMedia` 767 fixo; admin no celular sem Perfil/Sair (está em `/configuracoes`); sino, ajuda e badges do topo não feitos; `useSair` exportado junto de componente (react-refresh); `AcaoRapida` tipa `to: string`.
+  - Conversa e aprovação: flicker da folha ao fechar (guardar última decisão); `SelectValue` vazio até carregar vendedores; card do admin "Todos" não mostra o vendedor; sem teste do fluxo da folha; `BotaoRedondo` duplicado; ordem de `/inicio` virou recência; comentário obsoleto em `index.tsx`.
+  - Pipeline: vendedor inativo só em "Todos"; etiqueta desconhecida some sem aviso; `keepPreviousData` na troca de vendedor; leitura em dois pools; coluna "Negociação encerrada" com valor que o KPI ignora; `getPipeline` sem teste.
+  - Visão geral: `Promise.all` derruba alertas sem `preco_hora` (usar `allSettled`); ranking sem estado de erro próprio; teste não cobre `filaAtrasados` nem filtro por vendedor; faltam pílulas de %, "Ver todos os alertas" e o ⓘ do valor esperado.
+  - Configurações e Equipe: preço da hora sem evento de auditoria (`painel_rw` sem grant; registrar na virada); "Gerenciar conexão" sem destino; tabela só de atendentes; aquecido em dois passos sem `AlertDialog`; cartões do desktop montados no celular (queries duplicadas); `getSaudeNumero` sem `exigirAdmin` (pré-existente); cópias em `admin.tsx` (dívida).
+  - Decisão do dono: ordem das colunas do Pipeline (funil do CRM vs. imagem); ranking top 3 com medalhas.
+- Bloqueios: nenhum específico da interface; a validação em aparelho (PWA, push, iPhone) e a revisão visual com login real dependem de publicar e de um ambiente com dados.
+- Recursos: nenhum processo, porta ou contêiner meu ativo; `.output/` regenerado pelo build.
+- Contexto a revisitar: as imagens em `docs/ref/ui/` são a fonte visual; `docs/design.md` e `src/styles.css` devem andar juntos; ledger em `.superpowers/sdd/2026-11-05-wakecrm-interface/progress.md`.

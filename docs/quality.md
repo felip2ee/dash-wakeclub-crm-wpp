@@ -26,72 +26,94 @@ código e `bun run build` quando mexer em rota, servidor ou configuração de bu
 - Sem `console` direto fora de exceções registradas (`quality/no-direct-console`).
 - Fronteira de dados, todas em `error`:
   - só `src/server/db.ts` importa `pg` (`no-restricted-imports`);
-  - só `src/server/db.ts` lê `DATABASE_URL`/`DATABASE_URL_RW` (`no-restricted-syntax`);
+  - só `src/server/db.ts` lê `DATABASE_URL`, `DATABASE_URL_RW` e `DATABASE_URL_MOTOR`
+    (`no-restricted-syntax`);
   - componentes, rotas e features não importam `src/server/db.ts`
     (`import-x/no-restricted-paths`) nem usam `getPool`/`getPoolRw`
     (`quality/no-direct-data-access`).
 - Validação de entrada com Zod e autorização no servidor; erro sem segredo.
 
-### Linha de base de 04/11/2026 (regras herdadas em `warn`)
+### Linha de base (regras herdadas em `warn`)
 
-Medido por regra antes de definir severidade. Regra sem violação entrou como `error`.
+Medida por regra antes de definir severidade; regra sem violação entrou como `error`.
+Recontada em 05/11/2026 ao fechar as fases 1 a 4 com `bunx eslint . -f json`, contando por
+`ruleId`: **0 erros, 63 avisos**. A coluna "04/11" é a linha de base original (40 avisos).
 
-| Regra | Violações | Severidade |
-|---|---|---|
-| `quality/max-lines` (350) | 6 arquivos (`wf02.tsx` 951, `sidebar.tsx` 745, `index.tsx` 678, `admin.tsx` 590, `reports.tsx` 581, `OpportunityWorkspace.tsx` 417) | warn |
-| `complexity` (12) | 13 | warn |
-| `react-refresh/only-export-components` | 6 | warn (já era) |
-| `quality/no-direct-console` | 4 (`__root.tsx`, `server.ts` ×2, `start.ts`) | warn |
-| `max-lines-per-function` (150) | 5 | warn |
-| `@typescript-eslint/no-unused-vars` | 2 | warn (antes `off`) |
-| `max-statements` (20) | 2 | warn |
-| `import-x/no-duplicates` | 2 (`src/server.ts`) | warn |
-| `max-depth`, `max-params`, `max-nested-callbacks`, `no-empty`, `no-var`, `prefer-const`, `import-x/no-unresolved` | 0 | error |
+| Regra | 04/11 | 05/11 | Severidade |
+|---|---|---|---|
+| `react-refresh/only-export-components` | 6 | 16 | warn (já era) |
+| `complexity` (12) | 13 | 20 | warn |
+| `quality/max-lines` (350) | 6 | 8 | warn |
+| `max-lines-per-function` (150) | 5 | 8 | warn |
+| `quality/no-direct-console` | 4 | 4 | warn |
+| `max-statements` (20) | 2 | 4 | warn |
+| `import-x/no-duplicates` | 2 | 2 | warn |
+| `@typescript-eslint/no-unused-vars` | 2 | 1 | warn (antes `off`) |
+| `max-depth`, `max-params`, `max-nested-callbacks`, `no-empty`, `no-var`, `prefer-const`, `import-x/no-unresolved` | 0 | 0 | error |
 
-Total recontado em 04/11/2026 ao fechar a fase 1: 0 erros, 40 avisos (`eslint -f json`,
-contagem por `ruleId`). Plano de redução: não refatorar só para zerar. Cada arquivo
-que a fase do WakeCRM tocar sai abaixo do limite ou registra o motivo aqui.
+Plano de redução: não refatorar só para zerar. Cada arquivo que uma fase tocar sai abaixo
+do limite ou registra o motivo aqui. Quando uma regra chegar a zero, ela vira `error`. Não
+use ignore amplo nem comentário de disable para esconder violação.
 
-Arquivos tocados pela fase 1 que seguem acima de 350 linhas:
+Arquivos acima de 350 linhas (`quality/max-lines`):
 
-- `src/routes/index.tsx` (678): a Task 12 reindentou o rodapé da conversa para incluir o
-  composer de envio (+22 linhas). Extrair `RodapeConversa` fica deferido; a rota já era
-  grande e a extração é refatoração própria.
-- `src/routes/admin.tsx` (590): as Tasks 10 e 11 acrescentaram monitor da fila, peso e
-  comissão, correção de dono e cadastro com peso/%. Dividir a tela em componentes por
-  seção fica para a fase de componentização.
+- Legado, não tocados pelas fases novas: `src/routes/wf02.tsx` (951), `src/components/ui/sidebar.tsx`
+  (745, vendor do shadcn), `src/routes/admin.tsx` (590), `src/routes/reports.tsx` (581),
+  `src/features/opportunities/OpportunityWorkspace.tsx` (421). `src/routes/index.tsx` saiu da
+  lista (reescrita na interface nova).
+- Novos nas fases 2-3: `src/server/motor/qualificador.ts` (522, SQL literal do legado; dividir o
+  SQL em arquivo irmão, como `redator-sql.ts`, fica deferido), `src/server/motor/redator.ts`
+  (365) e `src/server/motor/redator.db.test.ts` (366).
 
-`src/routes/templates.tsx` saiu da lista (182 linhas).
- Quando uma
-regra chegar a zero, ela vira `error`. Não use ignore amplo nem comentário de disable
-para esconder violação.
+Outros avisos novos vêm de portas literais dos workflows (`validarPorteiro`,
+`montarPromptRedator`, `normalizarVenda` com complexidade alta por tolerar vários formatos de
+webhook) e de componentes de configuração que exportam hook ou helper junto do componente
+(`react-refresh`).
 
 ### Lint tipado
 
-`bun run lint:typed`: cerca de 5,4 s de relógio (9,7 s de CPU) nesta máquina. Achados:
-`no-floating-promises` 1 (`src/routes/__root.tsx`), `no-misused-promises` 0. Os dois
-ficam em `warn` e fora do `check` até o primeiro ser corrigido; aí o perfil entra no
-`check` como `error`.
+`bun run lint:typed`: perfil separado (`no-floating-promises`, `no-misused-promises`), fora do
+`check`. A última contagem registrada é de 04/11/2026 (1 achado em `src/routes/__root.tsx`) e
+**não foi refeita** depois das fases 2 a 4. Quando o primeiro achado for corrigido, o perfil
+entra no `check` como `error`.
 
 ## Estratégia de testes
 
 - Teste lógica com decisão: filas, priorização, cálculo, normalização, autorização.
-  Exemplos atuais: `src/features/minha-fila/fila.test.ts`,
-  `src/features/opportunities/timeline.test.ts`, `src/server/motor/distribuicao.test.ts`.
+  Exemplos: `src/server/motor/distribuicao.test.ts`, `src/server/motor/ritmo.test.ts`,
+  `src/server/motor/valor.test.ts`, `src/server/vendas/normalizar.test.ts`,
+  `src/server/vendas/regras.test.ts`, `src/features/preferencias/preferencias.test.ts`,
+  `src/components/shell/navegacao.test.ts`.
 - Não escreva teste que só repete a implementação. Não há suíte E2E.
 - Testes de banco ficam em `*.db.test.ts`, com `describe.skipIf(!bancoTesteAtivo)`
   (`TESTE_BANCO=1`, definido por `scripts/test-db.sh`); por isso `bun run test` os pula
   e `bun run test:db` os roda. Sobe-se o banco com `bash scripts/banco-teste.sh`
-  (Postgres 14 em Docker, porta 54339, migrações aplicadas e reaplicadas).
+  (Postgres 14 em Docker, porta 54339, migrações 0001 a 0005 aplicadas; 0001 e 0002
+  reaplicadas por cima para provar idempotência). `NOME` e `PORTA` escolhem outro contêiner
+  (`PORTA` também em `test:db`), para suítes em paralelo.
 - Isolamento: a role real do motor (`wakecrm_motor`) não tem DELETE, então os testes
   não limpam o banco; cada um usa dado único (`telefoneUnico`, `criarVendedor`,
   `desativarTodos` em `src/server/motor/banco-teste.ts`). Testes de privilégio são
-  positivos e negativos, com as roles reais.
+  positivos e negativos, com as roles reais. Testes que mexem em estado global
+  (`configuracoes`, ritmo, cota do dia) devem preparar o estado em `beforeEach`.
+- **IA sem rede:** as tarefas (`qualificador`, `redator`, `transcricao`) recebem o
+  `ClienteIa` por parâmetro. Os testes usam `src/server/ia/falso.ts`; o cliente real
+  (`openai.ts`) é testado com um `fetch` injetado. Nenhum teste chama a OpenAI.
+- **Evolution sem rede:** o envio e a transcrição recebem o `AdaptadorEvolution` por
+  parâmetro; os testes usam um adaptador falso que implementa `enviar`, `baixarMidia` e
+  `estadoConexao`, inclusive `ErroEnvio` com `certeza`. O adaptador real depende da Task 13.
+- Relógio e janela: funções com horário (`dentroDaJanela`, `expiradoPorHorario`,
+  `tarefaExpirarFollowups`, `fechamento`, `dinheiro`) aceitam `agora` para o teste fixar o
+  instante; não dependa da hora real.
+- Migrações: `migracoes*.db.test.ts` provam que 0004 e 0005 aplicam, são idempotentes e
+  concedem só os grants previstos.
 - `db:check` continua sendo a prova de views e privilégios no ambiente autorizado.
 - PWA, push e retorno do WhatsApp só contam como prontos depois de teste em aparelho
-  real.
-- Fase 1: distribuição, fila (sequência por chave, retentativas, órfãos), ingestão, saúde,
-  notificações, respostas rápidas, envio, migrações e virada têm testes de banco. O
+  real. Mock, build isolado ou inspeção visual não provam produção.
+- Cobertura por fase: fase 1 (distribuição, fila, ingestão, saúde, notificações, respostas
+  rápidas, envio, migrações, virada); fases 2-3 (transcrição, qualificador, redator, ritmo,
+  aprovação, envio dos follow-ups, painel de IA, configurações, visão geral); fase 4
+  (normalização e regras de venda, processador de vendas, fechamento, dinheiro). O
   normalizador de eventos da Evolution depende da Task 13.
 
 ## Avaliação do harness
@@ -141,8 +163,9 @@ checagens afetadas passarem e os riscos residuais estiverem registrados.
   externo. Para diffs sensíveis use também a skill `differential-review`; sem ela,
   rastreie o código manualmente e registre isso.
 - Pontos de entrada a rastrear neste projeto: `createServerFn` em `src/server/`,
-  `POST /api/push/enviar`, sessão/cookie em `src/server/auth.ts` e, na fase 1, os
-  webhooks `/api/webhooks/*`.
+  `POST /api/push/enviar`, sessão/cookie em `src/server/auth.ts`, os webhooks
+  `/api/webhooks/*`, o cliente de IA (`src/server/ia/`) e a decisão de aprovação
+  (`src/server/aprovacao.ts`).
 - Auditoria avançada (prompt 16 do toolkit) é opcional e nunca roda sozinha.
 
 ## Dependências e entrega

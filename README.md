@@ -1,8 +1,9 @@
 # WakeCRM · Wake Club
 
-Painel interno do CRM da Wake Club: conversas, kanban, relatórios, fila de follow-ups
-da equipe e indicadores operacionais. Hoje lê o CRM mantido pelos workflows n8n (parados
-desde agosto de 2026); a próxima entrega transforma o app no próprio motor do CRM. Veja
+Painel interno e motor do CRM da Wake Club: o app recebe os webhooks do Evolution Go e do
+sistema de vendas, mantém o CRM, distribui os leads, sugere follow-ups com IA (aprovados por
+um humano antes de sair), mostra o funil em dinheiro e calcula a comissão. Substitui os
+workflows n8n. As fases 1 a 4 estão implementadas localmente e **não publicadas**; ver
 [PRODUCT.md](PRODUCT.md).
 
 ## Requisitos
@@ -18,7 +19,8 @@ bun install --frozen-lockfile
 cp .env.example .env        # PowerShell: Copy-Item .env.example .env
 ```
 
-Preencha as variáveis de `.env` e valide o acesso ao banco:
+Preencha as variáveis de `.env` (a role do motor, `DATABASE_URL_MOTOR`, é obrigatória para as
+telas; `OPENAI_API_KEY` é opcional) e valide o acesso ao banco:
 
 ```sh
 bun run db:check
@@ -42,6 +44,9 @@ bun run dev
 ```sh
 bun run check   # lint + tipos + testes + self-check das regras locais
 bun run build
+# testes de banco (Docker): sobe um Postgres 14 descartável e roda *.db.test.ts
+NOME=wakecrm-teste PORTA=54339 bash scripts/banco-teste.sh && PORTA=54339 bun run test:db
+docker rm -f wakecrm-teste
 ```
 
 Detalhes e o lint tipado em [docs/quality.md](docs/quality.md). O arquivo `.env`,
@@ -63,13 +68,15 @@ docker run --rm -p 3000:3000 --env-file .env ghcr.io/felip2ee/dash-wakeclub-crm-
 - [Arquitetura e regras de dados](docs/architecture.md)
 - [Design e acessibilidade](docs/design.md)
 - [Checagens de qualidade](docs/quality.md)
+- [Runbook da virada](docs/runbook-virada.md)
+- [Referências visuais](docs/ref/README.md)
+- [Planos e specs](docs/superpowers/) (cada plano termina com um handoff)
 - [Instruções para agentes](AGENTS.md)
 - [Setup do toolkit e evidência](docs/setup.md)
 - [Design do WakeCRM, motor próprio](docs/superpowers/specs/2026-11-03-wakecrm-motor-proprio-design.md)
 
-## Próxima entrega
+## Estado e próximos passos
 
-Fase 1 do WakeCRM: o app recebe o webhook do Evolution Go numa fila no Postgres,
-mostra e envia mensagens pela conversa e distribui leads por peso. Critério observável:
-uma mensagem enviada ao número aparece na conversa do vendedor certo, e a resposta dele
-chega ao WhatsApp do lead. Depende da instância Evolution Go apontada para o app.
+Falta capturar os eventos reais do Evolution Go (adaptador e envio real), calibrar o webhook
+de vendas, configurar a `OPENAI_API_KEY` e fazer a virada pelo
+[runbook](docs/runbook-virada.md). Lista completa em [PRODUCT.md](PRODUCT.md).
