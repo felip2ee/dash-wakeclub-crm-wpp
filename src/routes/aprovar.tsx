@@ -45,6 +45,12 @@ function AtalhosAdmin() {
       >
         Revisão das decisões
       </Link>
+      <Link
+        to="/fila-envio"
+        className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Fila de envio
+      </Link>
       <BotaoVarredura />
     </div>
   );

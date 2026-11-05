@@ -14,6 +14,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AprovarRouteImport } from './routes/aprovar'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as EquipeRouteImport } from './routes/equipe'
+import { Route as FilaEnvioRouteImport } from './routes/fila-envio'
 import { Route as FollowupsRouteImport } from './routes/followups'
 import { Route as InicioRouteImport } from './routes/inicio'
 import { Route as InstalarRouteImport } from './routes/instalar'
@@ -56,6 +57,11 @@ const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
 const EquipeRoute = EquipeRouteImport.update({
   id: '/equipe',
   path: '/equipe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FilaEnvioRoute = FilaEnvioRouteImport.update({
+  id: '/fila-envio',
+  path: '/fila-envio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FollowupsRoute = FollowupsRouteImport.update({
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
+  '/fila-envio': typeof FilaEnvioRoute
   '/followups': typeof FollowupsRoute
   '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByTo {
   '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
+  '/fila-envio': typeof FilaEnvioRoute
   '/followups': typeof FollowupsRoute
   '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
@@ -206,6 +214,7 @@ export interface FileRoutesById {
   '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
+  '/fila-envio': typeof FilaEnvioRoute
   '/followups': typeof FollowupsRoute
   '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
@@ -233,6 +242,7 @@ export interface FileRouteTypes {
     | '/aprovar'
     | '/configuracoes'
     | '/equipe'
+    | '/fila-envio'
     | '/followups'
     | '/inicio'
     | '/instalar'
@@ -258,6 +268,7 @@ export interface FileRouteTypes {
     | '/aprovar'
     | '/configuracoes'
     | '/equipe'
+    | '/fila-envio'
     | '/followups'
     | '/inicio'
     | '/instalar'
@@ -283,6 +294,7 @@ export interface FileRouteTypes {
     | '/aprovar'
     | '/configuracoes'
     | '/equipe'
+    | '/fila-envio'
     | '/followups'
     | '/inicio'
     | '/instalar'
@@ -309,6 +321,7 @@ export interface RootRouteChildren {
   AprovarRoute: typeof AprovarRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   EquipeRoute: typeof EquipeRoute
+  FilaEnvioRoute: typeof FilaEnvioRoute
   FollowupsRoute: typeof FollowupsRoute
   InicioRoute: typeof InicioRoute
   InstalarRoute: typeof InstalarRoute
@@ -364,6 +377,13 @@ declare module '@tanstack/react-router' {
       path: '/equipe'
       fullPath: '/equipe'
       preLoaderRoute: typeof EquipeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/fila-envio': {
+      id: '/fila-envio'
+      path: '/fila-envio'
+      fullPath: '/fila-envio'
+      preLoaderRoute: typeof FilaEnvioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/followups': {
@@ -501,6 +521,7 @@ const rootRouteChildren: RootRouteChildren = {
   AprovarRoute: AprovarRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   EquipeRoute: EquipeRoute,
+  FilaEnvioRoute: FilaEnvioRoute,
   FollowupsRoute: FollowupsRoute,
   InicioRoute: InicioRoute,
   InstalarRoute: InstalarRoute,
