@@ -33,7 +33,7 @@ with base as (
                  where e.lead_id = l.id
                    and e.tipo_evento = 'stage_changed'
                    and e.estado_novo ->> 'etiqueta' = 'Follow-up'
-                 order by e.ocorrido_em desc
+                 order by e.ocorrido_em desc, e.id desc
                  limit 1)
            else l.etiqueta end as antiga
       from leads l
