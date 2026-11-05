@@ -3,8 +3,9 @@ import { randomUUID } from "node:crypto";
 
 import { getPoolMotor } from "../db";
 import { type AdaptadorEvolution, type Envio, ErroEnvio } from "../evolution/tipos";
+import type { ClienteIa } from "../ia/tipos";
 import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./banco-teste";
-import { tarefaEnvioFollowups } from "./envio-followups";
+import { type Candidato, ordenarFila, tarefaEnvioFollowups } from "./envio-followups";
 
 const db = () => getPoolMotor();
 
@@ -29,7 +30,23 @@ function adaptadorFalso(falhar?: Error) {
   return { chamadas, adaptador };
 }
 
+/** Porteiro falso: sempre a mesma resposta; conta as chamadas. */
+function porteiroFalso(resposta: { enviar: boolean; motivo: string }) {
+  const chamadas: string[] = [];
+  const ia: ClienteIa = {
+    async chatJson<T>(p: { usuario: string }) {
+      chamadas.push(p.usuario);
+      return resposta as T;
+    },
+    async transcrever() {
+      throw new Error("não usado");
+    },
+  };
+  return { ia, chamadas };
+}
+
 type Cenario = {
+  tipo?: string;
   status?: string;
   texto?: string | null;
   aprovadoHa?: string;
@@ -40,6 +57,7 @@ type Cenario = {
 
 /** Lead com dono e um follow-up já decidido pelo humano. */
 async function cenario({
+  tipo = "reengajar",
   status = "aprovado",
   texto = "Oi! Ainda quer agendar a aula?",
   aprovadoHa = "1 minute",
@@ -57,19 +75,19 @@ async function cenario({
      insert into wakeclub.followups
        (lead_id, agendado_para, tipo, status, texto_sugerido, sugerido_em, texto_enviado,
         aprovado_em, aprovado_por, atualizado_em)
-     select l.id, now(), 'reengajar', $3::text, 'Oi, tudo certo?', now(), $4::text,
+     select l.id, now(), $9::text, $3::text, 'Oi, tudo certo?', now(), $4::text,
             now() - $5::interval, case when $7::boolean then null else $2::uuid end,
             now() - $6::interval
        from l
      returning id, lead_id`,
-    [telefone, dono, status, texto, aprovadoHa, atualizadoHa, semAprovador, optOut],
+    [telefone, dono, status, texto, aprovadoHa, atualizadoHa, semAprovador, optOut, tipo],
   );
   return { dono, telefone, followupId: rows[0].id, leadId: rows[0].lead_id };
 }
 
 async function followup(id: string) {
   const { rows } = await db().query(
-    `select f.status, f.enviado_em, f.erro_envio, f.tentativas_envio, f.motivo_cancelamento,
+    `select f.status, f.enviado_em, f.reconferido_em, f.erro_envio, f.tentativas_envio, f.motivo_cancelamento,
             l.n_toques
        from wakeclub.followups f join wakeclub.leads l on l.id = f.lead_id
       where f.id = $1::uuid`,
@@ -95,6 +113,32 @@ async function avisos(usuarioId: string) {
   );
   return rows;
 }
+
+describe("ordenarFila", () => {
+  const c = (id: string, tipo: string, valorEsperado: number, dia: number): Candidato => ({
+    id,
+    tipo,
+    valorEsperado,
+    aprovadoEm: new Date(Date.UTC(2026, 10, dia)),
+  });
+
+  test("lembretes primeiro, depois maior valor esperado, depois o aprovado mais antigo", () => {
+    const fila = ordenarFila([
+      c("parado-caro", "parado", 1000, 1),
+      c("parado-novo", "parado", 50, 4),
+      c("lembrete", "lembrete_dia", 0, 5),
+      c("parado-antigo", "parado", 50, 2),
+      c("d1", "lembrete_d1", 0, 3),
+    ]);
+    expect(fila.map((x) => x.id)).toEqual([
+      "d1",
+      "lembrete",
+      "parado-caro",
+      "parado-antigo",
+      "parado-novo",
+    ]);
+  });
+});
 
 describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
   // Premissa: os testes rodam em série (padrão do bun test) e nenhum outro processo usa
@@ -328,5 +372,116 @@ describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
     expect(await avisos(dono)).toMatchObject([
       { titulo: "Follow-up sem texto: Lead Envio", corpo: "sem texto" },
     ]);
+  });
+
+  test("lembrete aprovado sai antes do follow-up comum mais antigo", async () => {
+    const comum = await cenario({ aprovadoHa: "10 minutes" });
+    const lembrete = await cenario({ tipo: "lembrete_d1", aprovadoHa: "1 minute" });
+    const { adaptador } = adaptadorFalso();
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(1);
+    expect((await followup(lembrete.followupId)).status).toBe("enviado");
+    expect((await followup(comum.followupId)).status).toBe("aprovado");
+  });
+
+  test("cota do dia cheia: nada sai, mesmo com aprovado na fila", async () => {
+    const enviados = await Promise.all(
+      Array.from({ length: 20 }, () => cenario({ status: "enviado" })),
+    );
+    // Hoje (SP), mas fora do intervalo do modo: quem segura é a cota.
+    await db().query(
+      `update wakeclub.followups set enviado_em = now() - interval '130 seconds'
+        where id = any($1::uuid[])`,
+      [enviados.map((e) => e.followupId)],
+    );
+    const { followupId } = await cenario();
+    const { chamadas, adaptador } = adaptadorFalso();
+
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
+    expect(chamadas).toHaveLength(0);
+    expect((await followup(followupId)).status).toBe("aprovado");
+
+    // Com 19 de 20, o aprovado sai.
+    await db().query(
+      "update wakeclub.followups set enviado_em = now() - interval '2 days' where id = $1::uuid",
+      [enviados[0].followupId],
+    );
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(1);
+    expect((await followup(followupId)).status).toBe("enviado");
+  });
+
+  test("aprovado há mais de 3 dias sem IA é pulado e o seguinte sai", async () => {
+    const velho = await cenario({ aprovadoHa: "4 days" });
+    const novo = await cenario({ aprovadoHa: "1 minute" });
+    const { adaptador } = adaptadorFalso();
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(1);
+    expect((await followup(velho.followupId)).status).toBe("aprovado");
+    expect((await followup(novo.followupId)).status).toBe("enviado");
+  });
+
+  test("aprovado há mais de 3 dias barrado pelo porteiro sai da fila com motivo", async () => {
+    const velho = await cenario({ aprovadoHa: "4 days" });
+    const novo = await cenario({ aprovadoHa: "1 minute" });
+    const { adaptador } = adaptadorFalso();
+    const porteiro = porteiroFalso({ enviar: false, motivo: "já comprou" });
+
+    expect(await tarefaEnvioFollowups({ adaptador, ia: porteiro.ia, agora: MEIO_DIA })).toBe(1);
+
+    expect(porteiro.chamadas).toHaveLength(1);
+    expect(await followup(velho.followupId)).toMatchObject({
+      status: "abortado",
+      motivo_cancelamento: "porteiro na fila de envio: já comprou",
+    });
+    const { rows } = await db().query(
+      `select agente, tipo_evento, motivo from wakeclub.eventos_automacao
+        where entidade_tipo = 'followup' and entidade_id = $1::uuid`,
+      [velho.followupId],
+    );
+    expect(rows).toEqual([
+      {
+        agente: "porteiro",
+        tipo_evento: "followup_blocked",
+        motivo: "porteiro na fila de envio: já comprou",
+      },
+    ]);
+    expect(await avisos(velho.dono)).toMatchObject([
+      {
+        tipo: "aviso",
+        titulo: "Follow-up barrado na fila: Lead Envio",
+        corpo: "porteiro na fila de envio: já comprou",
+      },
+    ]);
+    expect((await followup(novo.followupId)).status).toBe("enviado");
+  });
+
+  test("aprovado há mais de 3 dias liberado pelo porteiro é reconferido e sai", async () => {
+    const velho = await cenario({ aprovadoHa: "4 days" });
+    const { chamadas, adaptador } = adaptadorFalso();
+    const porteiro = porteiroFalso({ enviar: true, motivo: "ok" });
+
+    expect(await tarefaEnvioFollowups({ adaptador, ia: porteiro.ia, agora: MEIO_DIA })).toBe(1);
+
+    expect(chamadas).toHaveLength(1);
+    const f = await followup(velho.followupId);
+    expect(f.status).toBe("enviado");
+    expect(f.reconferido_em).not.toBeNull();
+  });
+
+  test("erro do porteiro conta como barrado", async () => {
+    const velho = await cenario({ aprovadoHa: "4 days" });
+    await db().query(
+      `update wakeclub.leads set atendente_id = null
+        where id = (select lead_id from wakeclub.followups where id = $1::uuid)`,
+      [velho.followupId],
+    );
+    const { chamadas, adaptador } = adaptadorFalso();
+    const porteiro = porteiroFalso({ enviar: true, motivo: "ok" });
+
+    expect(await tarefaEnvioFollowups({ adaptador, ia: porteiro.ia, agora: MEIO_DIA })).toBe(0);
+
+    expect(chamadas).toHaveLength(0);
+    expect(await followup(velho.followupId)).toMatchObject({
+      status: "abortado",
+      motivo_cancelamento: "porteiro na fila de envio: follow-up não encontrado",
+    });
   });
 });
