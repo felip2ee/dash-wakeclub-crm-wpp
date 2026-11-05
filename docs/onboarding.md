@@ -93,7 +93,7 @@ docker run --rm -v "$PWD:/w" -w /w bash:5 sh -c 'apk add -q openssl >/dev/null &
 ```
 
 Ponta a ponta num Swarm local (só com autorização para `docker swarm init` na máquina):
-Postgres 14 e Traefik numa rede overlay attachable, banco `wakeclub` migrado `--ate 0002` (o
+Postgres 14 e Traefik numa rede overlay (não precisa ser attachable), banco `wakeclub` migrado `--ate 0002` (o
 stub de `v_followups_fila` precisa começar por `followup_id, lead_id, atendente_id`, senão o
 `painel-views.sql` falha), imagem `docker build -t wakecrm-local .` e:
 

@@ -64,19 +64,63 @@ done
 assert_eq 1 "$(pula_resposta dono; echo $?)" "usuário não pula"
 assert_eq 1 "$(pula_resposta no; echo $?)" "\"no\" é tratado como usuário"
 
-# comando_restaurar: o manual usa o mesmo script atômico, com lista e dump nessa ordem.
+# comando_restaurar: o manual usa o mesmo script atômico, com lista e dump nessa ordem, na rede
+# do contêiner do Postgres (procurado quando o comando roda) e com o banco em 127.0.0.1.
 # shellcheck disable=SC2034 # lidas dentro de comando_restaurar
-REDE=r1 DIR_BACKUPS=/root/wakecrm/backups PG_HOST=pg PG_USUARIO=postgres PG_MAJOR=14
+REDE=r1 DIR_BACKUPS=/root/wakecrm/backups PG_HOST=pg PG_SERVICO=pg_pg PG_USUARIO=postgres PG_MAJOR=14
 CMD="$(comando_restaurar /root/wakecrm/backups/w.dump /root/wakecrm/backups/w.dump.lista)"
+# shellcheck disable=SC2016 # $(...) literal: expande quando o dono colar o comando
 case "$CMD" in
-  *"-e PGHOST=pg -e PGUSER=postgres postgres:14 sh -c '$SCRIPT_RESTAURAR' sh /backups/w.dump.lista /backups/w.dump") r=ok ;;
+  'docker run --rm -it --network container:$(docker ps -q -f label=com.docker.swarm.service.name=pg_pg -f status=running | head -n1) -v /root/wakecrm/backups:/backups '*"-e PGHOST=127.0.0.1 -e PGUSER=postgres postgres:14 sh -c '$SCRIPT_RESTAURAR' sh /backups/w.dump.lista /backups/w.dump") r=ok ;;
   *) r="$CMD" ;;
 esac
 assert_eq ok "$r" "comando manual de restauração"
+case "$CMD" in *r1* | *"PGHOST=pg "*) r=rede ;; *) r=ok ;; esac
+assert_eq ok "$r" "comando manual não usa a REDE nem o nome do serviço"
 case "$SCRIPT_RESTAURAR" in *"drop schema"*"psql -X -q -1 -v ON_ERROR_STOP=1"*) r=ok ;; *) r=nao ;; esac
 assert_eq ok "$r" "drop e restauração na mesma transação (psql -1)"
 case "$CMD" in *PGPASSWORD* | *teste*) r=vazou ;; *) r=ok ;; esac
 assert_eq ok "$r" "comando manual sem senha"
+
+# Contêineres temporários: rede do contêiner do Postgres neste nó, procurado a cada uso.
+# shellcheck disable=SC2329,SC2317 # docker simulado
+docker() {
+  case "$1" in
+    ps) echo "ps $*" >>"$TMP/docker.log"; printf '%s\n' ${PG_CONT:+"$PG_CONT"} ;;
+    *) printf '%s\n' "$*" ;;
+  esac
+}
+# shellcheck disable=SC2034 # lidas dentro de rodar_no_*
+{ IMAGEM=img:1; DIR_BACKUPS="$TMP/bk"; PG_CONT=c1; }
+assert_eq "run --rm --network container:c1 --env-file /e img:1 bun scripts/migrar.mjs" "$(rodar_no_app /e bun scripts/migrar.mjs)" "rodar_no_app na rede do contêiner do Postgres"
+assert_eq "run --rm --network container:c1 --env-file /e -v $TMP/bk:/backups postgres:14 psql -At" "$(rodar_no_pg /e psql -At)" "rodar_no_pg na rede do contêiner do Postgres"
+case "$(cat "$TMP/docker.log")" in *"label=com.docker.swarm.service.name=pg_pg -f status=running"*) r=ok ;; *) r="$(cat "$TMP/docker.log")" ;; esac
+assert_eq ok "$r" "contêiner procurado pelo serviço, só running"
+PG_CONT=c2
+assert_eq "run --rm --network container:c2 --env-file /e img:1 x" "$(rodar_no_app /e x)" "tarefa reiniciada: acha o contêiner novo"
+PG_CONT=""
+saida="$(rodar_no_pg /e psql 2>&1)"
+assert_eq 1 "$(rodar_no_pg /e psql >/dev/null 2>&1; echo $?)" "sem contêiner do Postgres neste nó: código 1"
+case "$saida" in "✗ Nenhum contêiner do Postgres (pg_pg) rodando neste nó"*) r=ok ;; *) r="$saida" ;; esac
+assert_eq ok "$r" "sem contêiner: diz por quê, sem rodar nada"
+assert_eq "" "$(rodar_no_app /e x 2>/dev/null)" "sem contêiner: mensagem só no stderr"
+unset -f docker
+
+# derivar_urls: stack no nome do serviço (REDE), contêineres temporários em 127.0.0.1.
+# shellcheck disable=SC2034 # lidas dentro de derivar_urls
+{ PG_HOST=postgres_postgres; PG_USUARIO=postgres; PG_SENHA='s@1'; PAINEL_RO_PASSWORD=ro; PAINEL_RW_PASSWORD=rw; WAKECRM_MOTOR_PASSWORD=mo; }
+derivar_urls
+assert_eq "postgres://painel_ro:ro@postgres_postgres:5432/wakeclub|postgres://painel_rw:rw@postgres_postgres:5432/wakeclub|postgres://wakecrm_motor:mo@postgres_postgres:5432/wakeclub" \
+  "$DATABASE_URL|$DATABASE_URL_RW|$DATABASE_URL_MOTOR" "URLs da stack no nome do serviço"
+assert_eq "postgres://painel_ro:ro@127.0.0.1:5432/wakeclub|postgres://painel_rw:rw@127.0.0.1:5432/wakeclub|postgres://postgres:s%401@127.0.0.1:5432/wakeclub" \
+  "$DATABASE_URL_JOB|$DATABASE_URL_RW_JOB|$ADMIN_DATABASE_URL" "URLs dos contêineres temporários em 127.0.0.1"
+# aplicar_banco entrega ao contêiner as URLs de 127.0.0.1 e não mexe nas da stack.
+# shellcheck disable=SC2329 # rodar_no_app simulado
+r="$(rodar_no_app() { cat "$1"; }; aplicar_banco | grep -E '^DATABASE_URL(_RW)?=' | sort -u | tr '\n' ' '; echo "$DATABASE_URL")"
+assert_eq "DATABASE_URL=postgres://painel_ro:ro@127.0.0.1:5432/wakeclub DATABASE_URL_RW=postgres://painel_rw:rw@127.0.0.1:5432/wakeclub postgres://painel_ro:ro@postgres_postgres:5432/wakeclub" \
+  "$r" "aplicar_banco: env do contêiner com 127.0.0.1, stack intacta"
+# shellcheck disable=SC2034
+PG_HOST=pg
 
 # Publicação: modelo real preenchido, sem segredo do superusuário e com $ dobrado.
 # shellcheck disable=SC2034,SC2016 # lidas por nome em arquivo_env; $ literal de propósito
@@ -92,6 +136,11 @@ PUB="$(stack_publicavel "$AQUI/wakecrm-stack.yml" "$ENV_STACK")"
 assert_eq 0 "$?" "modelo real preenche com CHAVES_STACK"
 case "$PUB" in *superu* | *ADMIN_DATABASE_URL*) r=vazou ;; *) r=ok ;; esac
 assert_eq ok "$r" "stack sem a URL do superusuário"
+# A stack real com as URLs de derivar_urls: nunca 127.0.0.1.
+# shellcheck disable=SC2086 # uma chave por palavra
+r="$(derivar_urls; e="$(arquivo_env $CHAVES_STACK)"; stack_publicavel "$AQUI/wakecrm-stack.yml" "$e")"
+case "$r" in *127.0.0.1*) r=vazou ;; *"DATABASE_URL=postgres://painel_ro:ro@pg:5432/wakeclub"*) r=ok ;; esac
+assert_eq ok "$r" "stack com o nome do serviço do Postgres, nunca 127.0.0.1"
 case "$PUB" in *"image: img:1"*) r=ok ;; *) r=nao ;; esac
 assert_eq ok "$r" "stack usa IMAGEM"
 case "$PUB" in *'"traefik.http.routers.wakecrm.entrypoints=https443"'*) r=ok ;; *) r=nao ;; esac
@@ -191,6 +240,7 @@ printf '%s\n' '[ PORTAINER ]' 'Dominio do portainer: painel.exemplo.com' '' 'Usu
 r="$(PORTAINER_USUARIO=""; PORTAINER_SENHA=""; portainer_do_orion >/dev/null; echo "$PORTAINER_DOMINIO|$PORTAINER_TOKEN|$PORTAINER_USUARIO|$PORTAINER_SENHA")"
 assert_eq "painel.exemplo.com||dono|s1" "$r" "Orion sem token: usuário e senha"
 printf '%s\n' '[ PORTAINER ]' 'Dominio do portainer: painel.exemplo.com' 'Token:' >"$ORION_DIR/dados_portainer"
+# shellcheck disable=SC2030 # subshell de propósito, como em rodar_perguntas
 r="$(PORTAINER_USUARIO=""; PORTAINER_SENHA=""; portainer_do_orion >/dev/null; echo "$PORTAINER_DOMINIO|$PORTAINER_TOKEN|$PORTAINER_USUARIO")"
 assert_eq "||" "$r" "Orion sem credencial: ignorado (pergunta como antes)"
 printf '%s\n' 'Dominio do portainer: "painel".x' 'Token: t' >"$ORION_DIR/dados_portainer"
@@ -265,7 +315,8 @@ docker() {
     *ContainerSpec.Command*) printf '%s\n' --certificatesresolvers.le.acme.email=x --entrypoints.websecure.address=:443 ;;
     *TaskTemplate.Networks*) case "$a" in *pg_pg) [ "$REDES_PG" != FALHA ] || { echo "Error: erro real do docker" >&2; return 1; }; echo "$REDES_PG" ;; *tr_tr) echo "$REDES_TR" ;; *) echo n1 ;; esac ;;
     "network inspect --format {{.Name}} "*) echo "${a##* }" ;;
-    "network inspect --format {{.Attachable}} "*) echo true ;;
+    "network inspect --format {{.Attachable}} "*) echo "${ATTACH:-true}" ;;
+    "ps "*) [ "$PG_CONT" != FALHA ] || return 1; printf '%s\n' ${PG_CONT:+"$PG_CONT"} ;;
     "network inspect "*) case "${a##* }" in n1 | n2 | n3) ;; *) return 1 ;; esac ;;
     *) return 1 ;;
   esac
@@ -278,9 +329,10 @@ rodar_detectar() {
     detectar >"$TMP/detectar.log" 2>&1 || exit $?
     printf '%s\n' "pg=$PG_USUARIO/$PG_SENHA ($PG_SENHA_ORIGEM)" "rede=$REDE ($REDE_ORIGEM)" \
       "evo=$EVOLUTION_URL ($EVOLUTION_URL_ORIGEM) chave=$EVOLUTION_API_KEY${EVOLUTION_API_KEY:+ ($EVOLUTION_API_KEY_ORIGEM)}" \
-      "portainer=$PORTAINER_DOMINIO token=$PORTAINER_TOKEN" "orion=$ORION_USADOS"
+      "portainer=$PORTAINER_DOMINIO token=$PORTAINER_TOKEN" "orion=$ORION_USADOS" "attachable=$REDE_ATTACHABLE"
   )
 }
+PG_CONT=c1
 ORION_DIR="$TMP/orion"
 mkdir -p "$ORION_DIR"
 printf '%s\n' '[DADOS DA VPS]' 'texto livre' 'Nome do Servidor: vps1' '' 'Rede interna: n2' '' 'Link do Portainer: https://painel.exemplo.com' >"$ORION_DIR/dados_vps"
@@ -293,7 +345,7 @@ printf '%s\n' '[ PORTAINER ]' 'Dominio do portainer: painel.exemplo.com' '' 'Usu
 r="$(EVO=1 ENV_PG='' ENV_EVO='SERVER_PORT=8080' REDES_PG='n1 n2' REDES_TR='n1 n2' rodar_detectar)"
 assert_eq "$(printf '%s\n' "pg=orion_pg/pg-orion (lida do Orion)" "rede=n2 (lida do Orion)" \
   "evo=http://evo_evo:8080 (detectada no serviço) chave=chave-orion (lida do Orion)" \
-  "portainer=painel.exemplo.com token=ptr_1" "orion=dados_postgres dados_vps dados_evolution dados_portainer")" "$r" \
+  "portainer=painel.exemplo.com token=ptr_1" "orion=dados_postgres dados_vps dados_evolution dados_portainer" "attachable=1")" "$r" \
   "detectar: Orion cobre senha, chave, rede ambígua e Portainer"
 case "$(cat "$TMP/detectar.log")" in *pg-orion* | *chave-orion* | *ptr_1* | *"Senha: s1"*) r=vazou ;; *) r=ok ;; esac
 assert_eq ok "$r" "detectar não imprime segredo"
@@ -302,7 +354,7 @@ r="$(EVO=1 ENV_PG="$(printf 'POSTGRES_USER=pgsvc\nPOSTGRES_PASSWORD=pg-svc')" EN
   REDES_PG='n1 n2' REDES_TR='n2' rodar_detectar)"
 assert_eq "$(printf '%s\n' "pg=pgsvc/pg-svc (lida do serviço)" "rede=n2 (única comum a Postgres e Traefik)" \
   "evo=http://evo_evo:8080 (detectada no serviço) chave=chave-svc (lida do serviço)" \
-  "portainer=painel.exemplo.com token=ptr_1" "orion=dados_portainer")" "$r" "detectar: o serviço vem antes do Orion"
+  "portainer=painel.exemplo.com token=ptr_1" "orion=dados_portainer" "attachable=1")" "$r" "detectar: o serviço vem antes do Orion"
 # Sem serviço da Evolution: BaseUrl e chave do Orion; nunca a Evolution Go.
 r="$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar | sed -n 3p)"
 assert_eq "evo=https://evo.exemplo.com (lida do Orion) chave=chave-orion (lida do Orion)" "$r" "detectar: sem serviço, Evolution do Orion"
@@ -333,10 +385,68 @@ mv "$TMP/dados_postgres.bom" "$ORION_DIR/dados_postgres"
 # Sem Orion: como antes (rede ambígua fica com a primeira; sem senha no serviço, para).
 ORION_DIR="$TMP/sem-orion"
 r="$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1 n2' REDES_TR='n1 n2' rodar_detectar)"
-assert_eq "$(printf '%s\n' "pg=postgres/x (lida do serviço)" "rede=n1 (escolhida)" "evo= (salva) chave=" "portainer= token=" "orion=")" "$r" \
+assert_eq "$(printf '%s\n' "pg=postgres/x (lida do serviço)" "rede=n1 (escolhida)" "evo= (salva) chave=" "portainer= token=" "orion=" "attachable=1")" "$r" \
   "detectar sem Orion: comportamento antigo"
 assert_eq 1 "$(ENV_PG='' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "sem Orion e sem senha no serviço: para"
 assert_eq 1 "$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n3' rodar_detectar >/dev/null; echo $?)" "sem Orion e sem rede comum: para"
+# Rede não attachable (NovaNet do Orion): segue; os contêineres temporários vão pela rede do Postgres.
+r="$(ATTACH=false ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar | sed -n '2p;6p' | tr '\n' ' ')"
+assert_eq "rede=n1 (única comum a Postgres e Traefik) attachable= " "$r" "rede não attachable: não para"
+case "$(cat "$TMP/detectar.log")" in *"rede: n1 (não attachable)"*"jobs temporários: rede do contêiner do Postgres (127.0.0.1)"*) r=ok ;; *) r="$(cat "$TMP/detectar.log")" ;; esac
+assert_eq ok "$r" "rede não attachable: diz como os jobs chegam ao Postgres"
+# Postgres sem contêiner neste nó: para antes da confirmação.
+assert_eq 1 "$(PG_CONT="" ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "Postgres em outro nó: para"
+case "$(cat "$TMP/detectar.log")" in *"Rode o instalador no nó onde o Postgres roda. Nada foi alterado."*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "Postgres em outro nó: diz por quê"
+assert_eq 1 "$(PG_CONT=FALHA ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "docker ps falhou: para"
+case "$(cat "$TMP/detectar.log")" in *"docker ps falhou ao procurar o contêiner do Postgres"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "docker ps falhou: não confunde com Postgres em outro nó"
+unset -f docker
+
+# perguntas: sem domínio do Portainer e com REDE não attachable, a API fica de fora.
+rodar_perguntas() {
+  (
+    # shellcheck disable=SC2034 # lidas dentro de perguntas
+    SIM=1 WAKECRM_DOMINIO=crm.exemplo.com WAKECRM_INSTANCIA=wakeclub CREDENCIAIS="$TMP/sem-credenciais.env" \
+      PORTAINER_DOMINIO="" PORTAINER_SERVICO=portainer_portainer REDE=n1 WAKECRM_PORTAINER_USUARIO=dono WAKECRM_PORTAINER_SENHA=s1
+    perguntas >"$TMP/perguntas.log" 2>&1
+    # shellcheck disable=SC2031 # definida por perguntas nesta mesma subshell
+    printf '%s|%s\n' "$PORTAINER_USUARIO" "$(texto_publicacao)"
+  )
+}
+assert_eq "|docker stack deploy" "$(REDE_ATTACHABLE="" rodar_perguntas)" "rede não attachable sem domínio: docker stack deploy"
+case "$(cat "$TMP/perguntas.log")" in *"A rede n1 não é attachable"*"docker stack deploy"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "rede não attachable sem domínio: avisa"
+assert_eq "dono|API do Portainer (usuário dono)" "$(REDE_ATTACHABLE=1 rodar_perguntas)" "rede attachable: API do Portainer pela overlay"
+
+# padrao_postgres: com mais de um Postgres, sugere o salvo, depois o do Host do Orion.
+assert_eq postgres_postgres "$(padrao_postgres postgres "" pgvector_pgvector postgres_postgres)" "Orion postgres: postgres_postgres"
+assert_eq pgvector_pgvector "$(padrao_postgres postgres pgvector_pgvector postgres_postgres pgvector_pgvector)" "salvo vence o Orion"
+assert_eq postgres_postgres "$(padrao_postgres postgres "" x_postgres postgres_postgres)" "Host_Host vence um _Host anterior"
+assert_eq x "$(padrao_postgres 'pg.*' "" x pg_pg y_pgz)" "Host com curinga casa só literal"
+assert_eq 'y_pg.*' "$(padrao_postgres 'pg.*' "" x 'y_pg.*')" "Host com curinga: sufixo literal casa"
+assert_eq postgres "$(padrao_postgres postgres "" postgres_postgres postgres)" "nome igual ao Host vem primeiro"
+assert_eq banco_postgres "$(padrao_postgres postgres "" pgvector_pgvector banco_postgres)" "serviço terminado em _Host"
+assert_eq x "$(padrao_postgres postgres "" x meupostgres)" "sem _ antes do Host não casa: o primeiro"
+assert_eq pgvector_pgvector "$(padrao_postgres "" pgvector_pgvector postgres_postgres pgvector_pgvector)" "sem Orion: o salvo"
+assert_eq postgres_postgres "$(padrao_postgres "" sumiu postgres_postgres pgvector_pgvector)" "salvo que não é candidato: o primeiro"
+assert_eq salvo "$(padrao_postgres postgres salvo)" "sem candidatos: o salvo"
+assert_eq postgres "$(padrao_postgres postgres "")" "sem candidatos nem salvo: o Host do Orion"
+# detectar com dois Postgres e WAKECRM_SIM: fica com o do Orion.
+# shellcheck disable=SC2329,SC2317 # docker simulado, chamado por detectar
+docker() {
+  case "$*" in
+    "service ls --format"*) printf '%s\n' "pgvector_pgvector pgvector/pgvector:pg16" "postgres_postgres postgres:14" "tr_tr traefik:v3" ;;
+    *ContainerSpec.Env*) echo POSTGRES_PASSWORD=x ;;
+    *) return 1 ;;
+  esac
+}
+mkdir -p "$TMP/orion-pg"
+printf 'Host: postgres\n' >"$TMP/orion-pg/dados_postgres"
+# O docker simulado para detectar depois do Postgres; a escolha sai na linha do ✓.
+# shellcheck disable=SC2034 # lidas dentro de detectar
+r="$( (SIM=1 ORION_DIR="$TMP/orion-pg" CREDENCIAIS="$TMP/sem-credenciais.env"; detectar 2>&1) | sed -n 's/^✓ Postgres: //p')"
+assert_eq postgres_postgres "$r" "detectar com dois Postgres: o do Orion, não o primeiro"
 unset -f docker
 
 # texto_publicacao: o resumo diz por onde a stack sai, sem segredo.
