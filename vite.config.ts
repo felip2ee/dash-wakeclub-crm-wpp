@@ -36,6 +36,7 @@ export default defineConfig({
             "**/src/server/vendas.ts",
             "**/src/server/fechamento.ts",
             "**/src/server/dinheiro.ts",
+            "**/src/server/revisao.ts",
           ],
         },
       },
