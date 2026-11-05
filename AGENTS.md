@@ -109,7 +109,8 @@ Skill disponível não autoriza mudar arquitetura, publicar ou adicionar animaç
 ## Git e colaboração
 
 - Sem bloqueio de push em `main`, exigência de branch/worktree ou hooks de Git.
-- Commit e push só quando o usuário pedir.
+- Commit por tarefa e PR por onda sem pedir (ver "Delegação e revisão"); push direto em
+  `main` só quando o usuário pedir.
 - Antes de concluir, confirme que `.env`, segredos, dumps e artefatos gerados não
   entraram no diff.
 
@@ -117,8 +118,14 @@ Skill disponível não autoriza mudar arquitetura, publicar ou adicionar animaç
 
 - Delegue só quando isolamento de contexto, especialização ou paralelismo independente
   compensarem; tarefa simples se faz direto.
-- Escolha o modelo mais leve que cumpra o critério de aceite; use mais capacidade para
-  segurança, dados, migração, concorrência e revisão crítica.
+- Tudo que puder rodar em paralelo roda em paralelo: tarefas com arquivos e recursos
+  independentes vão na mesma onda, e revisões de tarefas diferentes rodam juntas.
+- Orquestrador e revisores (de tarefa, re-revisão e revisão final) rodam sempre no
+  modelo Fable (`fable`). Para implementadores, escolha o modelo mais leve que cumpra o
+  critério de aceite; use mais capacidade para segurança, dados, migração e concorrência.
+- Cada tarefa concluída vira um commit, sem pedir autorização; cada onda vira um PR
+  contra `main`. Push direto em `main`, publicação e ação destrutiva continuam exigindo
+  pedido explícito.
 - Cada tarefa delegada recebe objetivo, contexto mínimo, arquivos permitidos, recursos
   mutáveis, critério de aceite e checagens. Um escritor por arquivo; lockfile,
   configuração compartilhada e Git são do coordenador. Revisores são só leitura.
