@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { lerMonitorFila } from "./admin-motor";
 import { exigirAdmin } from "./auth";
+import { lerComercial } from "./comercial";
 import { type ClienteDb, getPoolMotor } from "./db";
 import { lerResumoDinheiro } from "./dinheiro";
 import { getPipeline } from "./leads";
@@ -63,10 +64,11 @@ export const getVisaoGeral = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     await exigirAdmin();
-    const [pipeline, alertas, vendas] = await Promise.all([
+    const [pipeline, alertas, vendas, comercial] = await Promise.all([
       getPipeline({ data: { vendedorId: data.vendedorId } }),
       lerAlertas(getPoolMotor(), data.vendedorId ?? null),
       lerResumoDinheiro(getPoolMotor(), data.periodo, data.vendedorId ?? null),
+      lerComercial(getPoolMotor(), data.periodo, data.vendedorId ?? null),
     ]);
     return {
       // Sem os cards: a visão geral só mostra os totais por etapa.
@@ -76,5 +78,6 @@ export const getVisaoGeral = createServerFn({ method: "GET" })
       },
       alertas,
       vendas,
+      comercial,
     };
   });
