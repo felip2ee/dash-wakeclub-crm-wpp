@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 
 import { origemDoContexto } from "./origem";
+import type { OrigemLead } from "./tipos";
 
 const sem = { app: null, anuncioId: null, anuncioTitulo: null };
 
-test.each([
+const casos: [Record<string, unknown>, OrigemLead | null][] = [
   [
     {
       entryPointConversionSource: "ctwa_ad",
@@ -35,4 +36,6 @@ test.each([
   [{ externalAdReply: { sourceType: "post", sourceId: "3" } }, null],
   [{ deviceListMetadataVersion: 2 }, null],
   [{}, null],
-])("mapeia %j", (ctx, esperado) => expect(origemDoContexto(ctx)).toEqual(esperado));
+];
+
+test.each(casos)("mapeia %j", (ctx, esperado) => expect(origemDoContexto(ctx)).toEqual(esperado));
