@@ -22,7 +22,7 @@ COPY package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile --production
 COPY --from=build --chown=bun:bun /app/.output ./.output
 COPY --chown=bun:bun db ./db
-COPY --chown=bun:bun scripts ./scripts
+COPY --chown=bun:bun scripts/migrar.mjs scripts/painel-db.mjs scripts/admin-crm.mjs ./scripts/
 
 USER bun
 EXPOSE 3000
