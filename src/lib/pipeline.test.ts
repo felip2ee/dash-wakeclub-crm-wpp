@@ -13,19 +13,19 @@ describe("agruparPorEtapa", () => {
   test("devolve as oito etapas na ordem do CRM, mesmo vazias", () => {
     const { colunas } = agruparPorEtapa([]);
     expect(colunas.map((c) => c.etapa)).toEqual([...ETAPAS]);
-    expect(ETAPAS[0]).toBe("Novo Lead");
-    expect(ETAPAS[7]).toBe("Negociação encerrada");
+    expect(ETAPAS[0]).toBe("Novo lead");
+    expect(ETAPAS[7]).toBe("Encerrado");
     expect(colunas.every((c) => c.quantidade === 0 && c.valorCheio === 0)).toBe(true);
   });
 
   test("soma quantidade, valor cheio e esperado por etapa, em centavos", () => {
     const { colunas } = agruparPorEtapa([
-      card("a", "Atendimento", 1440, 172.8),
-      card("b", "Atendimento", 360, 0.1),
-      card("c", "Atendimento", 360, 0.2),
+      card("a", "Em atendimento", 1440, 172.8),
+      card("b", "Em atendimento", 360, 0.1),
+      card("c", "Em atendimento", 360, 0.2),
       card("d", "Link enviado", 720, 144),
     ]);
-    const atendimento = colunas.find((c) => c.etapa === "Atendimento");
+    const atendimento = colunas.find((c) => c.etapa === "Em atendimento");
     expect(atendimento?.quantidade).toBe(3);
     expect(atendimento?.valorCheio).toBe(2160);
     expect(atendimento?.valorEsperado).toBe(173.1);
@@ -35,10 +35,10 @@ describe("agruparPorEtapa", () => {
 
   test("totais contam só leads ativos (valor esperado > 0) e a probabilidade é esperado/cheio", () => {
     const { totais } = agruparPorEtapa([
-      card("a", "Atendimento", 1000, 250),
+      card("a", "Em atendimento", 1000, 250),
       card("b", "Aguardando pagamento", 1000, 700),
       // Fora do pipeline: valor esperado 0 (encerrado, opt-out, sem atendimento).
-      card("c", "Negociação encerrada", 5000, 0),
+      card("c", "Encerrado", 5000, 0),
     ]);
     expect(totais).toEqual({
       leadsAtivos: 2,
