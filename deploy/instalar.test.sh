@@ -108,8 +108,48 @@ assert_eq '""' "$(printf '' | json_texto)" "json_texto vazio"
 
 # Respostas da API do Portainer.
 assert_eq tok.x-y "$(jwt_portainer '{"jwt":"tok.x-y"}')" "jwt da resposta de /api/auth"
-assert_eq 3 "$(primeiro_id '[{"Id":3,"Name":"primary","Snapshots":[{"Id":9}]},{"Id":4}]')" "primeiro endpoint"
-assert_eq "" "$(primeiro_id '[]')" "sem endpoint: vazio"
+EP='[{"Id":1,"Name":"local","Type":1,"Snapshots":[{"Id":9}]},{"Id":3,"Name":"k8s","Type":5},{"Id":4,"Name":"agente","Type":2,"URL":"x"},{"Id":6,"Name":"edge","Type":4}]'
+assert_eq "$(printf '1\n4\n6')" "$(ids_endpoints_docker "$EP")" "endpoints Docker (tipos 1, 2 e 4), sem Ids aninhados"
+assert_eq "" "$(ids_endpoints_docker '[]')" "sem endpoint: vazio"
+assert_eq abc123 "$(printf '{"ID":"abc123","Version":{"Index":10},"Spec":{"Name":"default"}}' | id_swarm_json)" "ID do cluster na resposta de /docker/swarm"
+assert_eq "" "$(printf '{"message":"not a swarm"}' | id_swarm_json)" "resposta sem ID: vazio"
+PARES="$(printf '1 outro\n4 \n6 abc123\n')"
+assert_eq 6 "$(endpoint_por_swarm abc123 "$PARES")" "endpoint cujo Swarm é o local"
+assert_eq "" "$(endpoint_por_swarm zzz "$PARES")" "nenhum endpoint é o Swarm local: vazio"
+assert_eq "" "$(endpoint_por_swarm "" "$PARES")" "Swarm local vazio não casa com endpoint sem ID"
+# endpoint_do_swarm: consulta cada endpoint Docker e fica com o do Swarm local.
+api_simulada() {
+  case "$2" in
+    /api/endpoints) printf '%s' "$EP" ;;
+    /api/endpoints/1/docker/swarm) printf '{"ID":"outro"}' ;;
+    /api/endpoints/4/docker/swarm) return 22 ;;
+    /api/endpoints/6/docker/swarm) printf '{"ID":"abc123","Version":{}}' ;;
+    *) printf 'chamada inesperada %s' "$2" ;;
+  esac
+}
+# shellcheck disable=SC2329 # portainer_api chamada por endpoint_do_swarm
+r="$(portainer_api() { api_simulada "$@"; }; endpoint_do_swarm abc123)"
+assert_eq 6 "$r" "endpoint_do_swarm escolhe pelo ID do Swarm, não o primeiro"
+# shellcheck disable=SC2329
+assert_eq 1 "$(portainer_api() { return 22; }; endpoint_do_swarm abc123; echo $?)" "lista de endpoints falhou (401, rede): código 1, não 'nenhum endpoint'"
+# shellcheck disable=SC2329
+assert_eq 0 "$(portainer_api() { api_simulada "$@"; }; endpoint_do_swarm zzz >/dev/null; echo $?)" "nenhum endpoint bate: código 0 e vazio"
+# As sondas de /docker/swarm têm 15 s; o resto fica com 300 s.
+api_tempo() {
+  if [ "$2" = /api/endpoints ]; then printf '%s' "$EP"; else config_portainer "$@" | grep '^max-time' >>"$TMP/tempos"; fi
+}
+# shellcheck disable=SC2329
+(portainer_api() { api_tempo "$@"; }; PORTAINER_BASE=http://p:9000; endpoint_do_swarm abc123 >/dev/null)
+r="$(sort -u "$TMP/tempos")"
+assert_eq "max-time = 15" "$r" "sonda de endpoint com max-time 15"
+# shellcheck disable=SC2034
+PORTAINER_BASE=http://p:9000
+assert_eq "max-time = 300" "$(config_portainer GET /api/stacks | grep '^max-time')" "chamada normal com max-time 300"
+# Falha da API: diz de onde veio a credencial, sem mostrá-la.
+r="$( (PORTAINER_DOMINIO=painel.exemplo.com PORTAINER_TOKEN=ptr_segredo PORTAINER_BASE=https://painel.exemplo.com ORION_DIR=/root/dados_vps; aviso_api_portainer) 2>&1)"
+assert_eq "! O Portainer em https://painel.exemplo.com recusou o token de /root/dados_vps/dados_portainer ou não respondeu (erro do curl acima)." "$r" "falha da API com token do Orion"
+r="$( (PORTAINER_DOMINIO="" PORTAINER_TOKEN="" PORTAINER_BASE=https://pt:9443; aviso_api_portainer) 2>&1)"
+assert_eq "! O Portainer em https://pt:9443 recusou o usuário e a senha digitados ou não respondeu (erro do curl acima)." "$r" "falha da API com credencial digitada"
 ST='[{"Id":2,"Name":"evolution","ResourceControl":{"Id":7}},{"Id":12,"Name":"wakecrm","Type":1}]'
 assert_eq 12 "$(id_stack "$ST" wakecrm)" "id da stack wakecrm"
 assert_eq "" "$(id_stack '[{"Id":2,"Name":"wakecrm2"}]' wakecrm)" "nome parecido não casa"
@@ -125,6 +165,40 @@ assert_eq 'data-binary = "{\"a\":\"x\\\\ny \\\"q\\\"\"}"' "$(printf '%s\n' "$CFG
 PORTAINER_JWT=""
 case "$(config_portainer GET /api/endpoints)" in *Authorization* | *data-binary*) r=nao ;; *) r=ok ;; esac
 assert_eq ok "$r" "sem token e sem corpo: nem header nem data"
+
+# Portainer pelo domínio do Orion: token no header X-API-Key, TLS verificado (sem insecure).
+# shellcheck disable=SC2034 # lidas dentro de config_portainer
+{ PORTAINER_DOMINIO=painel.exemplo.com; PORTAINER_TOKEN='ptr_"x'; PORTAINER_JWT=jwt1; PORTAINER_BASE=https://painel.exemplo.com; }
+CFG="$(config_portainer GET /api/endpoints)"
+case "$CFG" in *'url = "https://painel.exemplo.com/api/endpoints"'*'header = "X-API-Key: ptr_\"x"'*) r=ok ;; *) r="$CFG" ;; esac
+assert_eq ok "$r" "config com token do Orion no X-API-Key"
+case "$CFG" in *insecure* | *Authorization*) r=nao ;; *) r=ok ;; esac
+assert_eq ok "$r" "domínio do Orion: sem insecure e sem Bearer"
+# portainer_api pelo domínio: curl no servidor, config no stdin, token fora dos argumentos.
+# shellcheck disable=SC2329 # stubs chamados por portainer_api
+r="$(curl() { printf 'args=[%s] ' "$*"; grep -c 'X-API-Key' ; }; docker() { echo docker; }; portainer_api GET /api/stacks)"
+assert_eq "args=[-K -] 1" "$r" "curl no servidor com a config pelo stdin"
+# shellcheck disable=SC2034 # lidas dentro de config_portainer
+{ PORTAINER_DOMINIO=""; PORTAINER_TOKEN=""; PORTAINER_JWT=jwt1; }
+
+# portainer_do_orion: dados_portainer do Orion.
+ORION_DIR="$TMP/orion-p"
+mkdir -p "$ORION_DIR"
+printf '%s\n' '[ PORTAINER ]' 'Dominio do portainer: https://painel.exemplo.com/' '' 'Usuario: dono' '' 'Senha: s1' '' 'Token: ptr_1' >"$ORION_DIR/dados_portainer"
+r="$(ORION_USADOS=""; portainer_do_orion >/dev/null; echo "$PORTAINER_DOMINIO|$PORTAINER_TOKEN|${PORTAINER_USUARIO:-}|$ORION_USADOS")"
+assert_eq "painel.exemplo.com|ptr_1||dados_portainer" "$r" "Orion com token: domínio sem esquema e barra, token preferido"
+printf '%s\n' '[ PORTAINER ]' 'Dominio do portainer: painel.exemplo.com' '' 'Usuario: dono' '' 'Senha: s1' '' 'Token: ' >"$ORION_DIR/dados_portainer"
+r="$(PORTAINER_USUARIO=""; PORTAINER_SENHA=""; portainer_do_orion >/dev/null; echo "$PORTAINER_DOMINIO|$PORTAINER_TOKEN|$PORTAINER_USUARIO|$PORTAINER_SENHA")"
+assert_eq "painel.exemplo.com||dono|s1" "$r" "Orion sem token: usuário e senha"
+printf '%s\n' '[ PORTAINER ]' 'Dominio do portainer: painel.exemplo.com' 'Token:' >"$ORION_DIR/dados_portainer"
+r="$(PORTAINER_USUARIO=""; PORTAINER_SENHA=""; portainer_do_orion >/dev/null; echo "$PORTAINER_DOMINIO|$PORTAINER_TOKEN|$PORTAINER_USUARIO")"
+assert_eq "||" "$r" "Orion sem credencial: ignorado (pergunta como antes)"
+printf '%s\n' 'Dominio do portainer: "painel".x' 'Token: t' >"$ORION_DIR/dados_portainer"
+r="$(portainer_do_orion >/dev/null; echo "$PORTAINER_DOMINIO|$PORTAINER_TOKEN")"
+assert_eq "|" "$r" "domínio inválido: ignorado"
+rm -f "$ORION_DIR/dados_portainer"
+r="$(portainer_do_orion; echo "[$PORTAINER_DOMINIO]")"
+assert_eq "[]" "$r" "sem dados_portainer: nada, sem mensagem"
 
 # Portainer: HTTPS na 9443; só recusa, timeout ou nome sem resposta caem no HTTP da 9000.
 for rc in 0 22 35 60; do
@@ -180,11 +254,116 @@ assert_eq ok "$r" "mensagem diz qual valor e que nada mudou"
 case "$saida" in *ruim*) r=vazou ;; *) r=ok ;; esac
 assert_eq ok "$r" "mensagem não mostra o valor"
 
+# detectar com o Docker simulado: o que vem do serviço, do Orion e o que sobra.
+# shellcheck disable=SC2329,SC2317 # docker simulado, chamado por detectar
+docker() {
+  local a="$*"
+  case "$a" in
+    "service ls --format"*) printf '%s\n' "pg_pg postgres:14" "tr_tr traefik:v3" ${EVO:+"evo_evo atendai/evolution-api:v2.3.7"} ;;
+    *ContainerSpec.Env*) case "$a" in *pg_pg) printf '%s\n' "${ENV_PG:-}" ;; *evo_evo) printf '%s\n' "${ENV_EVO:-}" ;; esac ;;
+    *ContainerSpec.Image*) echo postgres:14 ;;
+    *ContainerSpec.Command*) printf '%s\n' --certificatesresolvers.le.acme.email=x --entrypoints.websecure.address=:443 ;;
+    *TaskTemplate.Networks*) case "$a" in *pg_pg) [ "$REDES_PG" != FALHA ] || { echo "Error: erro real do docker" >&2; return 1; }; echo "$REDES_PG" ;; *tr_tr) echo "$REDES_TR" ;; *) echo n1 ;; esac ;;
+    "network inspect --format {{.Name}} "*) echo "${a##* }" ;;
+    "network inspect --format {{.Attachable}} "*) echo true ;;
+    "network inspect "*) case "${a##* }" in n1 | n2 | n3) ;; *) return 1 ;; esac ;;
+    *) return 1 ;;
+  esac
+}
+# rodar_detectar: detectar com WAKECRM_SIM numa subshell; imprime as variáveis decididas.
+rodar_detectar() {
+  (
+    # shellcheck disable=SC2034 # lidas dentro de detectar
+    SIM=1 CREDENCIAIS="${CRED_TESTE:-$TMP/sem-credenciais.env}" ORION_USADOS=""
+    detectar >"$TMP/detectar.log" 2>&1 || exit $?
+    printf '%s\n' "pg=$PG_USUARIO/$PG_SENHA ($PG_SENHA_ORIGEM)" "rede=$REDE ($REDE_ORIGEM)" \
+      "evo=$EVOLUTION_URL ($EVOLUTION_URL_ORIGEM) chave=$EVOLUTION_API_KEY${EVOLUTION_API_KEY:+ ($EVOLUTION_API_KEY_ORIGEM)}" \
+      "portainer=$PORTAINER_DOMINIO token=$PORTAINER_TOKEN" "orion=$ORION_USADOS"
+  )
+}
+ORION_DIR="$TMP/orion"
+mkdir -p "$ORION_DIR"
+printf '%s\n' '[DADOS DA VPS]' 'texto livre' 'Nome do Servidor: vps1' '' 'Rede interna: n2' '' 'Link do Portainer: https://painel.exemplo.com' >"$ORION_DIR/dados_vps"
+printf '%s\n' '[ POSTGRES ]' '' 'Host: postgres' '' 'Port: 5432' '' 'Usuario: orion_pg' '' 'Senha: pg-orion' >"$ORION_DIR/dados_postgres"
+printf '%s\n' '[ EVOLUTION API ]' '' 'Manager Evolution: https://evo.exemplo.com/manager' '' 'BaseUrl: https://evo.exemplo.com' '' 'Global API Key: chave-orion' >"$ORION_DIR/dados_evolution"
+printf '%s\n' '[ EVOLUTION GO ]' '' 'BaseUrl: https://go.exemplo.com' '' 'Global API Key: chave-go' >"$ORION_DIR/dados_evolution_go"
+printf '%s\n' '[ PORTAINER ]' 'Dominio do portainer: painel.exemplo.com' '' 'Usuario: dono' '' 'Senha: s1' '' 'Token: ptr_1' >"$ORION_DIR/dados_portainer"
+
+# Serviço sem senha nem chave: Orion cobre; rede ambígua: vale a do Orion.
+r="$(EVO=1 ENV_PG='' ENV_EVO='SERVER_PORT=8080' REDES_PG='n1 n2' REDES_TR='n1 n2' rodar_detectar)"
+assert_eq "$(printf '%s\n' "pg=orion_pg/pg-orion (lida do Orion)" "rede=n2 (lida do Orion)" \
+  "evo=http://evo_evo:8080 (detectada no serviço) chave=chave-orion (lida do Orion)" \
+  "portainer=painel.exemplo.com token=ptr_1" "orion=dados_postgres dados_vps dados_evolution dados_portainer")" "$r" \
+  "detectar: Orion cobre senha, chave, rede ambígua e Portainer"
+case "$(cat "$TMP/detectar.log")" in *pg-orion* | *chave-orion* | *ptr_1* | *"Senha: s1"*) r=vazou ;; *) r=ok ;; esac
+assert_eq ok "$r" "detectar não imprime segredo"
+# Serviço completo: ele manda; o Orion só entra no que faltar.
+r="$(EVO=1 ENV_PG="$(printf 'POSTGRES_USER=pgsvc\nPOSTGRES_PASSWORD=pg-svc')" ENV_EVO='AUTHENTICATION_API_KEY=chave-svc' \
+  REDES_PG='n1 n2' REDES_TR='n2' rodar_detectar)"
+assert_eq "$(printf '%s\n' "pg=pgsvc/pg-svc (lida do serviço)" "rede=n2 (única comum a Postgres e Traefik)" \
+  "evo=http://evo_evo:8080 (detectada no serviço) chave=chave-svc (lida do serviço)" \
+  "portainer=painel.exemplo.com token=ptr_1" "orion=dados_portainer")" "$r" "detectar: o serviço vem antes do Orion"
+# Sem serviço da Evolution: BaseUrl e chave do Orion; nunca a Evolution Go.
+r="$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar | sed -n 3p)"
+assert_eq "evo=https://evo.exemplo.com (lida do Orion) chave=chave-orion (lida do Orion)" "$r" "detectar: sem serviço, Evolution do Orion"
+mv "$ORION_DIR/dados_evolution" "$TMP/dados_evolution.fora"
+r="$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar | sed -n 3p)"
+assert_eq "evo= (salva) chave=" "$r" "detectar: dados_evolution_go nunca é lido"
+mv "$TMP/dados_evolution.fora" "$ORION_DIR/dados_evolution"
+# Sem rede comum: para, mesmo com a Rede interna do Orion existindo (o CRM precisa dos dois).
+assert_eq 1 "$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n3' rodar_detectar >/dev/null; echo $?)" "sem rede comum: para mesmo com Orion"
+case "$(cat "$TMP/detectar.log")" in *"não compartilham nenhuma rede"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "sem rede comum: diz por quê"
+# Rede ambígua: a salva vem antes da do Orion.
+printf 'REDE=n1\n' >"$TMP/cred-rede.env"
+r="$(CRED_TESTE="$TMP/cred-rede.env" ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1 n2' REDES_TR='n1 n2' rodar_detectar | sed -n 2p)"
+assert_eq "rede=n1 (salva)" "$r" "rede ambígua: a salva antes do Orion"
+# Erro do Docker ao ler as redes: para mostrando o erro real.
+assert_eq 1 "$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG=FALHA REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "redes ilegíveis: para"
+case "$(cat "$TMP/detectar.log")" in *"erro real do docker"*"Não consegui ler as redes do serviço pg_pg"*) r=ok ;; *) r="$(cat "$TMP/detectar.log")" ;; esac
+assert_eq ok "$r" "redes ilegíveis: erro do Docker aparece"
+# Usuário do Postgres com aspas (aqui do Orion): para antes da confirmação.
+printf '%s\n' 'Usuario: pg"mau' 'Senha: x' >"$TMP/dados_postgres.mau"
+mv "$ORION_DIR/dados_postgres" "$TMP/dados_postgres.bom"
+mv "$TMP/dados_postgres.mau" "$ORION_DIR/dados_postgres"
+assert_eq 1 "$(ENV_PG='' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "usuário do Postgres com aspas: para"
+case "$(cat "$TMP/detectar.log")" in *"Usuário do Postgres inválido para a stack"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "usuário do Postgres inválido: mensagem"
+mv "$TMP/dados_postgres.bom" "$ORION_DIR/dados_postgres"
+# Sem Orion: como antes (rede ambígua fica com a primeira; sem senha no serviço, para).
+ORION_DIR="$TMP/sem-orion"
+r="$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1 n2' REDES_TR='n1 n2' rodar_detectar)"
+assert_eq "$(printf '%s\n' "pg=postgres/x (lida do serviço)" "rede=n1 (escolhida)" "evo= (salva) chave=" "portainer= token=" "orion=")" "$r" \
+  "detectar sem Orion: comportamento antigo"
+assert_eq 1 "$(ENV_PG='' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "sem Orion e sem senha no serviço: para"
+assert_eq 1 "$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n3' rodar_detectar >/dev/null; echo $?)" "sem Orion e sem rede comum: para"
+unset -f docker
+
+# texto_publicacao: o resumo diz por onde a stack sai, sem segredo.
+# shellcheck disable=SC2034 # lidas dentro de texto_publicacao
+{ PORTAINER_DOMINIO=painel.exemplo.com; PORTAINER_TOKEN=ptr_1; PORTAINER_USUARIO=dono; }
+assert_eq "API do Portainer em https://painel.exemplo.com (token do Orion)" "$(texto_publicacao)" "resumo: token do Orion"
+# shellcheck disable=SC2034
+PORTAINER_TOKEN=""
+assert_eq "API do Portainer em https://painel.exemplo.com (usuário dono, do Orion)" "$(texto_publicacao)" "resumo: usuário do Orion"
+# shellcheck disable=SC2034
+PORTAINER_DOMINIO=""
+assert_eq "API do Portainer (usuário dono)" "$(texto_publicacao)" "resumo: usuário digitado"
+# shellcheck disable=SC2034
+PORTAINER_USUARIO=""
+assert_eq "docker stack deploy" "$(texto_publicacao)" "resumo: sem Portainer"
+
 # checar_dependentes: lista os objetos e para; vazio segue; erro na consulta para.
 # shellcheck disable=SC2329 # sql_pg chamada por checar_dependentes
-saida="$( (sql_pg() { printf 'public.v_leads\noutro.pedidos\n'; }; checar_dependentes) 2>&1)"
-case "$saida" in *"✗ Objetos fora do schema wakeclub dependem dele: public.v_leads, outro.pedidos."*"drop schema wakeclub cascade"*"Nada foi alterado."*) r=ok ;; *) r="$saida" ;; esac
-assert_eq ok "$r" "dependentes listados e parada"
+saida="$( (sql_pg() { printf 'rule _RETURN on view public.v_leads\nconstraint p_fk on table outro.pedidos\n'; }; checar_dependentes) 2>&1)"
+case "$saida" in *"✗ Objetos fora do schema wakeclub dependem dele:"*"    - rule _RETURN on view public.v_leads"*"    - constraint p_fk on table outro.pedidos"*"drop schema wakeclub cascade"*"Nada foi alterado."*) r=ok ;; *) r="$saida" ;; esac
+assert_eq ok "$r" "dependentes listados, um por linha, e parada"
+# shellcheck disable=SC2329
+assert_eq 1 "$( (sql_pg() { printf 'x\n'; }; checar_dependentes) >/dev/null 2>&1; echo $?)" "com dependente: sai 1"
+# shellcheck disable=SC2329
+r="$( (sql_pg() { printf '%s' "$1"; }; checar_dependentes) 2>&1)"
+case "$r" in *pg_identify_object*"deptype in ('n', 'a')"*"is distinct from 'wakeclub'"*) r=ok ;; esac
+assert_eq ok "$r" "consulta genérica por pg_depend"
 # shellcheck disable=SC2329
 assert_eq 0 "$( (sql_pg() { :; }; checar_dependentes) >/dev/null 2>&1; echo $?)" "sem dependentes: segue"
 # shellcheck disable=SC2329

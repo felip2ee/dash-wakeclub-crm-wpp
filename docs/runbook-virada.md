@@ -28,6 +28,18 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
   detecta o serviço e grava `EVOLUTION_URL` e `EVOLUTION_API_KEY` para o adaptador.
 - Pergunta só domínio, instância, admin do CRM e, se houver Portainer, usuário e senha dele
   (Enter pula e publica por `docker stack deploy`). Uma confirmação `s/N` antes de mexer.
+- **Dados do SetupOrion.** Se existir `/root/dados_vps/`, o instalador lê só quatro arquivos
+  (nunca `dados_evolution_go`) e o resumo mostra quais usou:
+  - `dados_vps`: `Rede interna`, para desempatar quando Postgres e Traefik têm mais de uma rede
+    em comum e não há escolha salva (sem rede comum o instalador para; continua exigindo rede
+    attachable);
+  - `dados_postgres`: `Senha` e `Usuario`, só se o serviço do Postgres não tiver `POSTGRES_PASSWORD`;
+  - `dados_evolution`: `Global API Key`, se o serviço da Evolution não tiver a chave, e `BaseUrl`,
+    se não houver serviço da Evolution;
+  - `dados_portainer`: com ele, a API vai por `https://<Dominio do portainer>` com certificado
+    verificado. O `Token` é o preferido (header `X-API-Key`, sem login); sem token, usa `Usuario`
+    e `Senha`. Aí o instalador não pergunta credencial do Portainer.
+  O resumo diz de onde veio cada senha e chave (serviço, Orion, salva ou digitada), sem mostrá-las.
 - O backup fica em `/root/wakecrm/backups/`; o resumo final mostra o `scp` pronto para levá-lo
   para fora do servidor (passo 8). Credenciais em `/root/wakecrm/credenciais.env` (600).
 - Rodar de novo é seguro: reaproveita as credenciais, pula migração aplicada (sem pendente,
@@ -36,10 +48,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
 
 **Se o instalador falhar:**
 
-- Antes de mexer em qualquer coisa (só com migração pendente): se houver view ou FK fora do
-  schema `wakeclub` que dependa dele, o instalador para e lista esses objetos. A volta
-  automática faz `drop schema wakeclub cascade` e os apagaria sem trazer de volta. Nada foi
-  alterado: remova ou mova esses objetos e rode de novo. Se a consulta falhar, ele também para.
+- Antes de mexer em qualquer coisa (só com migração pendente): se houver objeto fora do
+  schema `wakeclub` que dependa dele (view, FK, função com tipo dele, trigger que chama função
+  dele, default com sequência dele ou qualquer outro que o Postgres registre em `pg_depend`), o
+  instalador para e lista esses objetos. A volta automática faz `drop schema wakeclub cascade`
+  e os apagaria sem trazer de volta. Nada foi alterado: remova ou mova esses objetos e rode de
+  novo. Se a consulta falhar, ele também para. Função que só cita o `wakeclub` no corpo não
+  conta: o cascade não a apaga.
 - Também antes da confirmação: chave ou URL da Evolution, instância, certresolver ou entrypoint
   com `"`, `\` ou quebra de linha são recusados (quebrariam o arquivo da stack). Interativo,
   ele pergunta de novo; com `WAKECRM_SIM=1`, para.
@@ -52,9 +67,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
   Saídas: rode o instalador de novo (publica a imagem nova), ou
   `docker service scale wakecrm_wakecrm=<réplicas de antes>` para voltar a imagem antiga, que
   pode não funcionar com o schema novo.
-- Publicação: a API do Portainer vai por HTTPS na 9443 (certificado autoassinado); só se a
-  9443 não responder usa HTTP na 9000, com aviso. Com a API falhando (por exemplo, stack
-  `wakecrm` criada fora dele), cai para `docker stack deploy` com aviso.
+- Publicação: com `dados_portainer`, a API vai pelo domínio do Orion. Sem ele, vai por HTTPS na
+  9443 (certificado autoassinado); só se a 9443 não responder usa HTTP na 9000, com aviso. O
+  endpoint é o que o Portainer reporta com o mesmo Swarm do servidor (não o primeiro da lista);
+  se nenhum bater, ou se a API falhar (por exemplo, stack `wakecrm` criada fora dele), cai para
+  `docker stack deploy` com aviso.
 - Conferência: espera a tarefa nova (da atualização recém-publicada) ficar Running; atualização
   pausada ou desfeita pelo Swarm sai com `✗` e o estado. Réplica parada, `/login` sem 200 ou webhook sem 404 saem com `✗` e o comando
   `docker service logs --tail 100 wakecrm_wakecrm`. Com a réplica de pé e `/login` falhando,

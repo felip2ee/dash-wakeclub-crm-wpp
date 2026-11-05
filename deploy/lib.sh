@@ -31,6 +31,22 @@ valor_env_servico() {
   printf '%s\n' "$1" | grep -m1 "^$2=" | cut -d= -f2- || true
 }
 
+# valor_orion ARQUIVO ROTULO: valor depois de `ROTULO:` numa linha que começa pelo rótulo
+# (arquivos do SetupOrion em /root/dados_vps), sem espaços nas pontas nem CR; vazio se não
+# houver. Só o primeiro `:` depois do rótulo separa (URLs têm `:`). Sempre retorna 0.
+valor_orion() {
+  [ -f "$1" ] || return 0
+  ROTULO_ORION="$2:" awk '
+    { sub(/\r$/, "") }
+    index($0, ENVIRON["ROTULO_ORION"]) == 1 {
+      v = substr($0, length(ENVIRON["ROTULO_ORION"]) + 1)
+      sub(/^[ \t]+/, "", v)
+      sub(/[ \t]+$/, "", v)
+      print v
+      exit
+    }' "$1" 2>/dev/null || true
+}
+
 # certresolver_traefik TEXTO: nome do resolver em flag ou label; vazio se não houver.
 certresolver_traefik() {
   local nome
@@ -39,20 +55,25 @@ certresolver_traefik() {
   printf '%s\n' "$nome"
 }
 
-# url_postgres USUARIO SENHA HOST PORTA BANCO: senha com percent-encoding byte a byte.
-url_postgres() {
-  local senha="" h d
-  for h in $(printf '%s' "$2" | od -An -v -tx1); do
+# _pct TEXTO: percent-encoding byte a byte (só não reservados passam).
+_pct() {
+  local saida="" h d
+  for h in $(printf '%s' "$1" | od -An -v -tx1); do
     d=$((16#$h))
     if { [ "$d" -ge 48 ] && [ "$d" -le 57 ]; } || { [ "$d" -ge 65 ] && [ "$d" -le 90 ]; } ||
       { [ "$d" -ge 97 ] && [ "$d" -le 122 ]; } || [ "$d" -eq 45 ] || [ "$d" -eq 46 ] ||
       [ "$d" -eq 95 ] || [ "$d" -eq 126 ]; then
-      senha="$senha$(printf "%b" "\\x$h")"
+      saida="$saida$(printf "%b" "\\x$h")"
     else
-      senha="$senha%$(printf '%s' "$h" | tr 'a-f' 'A-F')"
+      saida="$saida%$(printf '%s' "$h" | tr 'a-f' 'A-F')"
     fi
   done
-  printf 'postgres://%s:%s@%s:%s/%s\n' "$1" "$senha" "$3" "$4" "$5"
+  printf '%s' "$saida"
+}
+
+# url_postgres USUARIO SENHA HOST PORTA BANCO: usuário e senha com percent-encoding.
+url_postgres() {
+  printf 'postgres://%s:%s@%s:%s/%s\n' "$(_pct "$1")" "$(_pct "$2")" "$3" "$4" "$5"
 }
 
 # render_stack MODELO ARQUIVO_ENV: troca cada ${CHAVE}; chave ausente => código 1.
