@@ -4,6 +4,7 @@ import {
   abasCelularAdmin,
   abasCelularAtendente,
   conversaAberta,
+  leadSemConversa,
   itensDesktopAdmin,
   rotaInicial,
 } from "./navegacao";
@@ -73,5 +74,13 @@ describe("conversaAberta", () => {
     expect(conversaAberta("/", {})).toBe(false);
     expect(conversaAberta("/meus-leads", { lead: undefined })).toBe(false);
     expect(conversaAberta("/aprovar", { lead: "a" })).toBe(false);
+  });
+});
+
+describe("leadSemConversa", () => {
+  test("só limpa a URL quando há ?lead= e nenhuma conversa bate", () => {
+    expect(leadSemConversa("a", false)).toBe(true);
+    expect(leadSemConversa("a", true)).toBe(false);
+    expect(leadSemConversa(undefined, false)).toBe(false);
   });
 });

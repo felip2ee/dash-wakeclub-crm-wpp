@@ -47,6 +47,12 @@ export function conversaAberta(caminho: string, busca: Record<string, unknown>):
   return (caminho === "/" || caminho === "/meus-leads") && typeof busca.lead === "string";
 }
 
+// `?lead=` sem conversa correspondente (lead fora da lista, link velho): a rota limpa a
+// URL para o AppShell não esconder a navegação com a lista na tela.
+export function leadSemConversa(lead: string | undefined, encontrado: boolean): boolean {
+  return lead !== undefined && !encontrado;
+}
+
 export function rotaInicial(papel: Sessao["papel"]): "/visao-geral" | "/inicio" {
   return papel === "admin" ? "/visao-geral" : "/inicio";
 }

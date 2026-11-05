@@ -1,7 +1,8 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { z } from "zod";
 
-import { rotaInicial } from "@/components/shell/navegacao";
+import { leadSemConversa, rotaInicial } from "@/components/shell/navegacao";
 import { Conversa } from "@/features/conversa/Conversa";
 import { ListaConversas } from "@/features/conversas-lista/ListaConversas";
 import { telefone } from "@/lib/formato";
@@ -26,11 +27,15 @@ function MeusLeadsPage() {
   const navigate = useNavigate();
   const { lead: leadId } = Route.useSearch();
   const selecionado = leads.find((lead) => lead.id === leadId) ?? null;
+  const semConversa = leadSemConversa(leadId, selecionado !== null);
+  useEffect(() => {
+    if (semConversa) void navigate({ to: "/meus-leads", search: {}, replace: true });
+  }, [semConversa, navigate]);
 
   return (
     <div
       className={cn(
-        "mx-auto w-full max-w-3xl md:h-[calc(100dvh-3.5rem)]",
+        "mx-auto w-full max-w-3xl md:h-[calc(100dvh-var(--cabecalho))]",
         // Conversa aberta no celular ocupa a tela inteira (o AppShell esconde cabeçalho e barra).
         leadId ? "h-dvh" : "altura-tela-sob-barra",
       )}
