@@ -7,8 +7,9 @@
 > **Estado em 05/11/2026:** as fases 1 a 4 (motor próprio, IA e follow-up com aprovação,
 > interface nova e dinheiro) estão **implementadas localmente e não publicadas**. Os
 > workflows n8n estão parados e **nunca rodam em paralelo com o motor**; as exportações
-> estão em `docs/n8n-legado/` (só fonte de lógica). Dois bloqueios externos: o adaptador do
-> Evolution Go depende da captura de eventos reais (Task 13 da fase 1), e a IA depende de
+> estão em `docs/n8n-legado/` (só fonte de lógica). O adaptador da Evolution API 2.3.7
+> (`src/server/evolution/`) existe e liga com `EVOLUTION_URL`, `EVOLUTION_API_KEY` e
+> `EVOLUTION_INSTANCIA`; falta validá-lo com envio real (Task 13). A IA depende de
 > `OPENAI_API_KEY`. O formato do webhook de vendas é provisório. Desenhos:
 > `docs/superpowers/specs/` (motor próprio, fases 2-3, interface, fase 4); planos em
 > `docs/superpowers/plans/`.
@@ -43,7 +44,7 @@ em `followup_avaliacoes`.
 
 ```mermaid
 flowchart LR
-  WA[WhatsApp Business] <-->|mensagens e ecos| EV[Evolution Go]
+  WA[WhatsApp Business] <-->|mensagens e ecos| EV[Evolution API 2.3.7]
   EV -->|POST /api/webhooks/evolution| WH[Endpoints de webhook]
   VEN[Sistema de vendas] -->|POST /api/webhooks/vendas| WH
   WH -->|corpo bruto| FILA[(webhook_eventos)]
@@ -61,8 +62,8 @@ flowchart LR
 ```
 
 Os webhooks e o motor vivem no mesmo processo Nitro do painel. Envio (pelo app e o dos
-follow-ups aprovados), download de mídia, transcrição e heartbeat dependem do adaptador do
-Evolution Go, que ainda não existe (Task 13).
+follow-ups aprovados), download de mídia, transcrição e heartbeat dependem do adaptador da
+Evolution API (`src/server/evolution/`), ativo só com as três variáveis `EVOLUTION_*`.
 
 Responsabilidade operacional:
 
@@ -98,7 +99,7 @@ Dependências externas necessárias:
 
 - PostgreSQL do CRM `wakeclub`;
 - Evolution API 2.3.7 para WhatsApp e mídia (substitui o Evolution Go, decisão de 04/11/2026;
-  adaptador pendente, Task 13);
+  adaptador em `src/server/evolution/`);
 - OpenAI (chat para qualificar e redigir, transcrição de áudio), só com `OPENAI_API_KEY`;
 - sistema de vendas, que chama `POST /api/webhooks/vendas` (formato provisório);
 - provedores Web Push dos navegadores;
@@ -131,9 +132,9 @@ Variáveis consumidas pelo dashboard:
 | `MOTOR_ATIVO`               | `nitro-plugin.ts`                             | `1` liga fila e tarefas neste processo; vazio desliga                                                            |
 | `WEBHOOK_EVOLUTION_SECRET`  | `webhooks/receber.ts`                         | segredo do webhook da Evolution; ausente = 404                                                                   |
 | `WEBHOOK_VENDAS_SECRET`     | `webhooks/receber.ts`                         | segredo do webhook de vendas; ausente = 404                                                                      |
-| `EVOLUTION_INSTANCIA`       | `motor/iniciar.ts`                            | nome da instância (heartbeat e saúde); padrão `wakeclub`                                                         |
-| `EVOLUTION_URL`             | nenhum (adaptador pendente)                   | URL interna da Evolution API 2.3.7 no Swarm; detectada e gravada pelo instalador                                 |
-| `EVOLUTION_API_KEY`         | nenhum (adaptador pendente)                   | `AUTHENTICATION_API_KEY` da Evolution API; detectada e gravada pelo instalador                                   |
+| `EVOLUTION_INSTANCIA`       | `evolution/index.ts`, `motor/iniciar.ts`      | nome da instância nas rotas REST e no heartbeat; obrigatória para o adaptador existir                            |
+| `EVOLUTION_URL`             | `evolution/index.ts`                          | URL interna da Evolution API 2.3.7 no Swarm; detectada e gravada pelo instalador; obrigatória para o adaptador   |
+| `EVOLUTION_API_KEY`         | `evolution/api.ts`                            | `AUTHENTICATION_API_KEY` da Evolution API, só no header `apikey`; obrigatória para o adaptador                   |
 | `OPENAI_API_KEY`            | `ia/openai.ts`                                | chave da OpenAI. Ausente: qualificador, redator e transcrição ficam de fora (log `ia.sem_chave`); nada quebra    |
 | `OPENAI_MODELO_TRANSCRICAO` | `ia/openai.ts`                                | modelo de transcrição; padrão `whisper-1`                                                                        |
 | `ADMIN_DATABASE_URL`        | `scripts/painel-db.mjs`, `scripts/migrar.mjs` | roles, views e migrações; não usada pela aplicação                                                               |
@@ -149,7 +150,7 @@ src/
 │   ├── motor/     fila, agenda, ingestão, distribuição, saúde, notificações, boot,
 │   │              transcrição, qualificador, redator, ritmo, envio de follow-ups, vendas
 │   ├── ia/        contrato do cliente de IA, cliente OpenAI, cliente falso e prompts
-│   ├── evolution/ tipos (incl. ErroEnvio) e ponto único do adaptador do Evolution Go
+│   ├── evolution/ tipos (incl. ErroEnvio), adaptador da Evolution API 2.3.7 e fixtures sintéticas
 │   ├── vendas/    normalizador provisório do webhook de vendas e regras de categoria/comissão
 │   └── webhooks/  recepção autenticada que grava o corpo bruto na fila
 ├── features/      aprovacao, configuracoes, conversa, conversas-lista, dinheiro, minha-fila,
@@ -224,7 +225,7 @@ Rotas anteriores, ainda acessíveis por URL:
 | `POST /api/webhooks/evolution` | segredo (header `x-webhook-secret` ou `?token=`) | grava o corpo bruto em `webhook_eventos` com chave de ordem  |
 | `POST /api/webhooks/vendas`    | idem                                             | grava o corpo bruto em `webhook_eventos`                      |
 
-Os webhooks respondem 404 com segredo inválido ou ausente, 400 para JSON inválido e 413
+O corpo da Evolution é gravado sem o `apikey` de nível superior (chave global da API); a migração `0006` limpa linhas antigas. Os webhooks respondem 404 com segredo inválido ou ausente, 400 para JSON inválido e 413
 acima de 25 MB (nesse caso fica uma linha `falhou` com o tamanho, sem o corpo).
 
 O cartão "Webhooks" de `/configuracoes` (só admin, `getWebhooks` em `configuracoes.ts`) mostra a
@@ -253,7 +254,7 @@ domínio mantidos manualmente.
 | `motor/*`              | `iniciarMotor`, `pararMotor`, `rodarFila`, `agendar`, ingestão, tarefas de IA   | role `wakecrm_motor`; ver "Motor"                                                                |
 | `ia/*`                 | `criarClienteOpenAi`, cliente falso, prompts                                    | `fetch` para a OpenAI; sem SDK                                                                   |
 | `webhooks/receber.ts`  | `receberWebhook`, `enfileirar`                                                  | INSERT em `webhook_eventos`                                                                      |
-| `evolution/`           | `obterAdaptador` (hoje `null`), `chaveDeOrdemEvolution`, tipos, `ErroEnvio`     | sem rede até a Task 13                                                                           |
+| `evolution/`           | `obterAdaptador`, `chaveDeOrdemEvolution`, `normalizarEvolution`, `ErroEnvio`   | REST da Evolution API (`sendText`, `sendMedia`, `sendWhatsAppAudio`, `sendLocation`, mídia, estado) |
 | `auth.ts`              | `entrar`, `getSessao`, `sair`, `exigirSessao`, `exigirAdmin`, `exigirAtendente` | `usuarios`, `sessoes`, `v_sessao_valida`                                                         |
 | `leads.ts`             | `getLeadsPainel`, `getPipeline`                                                 | `v_leads_painel` + extras (horas, temperatura, preço da hora) pelo pool do motor                 |
 | `conversas.ts`         | `getConversas`, `getMensagens`, `getLinhaDoTempo`, `leadsComSugestao`           | views de conversa/mensagem/autoria; linha do tempo e sugestão pelo pool do motor, posse no SQL   |
@@ -285,6 +286,32 @@ SIGTERM/SIGINT) o plugin chama `pararMotor()`: para os timers, espera as rodadas
 por até 8 s e fecha os pools do motor e do webhook (teto de 0,5 s); se ainda assim o
 processo não sair, força a saída em 9 s. Rodada presa no meio é coberta pelo lease do
 qualificador e pelo órfão do envio.
+
+**Adaptador da Evolution API 2.3.7** (`src/server/evolution/`). `obterAdaptador()` só
+devolve o adaptador com `EVOLUTION_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_INSTANCIA`
+definidas (memoizado no processo); sem elas devolve `null` e nada é simulado.
+
+- `normalizar.ts` porta o WF-01 e o WF-07: `messages.upsert` vira mensagem (E.164 com o 9º
+  dígito, `@lid` pelo `remoteJidAlt`/`senderPn`, desembrulho de efêmera, visualização única,
+  documento com legenda e editada, inclusive o `protocolMessage.editedMessage` do Baileys; mídia sem legenda vira `[imagem]`, `[audio]` etc.);
+  grupo, status, canal e `@lid` sem número são ignorados. `messages.update`/`messages.edited`
+  viram ack (0 a 5); `connection.update`, `application.startup`, `qrcode.updated`,
+  `logout.instance` e `remove.instance` viram evento de conexão. O `apikey` do envelope
+  nunca vai para `detalhe` nem log, e o QR em si não é guardado.
+- `chave_ordem`: telefone E.164 da conversa (ou o JID sem número) para mensagens e acks;
+  o ack de `@lid` resolve o número pelos mesmos campos da mensagem (`remoteJidAlt`/`senderPn`),
+  `instancia:<nome>` para eventos da instância, `evolution` quando nada é reconhecível.
+- `api.ts`: `POST /message/sendText|sendMedia|sendWhatsAppAudio|sendLocation/{instancia}`
+  com `number` só em dígitos; `POST /chat/getBase64FromMediaMessage/{instancia}` para mídia
+  (400/404 = sem mídia); `GET /instance/connectionState/{instancia}`. Chave só no header
+  `apikey`. Timeout de 30 s (texto e localização), 120 s (mídia) e 15 s (estado).
+  `ErroEnvio` `nao_saiu` só quando a recusa é provadamente anterior ao envio: 401/403
+  (chave), 404 (instância) e 400 com corpo de validação do schema (`response.message[0]` é
+  lista) ou de número fora do WhatsApp (`exists: false`). Qualquer outro 400 pode vir do
+  `catch` de `sendMessageWithTyping`, que cobre o envio e o que roda depois dele; esse 400,
+  os demais 4xx, timeout, rede, 5xx e resposta sem `key.id` são `incerto`. Mensagens de erro
+  não levam corpo da resposta, URL nem chave.
+- Fixtures sintéticas em `src/server/evolution/fixtures/` (sem dado real) cobrem cada caso.
 
 **Fila.** Os endpoints só inserem em `webhook_eventos`. O trabalhador roda a cada 2 s,
 reivindica até 4 cabeças com `FOR UPDATE SKIP LOCKED` (sem trava global; é seguro entre
@@ -785,9 +812,9 @@ Prontas localmente, **não publicadas**:
 - **Interface:** tokens, temas, densidade, shell novo e as telas de referência.
 - **Fase 4:** vendas, categorias, comissão, fechamento do dia 10 e painéis em dinheiro.
 
-Bloqueios: a Task 13 da fase 1 (captura de eventos reais do Evolution Go: adaptador,
-normalização, envio real, mídia, tamanho dos corpos, limite de 25 MB e de 16 MB nas server
-functions) e `OPENAI_API_KEY`. Sem o adaptador, o webhook só grava bruto e envio, mídia,
+Bloqueios: o fim da Task 13 da fase 1 (adaptador da Evolution API escrito; falta provar com
+envio real, mídia, tamanho dos corpos, limite de 25 MB e de 16 MB nas server functions) e
+`OPENAI_API_KEY`. Sem o adaptador, o webhook só grava bruto e envio, mídia,
 transcrição e heartbeat ficam desligados; sem a chave, nada é qualificado nem redigido.
 O formato do webhook de vendas é provisório (ver "Vendas e dinheiro").
 

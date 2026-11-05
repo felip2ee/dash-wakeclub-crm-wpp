@@ -1,9 +1,9 @@
 /**
- * Contrato entre o motor e a Evolution Go.
+ * Contrato entre o motor e a Evolution API 2.3.7.
  *
- * O formato dos webhooks e das rotas do Evolution Go só será conhecido pelos corpos
- * reais capturados (design §4.3: não chutar pela documentação). Por isso o resto do
- * sistema só conhece estes tipos normalizados; a tradução mora num adaptador isolado.
+ * O resto do sistema só conhece estes tipos normalizados; a tradução do webhook e da
+ * API REST mora no adaptador isolado (`normalizar.ts` e `api.ts`), escrito a partir dos
+ * eventos reais capturados (design §4.3).
  */
 
 export type TipoMidia =

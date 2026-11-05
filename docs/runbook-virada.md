@@ -20,8 +20,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
 
 - **Cobre os passos 1 a 4, 8 e 9.** Confirme o passo 1 (n8n desligado) antes de rodar; numa
   execução o instalador migra, publica a imagem `ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest`
-  na stack `wakecrm` com as variáveis da lista abaixo (`MOTOR_ATIVO` vazio, sem
-  `OPENAI_API_KEY`), faz o backup (passo 8) e aplica 0003, 0004 e 0005 (passo 9, com a
+  na stack `wakecrm` com as variáveis da lista abaixo (`MOTOR_ATIVO` vazio, salvo decisão
+  do dono; veja "Ligar e desligar o motor"), faz o backup (passo 8) e aplica 0003, 0004 e 0005 (passo 9, com a
   pré-checagem do corte). Por decisão do dono (04/11/2026), o corte entra junto, antes da
   captura: o n8n está parado desde agosto e a ordem antiga não protege nada.
 - **Evolution API 2.3.7**, não Evolution Go (decisão do dono, 04/11/2026). O instalador
@@ -34,8 +34,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
   sem contêiner do Postgres neste nó ele para antes de mexer em qualquer coisa. Com rede não
   attachable e Portainer sem domínio em `dados_portainer`, a API do Portainer fica fora de
   alcance e a stack sai por `docker stack deploy`, com aviso.
-- Pergunta só domínio, instância, admin do CRM e, se houver Portainer, usuário e senha dele
-  (Enter pula e publica por `docker stack deploy`). Uma confirmação `s/N` antes de mexer.
+- Pergunta só domínio, instância, admin do CRM, a `OPENAI_API_KEY` quando não há nenhuma
+  (entrada oculta; Enter pula e a transcrição e a IA ficam ociosas; a chave tem custo) e, se
+  houver Portainer, usuário e senha dele (Enter pula e publica por `docker stack deploy`). Uma
+  confirmação `s/N` antes de mexer.
+- `EVOLUTION_URL` terminada em `/manager` ou `/manager/` é recusada: é o painel da Evolution, não
+  a base da API (use, por exemplo, `http://evolution_evolution_api:8080`). Interativo, ele pergunta
+  de novo; com `WAKECRM_SIM=1`, para antes de mexer.
 - **Dados do SetupOrion.** Se existir `/root/dados_vps/`, o instalador lê só quatro arquivos
   (nunca `dados_evolution_go`) e o resumo mostra quais usou:
   - `dados_vps`: `Rede interna`, para desempatar quando Postgres e Traefik têm mais de uma rede
@@ -53,6 +58,15 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
   para fora do servidor (passo 8). Credenciais em `/root/wakecrm/credenciais.env` (600).
 - Rodar de novo é seguro: reaproveita as credenciais, pula migração aplicada (sem pendente,
   sem backup) e atualiza a stack para a imagem mais nova.
+- **Preserva o que foi mudado no Portainer.** Antes de preencher a stack, o instalador lê as
+  variáveis do serviço `wakecrm_wakecrm` no ar (sem mostrá-las):
+  - `OPENAI_API_KEY`, `OPENAI_MODELO_TRANSCRICAO`, `EVOLUTION_URL` e `EVOLUTION_API_KEY` sem valor
+    no instalador adotam o da stack no ar e passam a ser gravadas em `credenciais.env`;
+  - com valor diferente nos dois, o resumo mostra os dois (chaves mascaradas) e pergunta se usa
+    o da stack no ar; o padrão é o do instalador. Com `WAKECRM_SIM=1` fica o do instalador, com
+    aviso. Uma `EVOLUTION_URL` com `/manager` na stack no ar não é aceita;
+  - `MOTOR_ATIVO` segue a stack no ar (ligado ou desligado no Portainer continua assim); sem
+    stack, vale o salvo em `credenciais.env`.
 - Depois do instalador seguem os passos 5 a 7 e 10 a 13, com o adaptador da Evolution API.
 
 **Se o instalador falhar:**
@@ -87,6 +101,21 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
   confira o DNS do domínio e o certificado no log do Traefik. O banco não é restaurado nesse
   caso: o schema novo já está aplicado e o backup continua guardado.
 
+## Ligar e desligar o motor
+
+Ligar o motor é decisão explícita do dono: com `MOTOR_ATIVO=1` o CRM processa filas, distribui
+leads e envia mensagens. Só ligue depois dos passos 1 a 10.
+
+- **Pelo Portainer:** Stacks › `wakecrm` › Editor, troque `MOTOR_ATIVO=` por `MOTOR_ATIVO=1`
+  (ou o contrário para desligar) e clique em Update the stack. O serviço reinicia com o valor novo.
+- **Pelo instalador:** o resumo mostra o valor atual. Com o motor desligado e `EVOLUTION_URL`,
+  `EVOLUTION_API_KEY` e `EVOLUTION_INSTANCIA` completos, ele pergunta
+  `Ligar o motor (MOTOR_ATIVO=1)? [s/N]`; Enter mantém desligado. O instalador não desliga um motor
+  ligado: desligue pelo Portainer. Com `WAKECRM_SIM=1`, `WAKECRM_MOTOR_ATIVO=1` liga (para se o
+  adaptador estiver incompleto), `WAKECRM_MOTOR_ATIVO=` desliga e, sem a variável, fica como está.
+
+Rodar o instalador de novo não muda o `MOTOR_ATIVO` da stack no ar sem essa resposta.
+
 ## Variáveis de ambiente novas
 
 - `DATABASE_URL_MOTOR`: conexão do app com o banco, na role `wakecrm_motor`.
@@ -95,20 +124,24 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
 - `WEBHOOK_EVOLUTION_SECRET`: segredo do webhook da Evolution API.
 - `WEBHOOK_VENDAS_SECRET`: segredo do webhook de vendas.
 - `EVOLUTION_INSTANCIA`: nome da instância da Evolution API que o motor atende.
-- `EVOLUTION_URL` e `EVOLUTION_API_KEY`: URL interna e `AUTHENTICATION_API_KEY` da Evolution API 2.3.7, gravadas pelo instalador. Hoje nada no app as lê (ficam para o adaptador).
+- `EVOLUTION_URL` e `EVOLUTION_API_KEY`: URL interna e `AUTHENTICATION_API_KEY` da Evolution API 2.3.7, gravadas pelo instalador. Com elas e `EVOLUTION_INSTANCIA`, o adaptador existe; faltando qualquer uma, o motor não processa eventos da Evolution nem envia.
 - `OPENAI_API_KEY`: chave da OpenAI para qualificador, porteiro, redator e transcrição. Sem ela, essas tarefas ficam ociosas (log `ia.sem_chave`) e o resto do motor funciona. Opcional: `OPENAI_MODELO_TRANSCRICAO` (padrão `whisper-1`). Chave nova é custo: só com autorização.
 
 `ADMIN_DATABASE_URL` (dono do banco) continua só para o `db:migrate`; o app nunca lê.
 
 ## Portões da Task 13 (antes de publicar o adaptador)
 
-Revise o adaptador da Evolution API contra estes pontos antes do passo 7:
+Revise o adaptador da Evolution API contra estes pontos antes do passo 7. Os marcados
+estão no código (`src/server/evolution/`) com teste sem rede; os abertos dependem do
+ambiente real.
 
-- `enviar` lança `ErroEnvio` (`src/server/evolution/tipos.ts`) com `certeza`: `nao_saiu` só quando a Evolution recusou antes de entregar ao WhatsApp; `incerto` para timeout, 5xx ou resposta ilegível. Erro não tipado é tratado como `incerto`. O follow-up `incerto` é abortado e o vendedor confere; nunca é reenviado sozinho.
-- O timeout do `enviar` é muito menor que 15 min (o órfão em `enviando` é abortado aos 15 min). A mensagem de erro não leva corpo da resposta nem segredo.
-- Recálculo de `chave_ordem` (passo 10) com `adaptador.chaveDeOrdem(corpo)`.
-- Confira nos eventos capturados se o webhook da Evolution manda a mídia em base64 ou só o identificador; isso define o `baixarMidia` e o limite de 25 MB.
-- O formato do webhook de vendas é provisório (`src/server/vendas/normalizar.ts`): calibre com o payload real. Veja as suposições registradas em `decisoes` do evento `sale_received`.
+- [x] `enviar` lança `ErroEnvio` (`src/server/evolution/tipos.ts`) com `certeza`: `nao_saiu` só quando a recusa é provadamente anterior ao envio: 401/403, 404 ou 400 com corpo de validação do schema ou de número fora do WhatsApp (`exists: false`); qualquer outro 400 (o `catch` de `sendMessageWithTyping` cobre o envio e o que vem depois), demais 4xx, timeout, rede, 5xx ou resposta sem `key.id` são `incerto`. Erro não tipado é tratado como `incerto`. O follow-up `incerto` é abortado e o vendedor confere; nunca é reenviado sozinho.
+- [x] O timeout do `enviar` é muito menor que 15 min (30 s texto e localização, 120 s mídia; o órfão em `enviando` é abortado aos 15 min). A mensagem de erro não leva corpo da resposta nem segredo.
+- [x] `adaptador.chaveDeOrdem(corpo)` existe para o recálculo de `chave_ordem` (passo 10): telefone E.164 da conversa, `instancia:<nome>` para eventos da instância.
+- [x] `baixarMidia` busca a mídia sob demanda em `POST /chat/getBase64FromMediaMessage` (o evento capturado não traz base64); 400/404 viram `sem_midia`.
+- [ ] Confirme com envio real: texto, imagem, vídeo, documento, áudio de voz (chega como PTT?) e localização, e que o eco volta com o mesmo `key.id` devolvido pelo envio.
+- [ ] Confira nos eventos capturados o tamanho dos corpos frente ao limite de 25 MB (webhook com base64 ligado estoura).
+- [ ] O formato do webhook de vendas é provisório (`src/server/vendas/normalizar.ts`): calibre com o payload real. Veja as suposições registradas em `decisoes` do evento `sale_received`.
 
 ## Pré-checagem do corte
 
@@ -140,7 +173,7 @@ passe na query: `?token=<WEBHOOK_EVOLUTION_SECRET>`. O endpoint só enfileira o 
 8. **Faça o backup do banco** imediatamente antes do corte: `pg_dump` completo do banco `wakeclub` com a `ADMIN_DATABASE_URL`, guardado fora do servidor. A `0003_virada.sql` é irreversível: só este backup desfaz o que ela muda.
 9. **Aplique o corte.** Rode a pré-checagem acima e depois `bun run db:migrate`; ela aplica a `0003_virada.sql`, a `0004_ia_followup.sql` e a `0005_vendas.sql`, cada uma numa transação. Confira no banco: nenhum follow-up `pendente`, nenhum `qualificar_apos` preenchido, eventos de auditoria criados, e que `configuracoes` tem `ritmo` (conservador) e `preco_hora` (360). Os triggers de `atualizado_em` disparam no update: os leads que tinham `qualificar_apos` (e os follow-ups cancelados) ficam com `atualizado_em` da hora do corte.
 10. **Recalcule a ordem dos capturados.** Os eventos capturados antes do adaptador entraram todos na chave única `'evolution'`. Antes de ligar o motor, recalcule `chave_ordem` dos eventos com `status = 'pendente'` e `chave_ordem = 'evolution'` usando `adaptador.chaveDeOrdem(corpo)`, para cada conversa voltar à sua fila.
-11. **Ligue o motor.** Defina `MOTOR_ATIVO=1` e reinicie o serviço. Com `OPENAI_API_KEY` o qualificador (1 min), o redator (15 min) e a transcrição (1 min) passam a rodar; o envio de aprovados (1 min) depende do adaptador. Confira o preço da hora e o modo de ritmo em Configurações. O preço da hora não gera evento de auditoria (a role `painel_rw` não escreve em `eventos_automacao`).
+11. **Ligue o motor.** Defina `MOTOR_ATIVO=1` (veja "Ligar e desligar o motor"). Com `OPENAI_API_KEY` o qualificador (1 min), o redator (15 min) e a transcrição (1 min) passam a rodar; o envio de aprovados (1 min) depende do adaptador. Confira o preço da hora e o modo de ritmo em Configurações. O preço da hora não gera evento de auditoria (a role `painel_rw` não escreve em `eventos_automacao`).
 12. **Reprocesse os capturados.** Os eventos que chegaram nos passos 5 a 11 estão em `webhook_eventos` e são consumidos pela fila ao ligar o motor; os que falharem podem ser reprocessados pelo monitor.
 13. **Confira monitor e saúde.** No painel admin, veja o monitor do motor (fila sem acúmulo, sem falhas novas), o estado da instância e o painel de IA (chave configurada, última execução de cada tarefa). Mande uma mensagem de teste e confirme que o lead aparece e é distribuído.
 

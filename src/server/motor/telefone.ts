@@ -2,7 +2,7 @@
  * Regras determinísticas da entrada, portadas do WF-01
  * (docs/n8n-legado/wf-01-ingestor-evolution.json): telefone em E.164 com o 9º dígito
  * brasileiro e opt-out por regex (endurecida contra falso positivo de prefixo). Não
- * dependem do formato do Evolution Go.
+ * dependem do formato da Evolution API.
  */
 
 // Cada pedido termina em fim de palavra (o \b do JS não entende acento): "Parece ótimo"

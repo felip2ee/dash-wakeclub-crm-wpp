@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { readFileSync } from "node:fs";
+
 import { getPoolMotor } from "../db";
 import { bancoTesteAtivo } from "../motor/banco-teste";
 import { receberWebhook } from "./receber";
@@ -59,6 +61,39 @@ describe.skipIf(!bancoTesteAtivo)("webhook grava bruto", () => {
       [id],
     );
     expect(rows[0].chave_ordem).toBe("evolution");
+  });
+
+  test("evolution grava o corpo sem o apikey de nivel superior", async () => {
+    process.env.WEBHOOK_EVOLUTION_SECRET = "evo-teste";
+    const r = await receberWebhook(
+      "evolution",
+      new Request("http://local/api/webhooks/evolution", {
+        method: "POST",
+        body: JSON.stringify({ event: "teste", data: { apikey: "interno" }, apikey: "global" }),
+        headers: { "x-webhook-secret": "evo-teste" },
+      }),
+    );
+    const { id } = (await r.json()) as { id: number };
+    const { rows } = await getPoolMotor().query(
+      "select corpo from wakeclub.webhook_eventos where id = $1::bigint",
+      [id],
+    );
+    expect(rows[0].corpo).toEqual({ event: "teste", data: { apikey: "interno" } });
+  });
+
+  test("migração 0006 tira o apikey de linhas antigas e é idempotente", async () => {
+    const { rows } = await getPoolMotor().query<{ id: string }>(
+      `insert into wakeclub.webhook_eventos (origem, corpo)
+       values ('evolution', '{"event":"x","apikey":"global"}'::jsonb) returning id`,
+    );
+    const sql = readFileSync("db/migrations/0006_webhook_sem_apikey.sql", "utf8");
+    await getPoolMotor().query(sql);
+    await getPoolMotor().query(sql);
+    const { rows: depois } = await getPoolMotor().query(
+      "select corpo from wakeclub.webhook_eventos where id = $1::bigint",
+      [rows[0].id],
+    );
+    expect(depois[0].corpo).toEqual({ event: "x" });
   });
 
   test("corpo acima de 25 MB responde 413 e fica registrado como falhou", async () => {

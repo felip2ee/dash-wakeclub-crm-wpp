@@ -36,8 +36,102 @@ function numero(v: unknown): number | null {
   return s && Number.isFinite(n) ? n : null;
 }
 
-export function normalizarVenda(corpo: unknown): VendaNormalizada | { erro: string } {
+/** Valor em reais; "1.500" (ponto + três dígitos, sem vírgula) é milhar, não 1,5. */
+function lerValor(bruto: unknown, decisoes: string[]): { valor: number | null; milhar: boolean } {
+  const milhar = typeof bruto === "string" && /^\D*\d{1,3}(\.\d{3})+\s*$/.test(bruto);
+  const valor = milhar ? Number(String(bruto).replace(/\D/g, "")) : numero(bruto);
+  if (milhar) decisoes.push(`valor com ponto de milhar: "${String(bruto)}" → ${valor?.toFixed(2)}`);
+  return { valor, milhar };
+}
+
+function lerData(bruto: unknown, decisoes: string[]): string {
+  const ms =
+    bruto === null
+      ? NaN
+      : typeof bruto === "number"
+        ? bruto * (bruto < 1e11 ? 1000 : 1)
+        : Date.parse(String(bruto));
+  if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  decisoes.push("data ausente ou ilegível: usado o horário de recebimento");
+  return new Date().toISOString();
+}
+
+function lerCpf(bruto: unknown, decisoes: string[]): string | null {
+  const digitos = bruto === null || bruto === undefined ? "" : String(bruto).replace(/\D/g, "");
+  if (digitos.length === 11) return digitos;
+  if (bruto !== null && bruto !== undefined && bruto !== "")
+    decisoes.push("cpf descartado: não tem 11 dígitos");
+  return null;
+}
+
+function lerTelefone(bruto: unknown, decisoes: string[]): string | null {
+  let digitos = bruto === null || bruto === undefined ? "" : String(bruto).replace(/\D/g, "");
+  if (digitos.length === 10 || digitos.length === 11) {
+    digitos = "55" + digitos;
+    decisoes.push("telefone sem código do país: assumido +55");
+  }
+  return digitos ? paraE164(digitos) : null;
+}
+
+/**
+ * Envelope real do app de agendamento: `{ event, timestamp, data }`. Só
+ * USER_HOUR_PURCHASE_PAID vira venda; `data.price_paid` já vem em reais (sem a heurística de
+ * centavos). Os demais eventos e os de teste (`data.test`) são ignorados, não erro.
+ * Estorno: nenhum evento de estorno conhecido ainda; incluir aqui quando o app definir um.
+ */
+function normalizarEnvelopeApp(
+  evento: string,
+  corpo: Obj,
+  data: Obj,
+): VendaNormalizada | { erro: string } | { ignorar: string } {
+  // "true" em texto também conta: na dúvida nunca é venda.
+  if (data.test === true || data.test === "true") return { ignorar: "evento de teste do app" };
+  if (evento !== "USER_HOUR_PURCHASE_PAID") return { ignorar: `evento ${evento} sem venda` };
+
+  const id = achar(data, ["transaction_id", "payment_id"]);
+  if (typeof id !== "string" && typeof id !== "number")
+    return { erro: "formato desconhecido: sem id da venda" };
+  const decisoes = ["envelope do app (USER_HOUR_PURCHASE_PAID): price_paid em reais"];
+  const { valor } = lerValor(data.price_paid, decisoes);
+  if (valor === null || valor <= 0) return { erro: "formato desconhecido: sem valor" };
+
+  const compradaEm = lerData(
+    achar(corpo, ["timestamp"]) ?? achar(data, ["paid_at", "date"]),
+    decisoes,
+  );
+  const cpf = lerCpf(achar(data, ["cpf"]), decisoes);
+  const telefone = lerTelefone(achar(data, ["phone"]), decisoes);
+
+  const horasN = numero(data.hours);
+  const horas = horasN !== null && Number.isInteger(horasN) ? horasN : null;
+  const rotulo = achar(data, ["package_label"]);
+  const produto =
+    rotulo !== null
+      ? String(rotulo)
+      : horas !== null
+        ? `${horas}h ${String(data.hour_type ?? "")}`.trim()
+        : null;
+
+  return {
+    idExterno: String(id),
+    compradaEm,
+    valor,
+    cpf,
+    telefone,
+    produto,
+    horas,
+    status: "paga",
+    decisoes,
+  };
+}
+
+export function normalizarVenda(
+  corpo: unknown,
+): VendaNormalizada | { erro: string } | { ignorar: string } {
   if (!ehObj(corpo)) return { erro: "formato desconhecido: corpo não é objeto" };
+  // Só o namespace do app (USER_*); outro envelope cai no formato flat e falha alto, para calibrar.
+  if (typeof corpo.event === "string" && /^USER_/.test(corpo.event) && ehObj(corpo.data))
+    return normalizarEnvelopeApp(corpo.event, corpo, corpo.data);
   const decisoes: string[] = [];
 
   const id = achar(corpo, ["id", "order_id", "transaction", "transaction_id"]);
@@ -45,12 +139,10 @@ export function normalizarVenda(corpo: unknown): VendaNormalizada | { erro: stri
     return { erro: "formato desconhecido: sem id da venda" };
 
   const bruto = achar(corpo, ["amount", "valor", "price", "value"]);
-  // "1.500" (ponto + três dígitos, sem vírgula) é milhar, não 1,5.
-  const milhar = typeof bruto === "string" && /^\D*\d{1,3}(\.\d{3})+\s*$/.test(bruto);
-  let valor = milhar ? Number(String(bruto).replace(/\D/g, "")) : numero(bruto);
+  const { valor: lido, milhar } = lerValor(bruto, decisoes);
+  let valor = lido;
   if (valor === null) return { erro: "formato desconhecido: sem valor" };
   if (valor <= 0) return { erro: "formato desconhecido: valor não positivo" };
-  if (milhar) decisoes.push(`valor com ponto de milhar: "${String(bruto)}" → ${valor.toFixed(2)}`);
   // Inteiro > 1000 sem casas decimais: assume centavos.
   const semCasas =
     typeof bruto === "number" ? Number.isInteger(bruto) : !/[.,]\d{1,2}\s*$/.test(String(bruto));
@@ -60,33 +152,15 @@ export function normalizarVenda(corpo: unknown): VendaNormalizada | { erro: stri
     valor = reais;
   }
 
-  let compradaEm: string;
-  const data = achar(corpo, ["created_at", "paid_at", "data", "date"]);
-  const ms =
-    data === null
-      ? NaN
-      : typeof data === "number"
-        ? data * (data < 1e11 ? 1000 : 1)
-        : Date.parse(String(data));
-  if (Number.isNaN(ms)) {
-    compradaEm = new Date().toISOString();
-    decisoes.push("data ausente ou ilegível: usado o horário de recebimento");
-  } else {
-    compradaEm = new Date(ms).toISOString();
-  }
-
-  const cpfBruto = achar(corpo, ["cpf", "document", "buyer.document", "customer.document"]);
-  const cpfDigitos = cpfBruto === null ? "" : String(cpfBruto).replace(/\D/g, "");
-  const cpf = cpfDigitos.length === 11 ? cpfDigitos : null;
-  if (cpfBruto !== null && !cpf) decisoes.push("cpf descartado: não tem 11 dígitos");
-
-  const tel = achar(corpo, ["phone", "telefone", "buyer.phone", "customer.phone"]);
-  let telDigitos = tel === null ? "" : String(tel).replace(/\D/g, "");
-  if (telDigitos.length === 10 || telDigitos.length === 11) {
-    telDigitos = "55" + telDigitos;
-    decisoes.push("telefone sem código do país: assumido +55");
-  }
-  const telefone = telDigitos ? paraE164(telDigitos) : null;
+  const compradaEm = lerData(achar(corpo, ["created_at", "paid_at", "data", "date"]), decisoes);
+  const cpf = lerCpf(
+    achar(corpo, ["cpf", "document", "buyer.document", "customer.document"]),
+    decisoes,
+  );
+  const telefone = lerTelefone(
+    achar(corpo, ["phone", "telefone", "buyer.phone", "customer.phone"]),
+    decisoes,
+  );
 
   const prod = achar(corpo, ["product", "produto", "plan", "plano", "product.name"]);
   const produto =

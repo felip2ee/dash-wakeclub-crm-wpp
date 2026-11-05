@@ -1,14 +1,24 @@
 /**
- * Ponto único de acesso ao adaptador da Evolution Go.
+ * Ponto único de acesso ao adaptador da Evolution API 2.3.7.
  *
- * Até os eventos reais serem capturados (plano da fase 1, Task 13), não há
- * adaptador: o webhook só grava bruto, o motor não processa eventos da Evolution e
- * o envio pelo app fica indisponível. Nada é simulado.
+ * Só existe com `EVOLUTION_URL`, `EVOLUTION_API_KEY` e `EVOLUTION_INSTANCIA` definidas.
+ * Sem elas não há adaptador: o webhook só grava bruto, o motor não processa eventos da
+ * Evolution e o envio pelo app fica indisponível. Nada é simulado.
  */
+import { criarAdaptadorEvolution } from "./api";
 import type { AdaptadorEvolution } from "./tipos";
 
+let memo: AdaptadorEvolution | null | undefined;
+
 export function obterAdaptador(): AdaptadorEvolution | null {
-  return null;
+  if (memo !== undefined) return memo;
+  const {
+    EVOLUTION_URL: url,
+    EVOLUTION_API_KEY: apiKey,
+    EVOLUTION_INSTANCIA: instancia,
+  } = process.env;
+  memo = url && apiKey && instancia ? criarAdaptadorEvolution({ url, apiKey, instancia }) : null;
+  return memo;
 }
 
 /**

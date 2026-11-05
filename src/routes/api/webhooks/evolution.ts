@@ -1,4 +1,4 @@
-/** Webhook do Evolution Go: grava o corpo bruto na fila do motor. */
+/** Webhook da Evolution API: grava o corpo bruto na fila do motor. */
 import { createFileRoute } from "@tanstack/react-router";
 
 import { receberWebhook } from "@/server/webhooks/receber";

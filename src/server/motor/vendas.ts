@@ -240,6 +240,7 @@ export function criarProcessadorVendas(): Processador {
   return async (db, evento) => {
     const v = normalizarVenda(evento.corpo);
     if ("erro" in v) throw new ErroPermanente(v.erro);
+    if ("ignorar" in v) return "ignorado"; // evento do app sem venda; o motivo não é gravado de propósito (o corpo bruto já está na fila)
     await processarVenda(db, v, evento.corpo);
     return "processado";
   };

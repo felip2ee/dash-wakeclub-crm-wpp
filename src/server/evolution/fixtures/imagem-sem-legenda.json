@@ -1,0 +1,27 @@
+{
+  "event": "messages.upsert",
+  "instance": "wakeclub",
+  "data": {
+    "key": {
+      "remoteJid": "5563900000001@s.whatsapp.net",
+      "fromMe": false,
+      "id": "3EB0A0000000000000005"
+    },
+    "pushName": "Maria Teste",
+    "message": {
+      "imageMessage": {
+        "mimetype": "image/jpeg"
+      }
+    },
+    "messageType": "imageMessage",
+    "messageTimestamp": 1793787300,
+    "instanceId": "00000000-0000-4000-8000-000000000000",
+    "source": "android",
+    "status": "DELIVERY_ACK"
+  },
+  "destination": "https://crm.exemplo.test/api/webhooks/evolution",
+  "date_time": "2026-11-04T10:15:00.000Z",
+  "sender": "5563900000099@s.whatsapp.net",
+  "server_url": "http://evolution-api.exemplo.test:8080",
+  "apikey": "chave-ficticia-nao-usar"
+}

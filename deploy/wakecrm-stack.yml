@@ -8,6 +8,8 @@
 # ", \ nem quebra de linha. Os segredos gerados são hex e a senha do Postgres vai
 # percent-encoded dentro das URLs; os valores de fora (chave e URL da Evolution, instância,
 # certresolver, entrypoint) o instalador confere antes da confirmação e recusa se tiverem.
+# OPENAI_API_KEY, OPENAI_MODELO_TRANSCRICAO e MOTOR_ATIVO podem ficar vazios (IA ociosa, modelo
+# padrão, motor desligado); o instalador preserva o que já estiver na stack no ar.
 # Placeholders de infraestrutura: IMAGEM (em produção ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest),
 # DOMINIO, REDE (overlay externa do Traefik), CERTRESOLVER, ENTRYPOINT (o de HTTPS do Traefik).
 
@@ -31,7 +33,9 @@ services:
       - "EVOLUTION_INSTANCIA=${EVOLUTION_INSTANCIA}"
       - "EVOLUTION_URL=${EVOLUTION_URL}"
       - "EVOLUTION_API_KEY=${EVOLUTION_API_KEY}"
-      - "MOTOR_ATIVO="
+      - "OPENAI_API_KEY=${OPENAI_API_KEY}"
+      - "OPENAI_MODELO_TRANSCRICAO=${OPENAI_MODELO_TRANSCRICAO}"
+      - "MOTOR_ATIVO=${MOTOR_ATIVO}"
     deploy:
       replicas: 1
       update_config:
