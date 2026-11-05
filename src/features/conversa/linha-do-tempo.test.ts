@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { dataDoChip, montarLinhaDoTempo, rotuloAudio, rotuloDia } from "./linha-do-tempo";
+import {
+  dataDoChip,
+  legendaDaMidia,
+  montarLinhaDoTempo,
+  nomeDoDocumento,
+  rotuloAudio,
+  rotuloDia,
+} from "./linha-do-tempo";
 
 // 12/01/2026 10:24 em São Paulo (UTC-3).
 const CADASTRO = "2026-01-12T13:24:00.000Z";
@@ -88,12 +95,31 @@ describe("rotuloAudio", () => {
   test("cada status sem transcrição tem o seu rótulo", () => {
     expect(rotuloAudio("pendente")).toBe("Transcrevendo…");
     expect(rotuloAudio("transcrevendo")).toBe("Transcrevendo…");
-    expect(rotuloAudio("falhou")).toBe("Transcrição falhou");
+    expect(rotuloAudio("falhou")).toBe("Não foi possível transcrever");
     expect(rotuloAudio("sem_midia")).toBe("Áudio indisponível");
   });
 
   test("status desconhecido ou legado vira só 'Áudio', nunca o placeholder", () => {
     expect(rotuloAudio(null)).toBe("Áudio");
     expect(rotuloAudio("outro")).toBe("Áudio");
+  });
+});
+
+describe("legenda da mídia", () => {
+  test("marcadores do WhatsApp não viram legenda", () => {
+    expect(legendaDaMidia("[imagem]")).toBeNull();
+    expect(legendaDaMidia("[video]")).toBeNull();
+    expect(legendaDaMidia("[documento proposta.pdf]")).toBeNull();
+    expect(legendaDaMidia(null)).toBeNull();
+  });
+
+  test("legenda de verdade aparece", () => {
+    expect(legendaDaMidia("olha a foto [imagem]")).toBe("olha a foto [imagem]");
+  });
+
+  test("nome do documento sai do marcador", () => {
+    expect(nomeDoDocumento("[documento proposta.pdf]")).toBe("proposta.pdf");
+    expect(nomeDoDocumento("[documento]")).toBeNull();
+    expect(nomeDoDocumento("segue")).toBeNull();
   });
 });

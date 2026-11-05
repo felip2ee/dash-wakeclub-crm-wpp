@@ -177,6 +177,7 @@ export function Conversa({
                   audio={
                     linha.data && m.id in linha.data.audios ? linha.data.audios[m.id] : undefined
                   }
+                  midia={linha.data?.midias[m.id]}
                 />
               </Fragment>
             );
