@@ -76,14 +76,32 @@ passou o prazo sem resposta e não chegou evento do app depois dela. Prazos padr
 | Em atendimento | 24 h | retomar o interesse |
 | Link enviado | 24 h | concluir o cadastro |
 | Cadastrado | 24 h | escolher pacote e pagar |
-| Aguardando pagamento | 6 h | concluir o pagamento |
+| Aguardando pagamento | — (ver abaixo) | — |
 | Aluno com horas | 7 dias sem aula agendada | agendar a próxima aula |
 | Aluno sem horas | 15 dias após a última aula | recompra |
+
+**Pagamento pendente (dono, 05/11/2026):** 24 h depois do `USER_HOUR_PURCHASE_CREATED` sem
+`USER_HOUR_PURCHASE_PAID`, o pagamento é tratado como **cancelado**: o lead volta para
+**Cadastrado**, já marcado como parado, e o follow-up é para concluir a compra. Um PAID que chegue
+depois disso leva o lead para Aluno com horas normalmente.
+
+**Alunos (decisão minha):** para Aluno com horas e Aluno sem horas, "parado" **não** exige que a
+última mensagem seja da equipe. Com horas: saldo > 0, nenhuma aula futura agendada e 7 dias sem
+aula, compra ou agendamento. Sem horas: 15 dias depois da última aula. Em ambos, só se não houve
+mensagem (de qualquer lado) nas últimas 48 h.
 
 Novo lead e Encerrado nunca ficam parados. Opt-out, "não atender" e lead sem dono continuam fora.
 O redator recebe a etapa e o objetivo para escrever o texto certo.
 
-## 6. Varredura pelo botão
+## 6. Lembretes de aula (dono, 05/11/2026)
+
+- Continuam: "sua aula é amanhã" e "é hoje", gerados a partir do `USER_HOUR_BOOKED` (data e
+  horário), no lugar do agendamento que hoje o qualificador faz por IA.
+- **Prioridade máxima** na fila de envio: saem antes de qualquer outro follow-up aprovado do dia.
+- Passam pela aprovação como os demais (nada sai sem humano) e contam na cota do dia
+  (**decisão minha**); um cancelamento de agendamento (quando o app enviar) cancela o lembrete.
+
+## 7. Varredura pelo botão
 
 - Botão **"Buscar follow-ups agora"** (admin) na tela "Para avaliar".
 - Antes de rodar: mostra quantos leads parados serão analisados e avisa que cada análise é uma
@@ -93,7 +111,7 @@ O redator recebe a etapa e o objetivo para escrever o texto certo.
 - As sugestões vão para a fila de aprovação de cada dono do lead, como no automático.
 - Só uma varredura por vez; o automático continua rodando normalmente.
 
-## 7. Cota, fila de envio e validade
+## 8. Cota, fila de envio e validade
 
 - Preparar e decidir: sem limite.
 - Enviar: até a cota do modo por dia (São Paulo), na janela 8h–19h59, com o intervalo mínimo
@@ -108,7 +126,7 @@ O redator recebe a etapa e o objetivo para escrever o texto certo.
 - Tela "Fila de envio" (admin): aprovados pendentes, quantos saem hoje, previsão de esvaziar,
   opção de remover um item.
 
-## 8. Decisão em dois níveis e aprendizado
+## 9. Decisão em dois níveis e aprendizado
 
 - **Atendente** (dona do lead): Enviar / Não enviar, motivos e texto livre, como hoje. Libera ou
   barra o envio; **não** alimenta o prompt.
@@ -120,27 +138,41 @@ O redator recebe a etapa e o objetivo para escrever o texto certo.
   no lugar das avaliações das atendentes; muda a `versao_prompt`.
 - O admin decidindo direto um follow-up (sem atendente) conta como decisão + revisão.
 
-## 9. Não-objetivos
+## 10. Não-objetivos
 
 - Enviar sem aprovação humana.
 - Atribuição de hora a quem usou (o saldo é do comprador).
 - Mudar a gestão de aulas/agenda (é do app).
 
-## 10. Anti-objetivos
+## 11. Anti-objetivos
 
 - Follow-up para quem acabou de pagar, agendar ou se cadastrar (evento do app sempre cancela).
 - Descontar hora de pessoa errada por chute.
 - Furar a cota de envios em qualquer caminho (varredura incluída).
 - Aprendizado vindo de decisão não revisada.
 
-## 11. Restrições
+## 12. Restrições
 
 - Migrações numeradas; etapas validadas por constraint (atualizar `leads_etiqueta_valida` e as
   views que listam etapas: `v_conversas_painel`, `v_leads_painel`, `v_relatorio_funil`).
 - Eventos do app chegam pelo webhook de vendas (normalizador já reconhece o envelope `USER_*`).
 - Toda decisão do motor vira linha em `eventos_automacao` no mesmo comando que muda o dado.
 
-## 12. Fica para o construtor
+## 13. Decisões minhas (revisáveis pelo dono)
+
+- O sinal "parado" **substitui** o agendamento de follow-up que hoje o qualificador faz por IA
+  (`reengajar`); o qualificador continua atualizando etapa, temperatura e resumo. Os lembretes de
+  aula (§6) também deixam de vir do qualificador e passam a vir do `USER_HOUR_BOOKED`.
+- Sugestões da **varredura** valem até 19h59 do **dia seguinte** (o automático segue com 19h59 do
+  mesmo dia).
+- Venda paga sem `hours`: o lead fica em Aluno com horas com saldo desconhecido e nunca entra em
+  recompra.
+- Sem replay de eventos antigos do app: os recebidos até 05/11/2026 são todos de teste.
+- Idempotência dos eventos do app: aula por `booking_id` + `time_slot` + data; agendamento por
+  `booking_id`; compra por `transaction_id`/`payment_id`; cadastro por `user_id`. Reentrega não
+  desconta hora duas vezes.
+
+## 14. Fica para o construtor
 
 - Layout das telas novas (seguir `docs/design.md`, mobile primeiro).
 - Execução da varredura (tarefa no motor com progresso consultável).
