@@ -22,7 +22,7 @@ export type MonitorFila = {
     recebidoEm: string;
     tentativas: number;
   }[];
-  /** Compras pagas que o app avisou mas o saldo de horas não cobria: as 20 mais recentes. */
+  /** Aulas que o app registrou com o saldo de horas já zerado: as 20 mais recentes. */
   horasSemSaldo: { leadNome: string | null; telefone: string; ocorridoEm: string }[];
 };
 

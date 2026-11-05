@@ -40,7 +40,7 @@ describe.skipIf(!bancoTesteAtivo)("admin do motor no banco", () => {
     );
     await db().query(
       `insert into wakeclub.app_eventos (tipo, chave, lead_id, ocorrido_em, resultado)
-       values ('compra_paga', $1::text, $2::uuid, now(), 'hora_sem_saldo')`,
+       values ('aula', $1::text, $2::uuid, now(), 'hora_sem_saldo')`,
       [chave, rows[0].id],
     );
     const { horasSemSaldo } = await lerMonitorFila(db());

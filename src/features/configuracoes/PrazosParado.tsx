@@ -41,8 +41,13 @@ export function PrazosParado() {
   function enviar(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const valor = Object.fromEntries(CAMPOS.map(({ chave }) => [chave, Number(campos[chave])]));
-    if (Object.values(valor).some((n) => !Number.isInteger(n) || n < 1)) {
-      toast.error("Cada prazo deve ser um número inteiro maior que zero.");
+    // Mesmos limites do schemaPrazos no servidor: 720 h ou 90 dias.
+    const foraDoLimite = ({ chave }: (typeof CAMPOS)[number]) => {
+      const n = valor[chave];
+      return !Number.isInteger(n) || n < 1 || n > (chave.endsWith("Dias") ? 90 : 720);
+    };
+    if (CAMPOS.some(foraDoLimite)) {
+      toast.error("Cada prazo deve ser um número inteiro: de 1 a 720 horas ou de 1 a 90 dias.");
       return;
     }
     salvar.mutate(valor as Prazos);
