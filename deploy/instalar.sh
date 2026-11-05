@@ -20,6 +20,7 @@
 #   WAKECRM_PORTAINER_USUARIO, WAKECRM_PORTAINER_SENHA
 #                                       credencial do Portainer com WAKECRM_SIM=1 (sem ela: docker stack deploy);
 #                                       não vale quando o Orion deixou dados_portainer
+#   WAKECRM_MOTOR_ATIVO                 com WAKECRM_SIM=1: 1 liga o motor, vazio desliga; sem ela, fica
 #   WAKECRM_ORION_DIR                   pasta dos dados do SetupOrion (padrão /root/dados_vps)
 #   WAKECRM_FALHAR_MIGRACAO=NNNN        só teste: aplica até a anterior e falha (exercita a volta)
 #   WAKECRM_PERMITIR_NAO_ROOT=1         só teste: roda sem root (Swarm local no Mac)
@@ -258,6 +259,63 @@ exigir_valor_seguro() {
   done
 }
 
+# url_evolution_ok URL: 1 se terminar em /manager (o painel da Evolution, não a base da API).
+url_evolution_ok() {
+  case "$1" in */manager | */manager/) return 1 ;; esac
+}
+
+# exigir_url_evolution: EVOLUTION_URL que sirva na stack e seja a base da API; com WAKECRM_SIM para.
+exigir_url_evolution() {
+  while :; do
+    exigir_valor_seguro EVOLUTION_URL "URL interna da Evolution"
+    url_evolution_ok "$EVOLUTION_URL" && return 0
+    aviso "EVOLUTION_URL ($EVOLUTION_URL) termina em /manager: esse é o painel da Evolution, não a base da API. Use a base, ex.: http://evolution_evolution_api:8080."
+    [ -z "$SIM" ] || morrer "EVOLUTION_URL aponta para o painel (/manager). Nada foi alterado."
+    perguntar EVOLUTION_URL "URL interna da Evolution (base da API, sem /manager)" ""
+  done
+}
+
+# Chaves que o dono pode ter mudado no Portainer (stack no ar). ENV_VIVO tem o Env do serviço
+# do CRM (vazio sem serviço): só para variável, nunca imprimir.
+CHAVES_PRESERVADAS="EVOLUTION_URL EVOLUTION_API_KEY OPENAI_API_KEY OPENAI_MODELO_TRANSCRICAO"
+ENV_VIVO=""
+
+# adotar_da_stack CHAVE: CHAVE vazia aqui (nada salvo nem detectado) recebe o valor da stack no ar.
+adotar_da_stack() {
+  local __a_v
+  __a_v="$(valor_env_servico "$ENV_VIVO" "$1")"
+  if [ -z "${!1}" ] && [ -n "$__a_v" ]; then
+    printf -v "$1" '%s' "$__a_v"
+    printf -v "${1}_ORIGEM" '%s' "lida da stack no ar"
+  fi
+}
+
+# conflitos_stack: chaves de CHAVES_PRESERVADAS cujo valor na stack no ar existe e difere do atual.
+conflitos_stack() {
+  local c v
+  for c in $CHAVES_PRESERVADAS; do
+    v="$(valor_env_servico "$ENV_VIVO" "$c")"
+    if [ -n "$v" ] && [ "$v" != "${!c}" ]; then printf '%s\n' "$c"; fi
+  done
+}
+
+# decidir_motor: MOTOR_ATIVO da stack no ar quando ela tem a chave (ligar e desligar no Portainer
+# vale); sem stack, o salvo; senão vazio (desligado).
+decidir_motor() {
+  if printf '%s\n' "$ENV_VIVO" | grep -q '^MOTOR_ATIVO='; then
+    MOTOR_ATIVO="$(valor_env_servico "$ENV_VIVO" MOTOR_ATIVO)"
+    MOTOR_ATIVO_ORIGEM="da stack no ar"
+  else
+    MOTOR_ATIVO="$(ler_credencial "$CREDENCIAIS" MOTOR_ATIVO)"
+    MOTOR_ATIVO_ORIGEM="salvo"
+  fi
+}
+
+# adaptador_completo: o motor só lê e envia pela Evolution com URL, chave e instância.
+adaptador_completo() {
+  [ -n "$EVOLUTION_URL" ] && [ -n "$EVOLUTION_API_KEY" ] && [ -n "$EVOLUTION_INSTANCIA" ]
+}
+
 # env_servico SERVICO: linhas CHAVE=valor do serviço. Só para variável, nunca imprimir.
 env_servico() {
   docker service inspect --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' "$1"
@@ -322,8 +380,14 @@ definir_credencial() {
   atual="$(ler_credencial "$1" "$2")"
   # Vazio nunca apaga um valor salvo (ex.: chave da Evolution sumiu do serviço).
   if [ -z "$3" ] && [ -n "$atual" ]; then return 0; fi
+  trocar_credencial "$@"
+}
+
+# trocar_credencial ARQUIVO CHAVE VALOR: grava exatamente VALOR, inclusive vazio (MOTOR_ATIVO
+# desligado na stack não pode voltar a 1 pelo arquivo).
+trocar_credencial() {
   if [ -f "$1" ] && grep -q "^$2=" "$1"; then
-    [ "$atual" = "$3" ] && return 0
+    [ "$(ler_credencial "$1" "$2")" = "$3" ] && return 0
     (
       umask 077
       grep -v "^$2=" "$1" >"$1.tmp.$$" || true
@@ -632,7 +696,7 @@ mascarar() {
 }
 
 # Chaves do ambiente do app na stack. Nunca ADMIN_DATABASE_URL nem a senha do superusuário.
-CHAVES_STACK="IMAGEM DOMINIO REDE CERTRESOLVER ENTRYPOINT DATABASE_URL DATABASE_URL_RW DATABASE_URL_MOTOR VITE_VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY PUSH_DISPATCH_SECRET WEBHOOK_EVOLUTION_SECRET WEBHOOK_VENDAS_SECRET EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY"
+CHAVES_STACK="IMAGEM DOMINIO REDE CERTRESOLVER ENTRYPOINT DATABASE_URL DATABASE_URL_RW DATABASE_URL_MOTOR VITE_VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY PUSH_DISPATCH_SECRET WEBHOOK_EVOLUTION_SECRET WEBHOOK_VENDAS_SECRET EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY OPENAI_API_KEY OPENAI_MODELO_TRANSCRICAO MOTOR_ATIVO"
 
 # stack_publicavel MODELO ENV: render_stack com cada $ dobrado, porque docker stack deploy
 # (e o Portainer) interpolam $VAR no arquivo; o modelo já preenchido não tem outro $.
@@ -845,8 +909,11 @@ FIM
   cat <<FIM
 
   Próximo passo: na Evolution, aponte o webhook da instância $EVOLUTION_INSTANCIA para a URL
-  completa do webhook da Evolution (Configurações › Webhooks). O motor continua desligado.
+  completa do webhook da Evolution (Configurações › Webhooks).
 FIM
+  if [ "${MOTOR_ATIVO:-}" = 1 ]; then echo "  Motor ligado (MOTOR_ATIVO=1)."; else
+    echo "  Motor desligado (MOTOR_ATIVO vazio): ligue no Portainer ou rodando o instalador de novo."
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -1040,10 +1107,26 @@ detectar() {
     redes_servico "$EVO_SERVICO" | grep -qxF "$REDE" ||
       aviso "A Evolution não está na rede $REDE: $EVOLUTION_URL pode não ser alcançável pelo CRM."
   elif [ "$EVOLUTION_URL_ORIGEM" = salva ] && [ "$EVOLUTION_API_KEY_ORIGEM" = salva ]; then
-    aviso "Sem Evolution: EVOLUTION_URL e EVOLUTION_API_KEY ficam como estavam (hoje o app não as lê)."
+    aviso "Sem serviço da Evolution: EVOLUTION_URL e EVOLUTION_API_KEY ficam como estavam."
   fi
-  exigir_valor_seguro EVOLUTION_URL "URL interna da Evolution"
+  # Stack no ar: o que o dono pôs no Portainer não some no re-render. Vazio aqui adota o de lá;
+  # valor diferente vira escolha no resumo (confirmar).
+  ENV_VIVO=""
+  if servico_existe "$SERVICO_APP"; then
+    ENV_VIVO="$(env_servico "$SERVICO_APP")" ||
+      morrer "Não consegui ler as variáveis de $SERVICO_APP (erro do Docker acima). Nada foi alterado."
+  fi
+  OPENAI_API_KEY="$(ler_credencial "$CREDENCIAIS" OPENAI_API_KEY)" OPENAI_API_KEY_ORIGEM="salva"
+  OPENAI_MODELO_TRANSCRICAO="$(ler_credencial "$CREDENCIAIS" OPENAI_MODELO_TRANSCRICAO)"
+  # shellcheck disable=SC2034 # lida por nome em escolher_conflitos
+  OPENAI_MODELO_TRANSCRICAO_ORIGEM="salvo"
+  local chave
+  for chave in $CHAVES_PRESERVADAS; do adotar_da_stack "$chave"; done
+  decidir_motor
+  exigir_url_evolution
   exigir_valor_seguro EVOLUTION_API_KEY "Chave da API da Evolution" -s
+  exigir_valor_seguro OPENAI_MODELO_TRANSCRICAO "Modelo de transcrição da OpenAI"
+  exigir_valor_seguro MOTOR_ATIVO "MOTOR_ATIVO"
 
   # Portainer: com dados_portainer do Orion, a API vai pelo domínio dele; senão, perguntas
   # pede a credencial e a API vai pelo serviço na overlay.
@@ -1079,6 +1162,14 @@ perguntas() {
   exigir_valor_seguro EVOLUTION_INSTANCIA "Instância da Evolution"
   ok "instância: $EVOLUTION_INSTANCIA"
 
+  # OpenAI: sem chave salva nem na stack no ar, pergunta (Enter pula); com WAKECRM_SIM, fica vazia.
+  if [ -z "$OPENAI_API_KEY" ] && [ -z "$SIM" ]; then
+    echo "Sem OPENAI_API_KEY, transcrição e IA ficam ociosas (o resto do motor funciona); com ela, cada uso da OpenAI tem custo." >&2
+    perguntar OPENAI_API_KEY "Chave da OpenAI (OPENAI_API_KEY, Enter pula)" "" -s
+    OPENAI_API_KEY_ORIGEM="digitada"
+  fi
+  exigir_valor_seguro OPENAI_API_KEY "Chave da OpenAI" -s
+
   # Portainer: com credencial, a stack sai pela API (controle total no Portainer). Com os
   # dados do Orion (detectar), não pergunta nada.
   [ -z "$PORTAINER_DOMINIO" ] || return 0
@@ -1098,7 +1189,7 @@ perguntas() {
 }
 
 SEGREDOS="WEBHOOK_EVOLUTION_SECRET WEBHOOK_VENDAS_SECRET PAINEL_RO_PASSWORD PAINEL_RW_PASSWORD WAKECRM_MOTOR_PASSWORD PUSH_DISPATCH_SECRET"
-DECIDIDOS="DOMINIO EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY REDE CERTRESOLVER ENTRYPOINT PG_SERVICO"
+DECIDIDOS="DOMINIO EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY OPENAI_API_KEY OPENAI_MODELO_TRANSCRICAO REDE CERTRESOLVER ENTRYPOINT PG_SERVICO"
 
 # Lê o que já existe em credenciais.env e gera o que falta, só em memória: o arquivo
 # é gravado depois da confirmação (gravar_credenciais), para "N" não deixar rastro.
@@ -1208,6 +1299,63 @@ listar_pendentes() {
     morrer "Há $n follow-up(s) com status 'enviando'. Espere o envio terminar (ou resolva à mão) e rode de novo. Nada foi alterado."
 }
 
+# texto_valor CHAVE VALOR: como o valor aparece no resumo (chave de API mascarada).
+texto_valor() {
+  case "$1" in *_KEY) mascarar "$2" ;; *) printf '%s\n' "$2" ;; esac
+}
+
+# escolher_conflitos: valor da stack no ar diferente do instalador. Mostra os dois e fica com o
+# do instalador, salvo escolha do dono; com WAKECRM_SIM fica com o do instalador e avisa.
+escolher_conflitos() {
+  local c v origem resp
+  for c in $(conflitos_stack); do
+    v="$(valor_env_servico "$ENV_VIVO" "$c")"
+    origem="${c}_ORIGEM"
+    aviso "$c na stack no ar difere do instalador:"
+    echo "    instalador (${!origem:-salvo}): $(texto_valor "$c" "${!c}")"
+    echo "    stack no ar: $(texto_valor "$c" "$v")"
+    if [ -n "$SIM" ]; then
+      aviso "Fico com o do instalador (WAKECRM_SIM)."
+      continue
+    fi
+    perguntar resp "Usar o valor da stack no ar? [s/N]" ""
+    case "$resp" in s | S | sim | Sim | SIM) ;; *) continue ;; esac
+    if ! valor_seguro_stack "$v" || { [ "$c" = EVOLUTION_URL ] && ! url_evolution_ok "$v"; }; then
+      aviso "O valor da stack no ar não serve (aspas, barra, quebra de linha ou /manager); fico com o do instalador."
+      continue
+    fi
+    printf -v "$c" '%s' "$v"
+    printf -v "$origem" '%s' "da stack no ar"
+  done
+}
+
+# perguntar_motor: ligar o motor é decisão explícita do dono (padrão N). Só pergunta com o
+# motor desligado e o adaptador completo. Com WAKECRM_SIM, WAKECRM_MOTOR_ATIVO (1 ou vazio)
+# decide; sem ela, fica como está.
+perguntar_motor() {
+  local resp
+  if [ -n "$SIM" ]; then
+    [ -n "${WAKECRM_MOTOR_ATIVO+x}" ] || return 0
+    case "$WAKECRM_MOTOR_ATIVO" in 1 | "") ;; *) morrer "WAKECRM_MOTOR_ATIVO aceita 1 ou vazio. Nada foi alterado." ;; esac
+    if [ "$WAKECRM_MOTOR_ATIVO" = 1 ] && ! adaptador_completo; then
+      morrer "WAKECRM_MOTOR_ATIVO=1 sem EVOLUTION_URL, EVOLUTION_API_KEY e EVOLUTION_INSTANCIA. Nada foi alterado."
+    fi
+    MOTOR_ATIVO="$WAKECRM_MOTOR_ATIVO"
+    MOTOR_ATIVO_ORIGEM="WAKECRM_MOTOR_ATIVO"
+    return 0
+  fi
+  [ "$MOTOR_ATIVO" != 1 ] || return 0
+  adaptador_completo || return 0
+  echo "  O motor desligado só grava os eventos; ligado, processa filas, distribui leads e envia mensagens." >&2
+  perguntar resp "Ligar o motor (MOTOR_ATIVO=1)? [s/N]" ""
+  case "$resp" in
+    s | S | sim | Sim | SIM)
+      MOTOR_ATIVO=1
+      MOTOR_ATIVO_ORIGEM="ligado agora"
+      ;;
+  esac
+}
+
 confirmar() {
   passo 5 "Resumo"
   listar_pendentes
@@ -1225,6 +1373,9 @@ confirmar() {
   Dados do Orion  ${ORION_USADOS:-nenhum} (em $ORION_DIR)
   Domínio         https://$DOMINIO
   Instância       $EVOLUTION_INSTANCIA
+  Chave OpenAI    $(mascarar "$OPENAI_API_KEY")${OPENAI_API_KEY:+, $OPENAI_API_KEY_ORIGEM}
+  Modelo transcr. ${OPENAI_MODELO_TRANSCRICAO:-padrão (whisper-1)}
+  Motor           MOTOR_ATIVO=${MOTOR_ATIVO} ($(if [ "$MOTOR_ATIVO" = 1 ]; then echo ligado; else echo desligado; fi), $MOTOR_ATIVO_ORIGEM)
   Credenciais     $CREDENCIAIS
 EOF
   for chave in $SEGREDOS VITE_VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY; do
@@ -1242,6 +1393,8 @@ EOF
   fi
   aviso "As senhas das roles painel_ro e painel_rw serão redefinidas para as de $CREDENCIAIS."
   echo
+  escolher_conflitos
+  perguntar_motor
 
   local resp
   if [ -n "$SIM" ]; then resp=s; else perguntar resp "Continuar? [s/N]" ""; fi
@@ -1264,6 +1417,8 @@ gravar_credenciais() {
   for chave in $DECIDIDOS; do
     definir_credencial "$CREDENCIAIS" "$chave" "${!chave}"
   done
+  # Exato, inclusive vazio: o motor desligado na stack não volta a ligar pelo arquivo.
+  trocar_credencial "$CREDENCIAIS" MOTOR_ATIVO "$MOTOR_ATIVO"
   chmod 600 "$CREDENCIAIS"
   ok "credenciais em $CREDENCIAIS"
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091,SC2030,SC2031 # subshells de teste isolam variáveis de propósito
 # Testes de funções de deploy/instalar.sh sem Docker: o script é carregado com `.`,
 # e o guard do fim impede que `main` rode. Sai 1 no primeiro erro.
 AQUI="$(cd "$(dirname "$0")" && pwd)"
@@ -129,6 +129,7 @@ PG_HOST=pg
   DATABASE_URL_MOTOR=u3 VITE_VAPID_PUBLIC_KEY=p VAPID_PRIVATE_KEY=v PUSH_DISPATCH_SECRET=s1
   WEBHOOK_EVOLUTION_SECRET=s2 WEBHOOK_VENDAS_SECRET=s3 EVOLUTION_INSTANCIA=wakeclub EVOLUTION_URL=http://evo:8080
   EVOLUTION_API_KEY='a$b' ADMIN_DATABASE_URL=postgres://postgres:superu@pg/wakeclub
+  OPENAI_API_KEY=sk-1 OPENAI_MODELO_TRANSCRICAO="" MOTOR_ATIVO=1
 }
 # shellcheck disable=SC2086
 ENV_STACK="$(arquivo_env $CHAVES_STACK)"
@@ -150,6 +151,88 @@ case "$PUB" in *'EVOLUTION_API_KEY=a$$b"'*) r=ok ;; *) r=nao ;; esac
 assert_eq ok "$r" "\$ do valor vira \$\$ (docker stack deploy interpola)"
 # shellcheck disable=SC2016 # $ literal
 assert_eq "" "$(printf '%s\n' "$PUB" | grep -o '\${[A-Za-z_]*}')" "nenhum marcador sobra"
+for c in OPENAI_API_KEY OPENAI_MODELO_TRANSCRICAO MOTOR_ATIVO; do
+  # shellcheck disable=SC2016 # marcador literal
+  assert_eq 1 "$(grep -c "\"$c=\${$c}\"" "$AQUI/wakecrm-stack.yml")" "modelo tem o marcador de $c"
+done
+case "$PUB" in *'"OPENAI_API_KEY=sk-1"'*'"OPENAI_MODELO_TRANSCRICAO="'*'"MOTOR_ATIVO=1"'*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "stack leva OPENAI_API_KEY, modelo vazio e MOTOR_ATIVO"
+
+# Stack no ar (o que o dono mudou no Portainer): vazio aqui adota o de lá; salvo vence;
+# diferente vira conflito; MOTOR_ATIVO segue a stack no ar.
+F2="$TMP/c2.env"
+printf '%s\n' OPENAI_API_KEY=sk-salva EVOLUTION_URL=http://salva:8080 MOTOR_ATIVO=1 >"$F2"
+VIVO="$(printf '%s\n' NODE_ENV=production OPENAI_API_KEY=sk-viva OPENAI_MODELO_TRANSCRICAO=whisper-1 \
+  EVOLUTION_URL=http://evolution_evolution_api:8080/manager/ EVOLUTION_API_KEY=k-viva MOTOR_ATIVO=)"
+# shellcheck disable=SC2034 # lidas por nome em adotar_da_stack e conflitos_stack
+r="$(ENV_VIVO="$VIVO" CREDENCIAIS="$F2"
+  OPENAI_API_KEY="$(ler_credencial "$F2" OPENAI_API_KEY)" OPENAI_MODELO_TRANSCRICAO="" EVOLUTION_URL=http://evo:8080 EVOLUTION_API_KEY=""
+  for c in $CHAVES_PRESERVADAS; do adotar_da_stack "$c"; done
+  decidir_motor
+  printf '%s|' "$OPENAI_API_KEY" "$OPENAI_MODELO_TRANSCRICAO ($OPENAI_MODELO_TRANSCRICAO_ORIGEM)" "$EVOLUTION_API_KEY" \
+    "$EVOLUTION_URL" "[$MOTOR_ATIVO] ($MOTOR_ATIVO_ORIGEM)" "$(conflitos_stack | tr '\n' ' ')")"
+assert_eq "sk-salva|whisper-1 (lida da stack no ar)|k-viva|http://evo:8080|[] (da stack no ar)|EVOLUTION_URL OPENAI_API_KEY |" "$r" \
+  "preservação: salvo vence, vazio adota a stack, motor da stack, diferentes viram conflito"
+# shellcheck disable=SC2034
+r="$(ENV_VIVO="" CREDENCIAIS="$F2"; decidir_motor; echo "$MOTOR_ATIVO ($MOTOR_ATIVO_ORIGEM)")"
+assert_eq "1 (salvo)" "$r" "sem stack no ar: MOTOR_ATIVO salvo"
+# shellcheck disable=SC2034
+r="$(ENV_VIVO="NODE_ENV=production" CREDENCIAIS="$TMP/nada.env"; decidir_motor; echo "[$MOTOR_ATIVO]")"
+assert_eq "[]" "$r" "stack antiga sem a chave e nada salvo: motor desligado"
+trocar_credencial "$F2" MOTOR_ATIVO ""
+assert_eq "MOTOR_ATIVO=" "$(grep '^MOTOR_ATIVO=' "$F2")" "motor desligado grava vazio por cima do 1"
+assert_eq 1 "$(grep -c '^MOTOR_ATIVO=' "$F2")" "uma linha só de MOTOR_ATIVO"
+
+# escolher_conflitos com WAKECRM_SIM: fica com o do instalador, avisa, chave mascarada.
+# shellcheck disable=SC2034
+saida="$( (SIM=1 ENV_VIVO="$VIVO" EVOLUTION_URL=http://evo:8080 EVOLUTION_URL_ORIGEM="detectada no serviço" \
+  EVOLUTION_API_KEY=k-instalador EVOLUTION_API_KEY_ORIGEM="lida do serviço" OPENAI_API_KEY=sk-viva OPENAI_MODELO_TRANSCRICAO=whisper-1
+  escolher_conflitos; echo "fim=$EVOLUTION_URL") 2>&1)"
+case "$saida" in *"EVOLUTION_URL na stack no ar difere"*"instalador (detectada no serviço): http://evo:8080"*"stack no ar: http://evolution_evolution_api:8080/manager/"*"EVOLUTION_API_KEY na stack"*"(12 caracteres)"*"(6 caracteres)"*"fim=http://evo:8080") r=ok ;; *) r="$saida" ;; esac
+assert_eq ok "$r" "conflito com SIM: mostra os dois, fica com o do instalador"
+case "$saida" in *k-viva* | *k-instalador*) r=vazou ;; *) r=ok ;; esac
+assert_eq ok "$r" "conflito não mostra a chave"
+# Interativo escolhendo a stack no ar: URL /manager é recusada, chave é adotada.
+# shellcheck disable=SC2034,SC2329 # perguntar simulado
+r="$( (SIM="" ENV_VIVO="$VIVO" EVOLUTION_URL=http://evo:8080 EVOLUTION_API_KEY=k-instalador OPENAI_API_KEY=sk-viva OPENAI_MODELO_TRANSCRICAO=whisper-1
+  perguntar() { printf -v "$1" s; }
+  escolher_conflitos >/dev/null 2>&1; echo "$EVOLUTION_URL|$EVOLUTION_API_KEY|$EVOLUTION_API_KEY_ORIGEM"))"
+assert_eq "http://evo:8080|k-viva|da stack no ar" "$r" "escolha da stack: /manager recusada, chave adotada"
+
+# /manager é o painel da Evolution, não a base da API.
+for v in http://evolution_evolution_api:8080 https://evo.exemplo.com http://evo:8080/managerx; do
+  assert_eq 0 "$(url_evolution_ok "$v"; echo $?)" "URL [$v] aceita"
+done
+for v in https://evo.exemplo.com/manager https://evo.exemplo.com/manager/; do
+  assert_eq 1 "$(url_evolution_ok "$v"; echo $?)" "URL [$v] recusada"
+done
+saida="$( (SIM=1 EVOLUTION_URL=https://evo.exemplo.com/manager/; exigir_url_evolution) 2>&1)"
+assert_eq 1 "$( (SIM=1 EVOLUTION_URL=https://evo.exemplo.com/manager; exigir_url_evolution) >/dev/null 2>&1; echo $?)" "SIM com /manager: para"
+case "$saida" in *"painel da Evolution, não a base da API"*"Nada foi alterado."*) r=ok ;; *) r="$saida" ;; esac
+assert_eq ok "$r" "mensagem do /manager explica o painel"
+# shellcheck disable=SC2034,SC2329 # perguntar simulado
+r="$( (SIM="" EVOLUTION_URL=https://evo.exemplo.com/manager/; perguntar() { printf -v "$1" http://evo:8080; }; exigir_url_evolution >/dev/null 2>&1; echo "$EVOLUTION_URL"))"
+assert_eq http://evo:8080 "$r" "interativo com /manager: pergunta de novo"
+
+# perguntar_motor: SIM segue WAKECRM_MOTOR_ATIVO; sem ela, fica; interativo só com motor
+# desligado e adaptador completo, padrão N.
+# shellcheck disable=SC2034
+{ EVOLUTION_URL=http://evo:8080; EVOLUTION_API_KEY=k; EVOLUTION_INSTANCIA=wakeclub; }
+# shellcheck disable=SC2034 # lidas dentro de perguntar_motor
+{
+assert_eq "x" "$(SIM=1 MOTOR_ATIVO=x; unset WAKECRM_MOTOR_ATIVO; perguntar_motor; echo "$MOTOR_ATIVO")" "SIM sem WAKECRM_MOTOR_ATIVO: fica"
+assert_eq 1 "$(SIM=1 MOTOR_ATIVO="" WAKECRM_MOTOR_ATIVO=1; perguntar_motor; echo "$MOTOR_ATIVO")" "SIM liga com WAKECRM_MOTOR_ATIVO=1"
+assert_eq "[]" "$(SIM=1 MOTOR_ATIVO=1 WAKECRM_MOTOR_ATIVO=""; perguntar_motor; echo "[$MOTOR_ATIVO]")" "SIM desliga com WAKECRM_MOTOR_ATIVO vazio"
+assert_eq 1 "$( (SIM=1 MOTOR_ATIVO="" WAKECRM_MOTOR_ATIVO=1 EVOLUTION_API_KEY=""; perguntar_motor) >/dev/null 2>&1; echo $?)" "SIM liga sem adaptador: para"
+assert_eq 1 "$( (SIM=1 WAKECRM_MOTOR_ATIVO=0; perguntar_motor) >/dev/null 2>&1; echo $?)" "SIM com valor estranho: para"
+}
+# shellcheck disable=SC2329 # perguntar simulado
+{
+  assert_eq "[]" "$(SIM="" MOTOR_ATIVO=""; perguntar() { printf -v "$1" ''; }; perguntar_motor 2>/dev/null; echo "[$MOTOR_ATIVO]")" "Enter: motor fica desligado"
+  assert_eq 1 "$(SIM="" MOTOR_ATIVO=""; perguntar() { printf -v "$1" s; }; perguntar_motor 2>/dev/null; echo "$MOTOR_ATIVO")" "s: liga o motor"
+  assert_eq "[]" "$(SIM="" MOTOR_ATIVO="" EVOLUTION_API_KEY=""; perguntar() { echo PERGUNTOU; }; perguntar_motor 2>/dev/null; echo "[$MOTOR_ATIVO]")" "adaptador incompleto: não pergunta"
+  assert_eq 1 "$(SIM="" MOTOR_ATIVO=1; perguntar() { echo PERGUNTOU; }; perguntar_motor 2>/dev/null; echo "$MOTOR_ATIVO")" "motor já ligado: não pergunta"
+}
 
 # json_texto: escapes de string JSON.
 assert_eq '"a\"b\\c\td\nl2"' "$(printf 'a"b\\c\td\nl2\n' | json_texto)" "json_texto escapa aspas, barra, tab e linha"
