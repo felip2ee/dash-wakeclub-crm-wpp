@@ -89,6 +89,7 @@ assert_eq "" "$(certresolver_traefik $'--api=true\nfoo=bar')" "resolver ausente 
 assert_eq 'postgres://postgres:p%40ss%3Aw%2Frd%231@postgres:5432/wakeclub' \
   "$(url_postgres postgres 'p@ss:w/rd#1' postgres 5432 wakeclub)" "url_postgres codifica a senha"
 assert_eq 'postgres://u:Az09._~-@h:1/b' "$(url_postgres u 'Az09._~-' h 1 b)" "url_postgres preserva não reservados"
+assert_eq 'postgres://dono%40x%3A%22y:s@h:1/b' "$(url_postgres 'dono@x:"y' s h 1 b)" "url_postgres codifica o usuário"
 
 # render_stack
 printf 'DOMINIO=crm.exemplo.com\nSENHA=a&b\\1\n' >"$TMP/env"

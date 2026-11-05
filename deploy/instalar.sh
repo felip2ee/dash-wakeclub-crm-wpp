@@ -246,10 +246,12 @@ imagem_servico() {
 }
 
 # redes_servico SERVICO: nomes das redes, uma por linha.
+# Erro do Docker => código 1 (o `for` sobre $(...) engoliria a falha).
 redes_servico() {
-  local id
-  for id in $(docker service inspect --format '{{range .Spec.TaskTemplate.Networks}}{{.Target}} {{end}}' "$1"); do
-    docker network inspect --format '{{.Name}}' "$id"
+  local ids id
+  ids="$(docker service inspect --format '{{range .Spec.TaskTemplate.Networks}}{{.Target}} {{end}}' "$1")" || return 1
+  for id in $ids; do
+    docker network inspect --format '{{.Name}}' "$id" || return 1
   done
 }
 
@@ -622,7 +624,7 @@ config_portainer() {
   # O certificado do Portainer na 9443 é autoassinado; o domínio público do Orion tem
   # certificado de verdade e é verificado.
   if [ -z "${PORTAINER_DOMINIO:-}" ]; then case "$PORTAINER_BASE" in https:*) printf 'insecure\n' ;; esac; fi
-  printf 'fail\nsilent\nshow-error\nconnect-timeout = 10\nmax-time = 300\nheader = "Content-Type: application/json"\n'
+  printf 'fail\nsilent\nshow-error\nconnect-timeout = 10\nmax-time = %s\nheader = "Content-Type: application/json"\n' "${PORTAINER_MAX_TIME:-300}"
   if [ -n "${PORTAINER_TOKEN:-}" ]; then
     printf 'header = %s\n' "$(printf 'X-API-Key: %s' "$PORTAINER_TOKEN" | texto_config)"
   elif [ -n "${PORTAINER_JWT:-}" ]; then
@@ -643,14 +645,25 @@ portainer_api() {
 }
 
 # endpoint_do_swarm SWARM: id do endpoint Docker do Portainer que é este Swarm (o "ID" de
-# /api/endpoints/{id}/docker/swarm igual ao do cluster local); vazio se nenhum for.
+# /api/endpoints/{id}/docker/swarm igual ao do cluster local); vazio se nenhum for. A lista
+# de endpoints falhar (credencial recusada, sem conexão) => código 1. Cada sonda tem 15 s:
+# um endpoint fora do ar não segura o instalador.
 endpoint_do_swarm() {
   local resp id pares=""
-  resp="$(portainer_api GET /api/endpoints)" || return 0
+  resp="$(portainer_api GET /api/endpoints)" || return 1
   for id in $(ids_endpoints_docker "$resp"); do
-    pares="$pares$id $(portainer_api GET "/api/endpoints/$id/docker/swarm" 2>/dev/null | id_swarm_json)"$'\n'
+    pares="$pares$id $(PORTAINER_MAX_TIME=15 portainer_api GET "/api/endpoints/$id/docker/swarm" 2>/dev/null | id_swarm_json)"$'\n'
   done
   endpoint_por_swarm "$1" "$pares"
+}
+
+# aviso_api_portainer: a API não aceitou a credencial ou não respondeu; diz de onde ela veio.
+aviso_api_portainer() {
+  if [ -n "$PORTAINER_DOMINIO" ]; then
+    aviso "O Portainer em $PORTAINER_BASE recusou $(if [ -n "$PORTAINER_TOKEN" ]; then echo o token; else echo "usuário e senha"; fi) de $ORION_DIR/dados_portainer ou não respondeu (erro do curl acima)."
+  else
+    aviso "O Portainer em $PORTAINER_BASE recusou o usuário e a senha digitados ou não respondeu (erro do curl acima)."
+  fi
 }
 
 # publicar_portainer: cria ou atualiza (pullImage) a stack wakecrm pela API. Falha => 1.
@@ -671,12 +684,18 @@ publicar_portainer() {
   # Com o token do Orion (header X-API-Key), não há login.
   if [ -z "$PORTAINER_TOKEN" ]; then
     corpo="{\"username\":$(printf '%s' "$PORTAINER_USUARIO" | json_texto),\"password\":$(printf '%s' "$PORTAINER_SENHA" | json_texto)}"
-    resp="$(portainer_api POST /api/auth "$corpo")" || return 1
+    resp="$(portainer_api POST /api/auth "$corpo")" || {
+      aviso_api_portainer
+      return 1
+    }
     PORTAINER_JWT="$(jwt_portainer "$resp")"
     [ -n "$PORTAINER_JWT" ] || return 1
   fi
   swarm="$(docker info --format '{{.Swarm.Cluster.ID}}')" || return 1
-  endpoint="$(endpoint_do_swarm "$swarm")"
+  if ! endpoint="$(endpoint_do_swarm "$swarm")"; then
+    aviso_api_portainer
+    return 1
+  fi
   if [ -z "$endpoint" ]; then
     aviso "Nenhum endpoint Docker do Portainer é este Swarm ($swarm)."
     return 1
@@ -808,6 +827,9 @@ detectar() {
     fi
   fi
   PG_USUARIO="${PG_USUARIO:-postgres}"
+  # O usuário entra na URL do superusuário e no arquivo de ambiente dos contêineres.
+  exigir_valor_seguro PG_USUARIO "Usuário do Postgres"
+  PG_USUARIO="${PG_USUARIO:-postgres}"
   if [ -z "$PG_SENHA" ]; then
     PG_SENHA_ORIGEM="digitada"
     aviso "POSTGRES_PASSWORD não está nas variáveis do serviço $PG_SERVICO."
@@ -862,31 +884,34 @@ detectar() {
   [ -n "$ENTRYPOINT" ] || morrer "Entrypoint do Traefik é obrigatório."
   ok "entrypoint HTTPS: $ENTRYPOINT"
 
-  # Rede overlay compartilhada entre Postgres e Traefik. Ambígua ou sem resposta, vale a
-  # Rede interna do Orion (dados_vps); attachable continua obrigatório.
-  local redes_pg redes_tr r rede_orion
+  # Rede overlay compartilhada entre Postgres e Traefik (o CRM precisa dos dois). Ambígua:
+  # a salva, depois a Rede interna do Orion (dados_vps), senão menu; só vale rede comum aos dois.
+  local redes_pg redes_tr r rede_salva rede_orion
   local -a comuns=()
-  redes_pg="$(redes_servico "$PG_SERVICO")" || redes_pg=""
-  redes_tr="$(redes_servico "$TRAEFIK_SERVICO")" || redes_tr=""
+  redes_pg="$(redes_servico "$PG_SERVICO")" ||
+    morrer "Não consegui ler as redes do serviço $PG_SERVICO (erro do Docker acima). Nada foi alterado."
+  redes_tr="$(redes_servico "$TRAEFIK_SERVICO")" ||
+    morrer "Não consegui ler as redes do serviço $TRAEFIK_SERVICO (erro do Docker acima). Nada foi alterado."
   while IFS= read -r r; do
     [ -n "$r" ] && printf '%s\n' "$redes_tr" | grep -qxF "$r" && comuns+=("$r")
   done <<<"$redes_pg"
+  rede_salva="$(ler_credencial "$CREDENCIAIS" REDE)"
   ler_orion rede_orion dados_vps "Rede interna"
-  if [ "${#comuns[@]}" -eq 1 ]; then
+  if [ "${#comuns[@]}" -eq 0 ]; then
+    morrer "Postgres ($PG_SERVICO) e Traefik ($TRAEFIK_SERVICO) não compartilham nenhuma rede."
+  elif [ "${#comuns[@]}" -eq 1 ]; then
     REDE="${comuns[0]}"
-  elif [ "${#comuns[@]}" -gt 1 ] && [ -n "$rede_orion" ] && printf '%s\n' "${comuns[@]}" | grep -qxF "$rede_orion"; then
+    REDE_ORIGEM="única comum a Postgres e Traefik"
+  elif [ -n "$rede_salva" ] && printf '%s\n' "${comuns[@]}" | grep -qxF "$rede_salva"; then
+    REDE="$rede_salva"
+    REDE_ORIGEM="salva"
+  elif [ -n "$rede_orion" ] && printf '%s\n' "${comuns[@]}" | grep -qxF "$rede_orion"; then
     REDE="$rede_orion"
-    usou_orion dados_vps
-  elif [ "${#comuns[@]}" -eq 0 ]; then
-    if [ -z "$rede_orion" ] || ! docker network inspect "$rede_orion" >/dev/null 2>&1; then
-      morrer "Postgres ($PG_SERVICO) e Traefik ($TRAEFIK_SERVICO) não compartilham nenhuma rede."
-    fi
-    aviso "Não achei uma rede comum a Postgres e Traefik; uso a Rede interna do Orion ($rede_orion)."
-    REDE="$rede_orion"
+    REDE_ORIGEM="lida do Orion"
     usou_orion dados_vps
   else
-    escolher REDE "Postgres e Traefik compartilham mais de uma rede:" \
-      "$(ler_credencial "$CREDENCIAIS" REDE)" "${comuns[@]}"
+    escolher REDE "Postgres e Traefik compartilham mais de uma rede:" "" "${comuns[@]}"
+    REDE_ORIGEM="escolhida"
   fi
   rede_attachable "$(docker network inspect --format '{{.Attachable}}' "$REDE")" ||
     morrer "A rede $REDE não é attachable: contêineres temporários (migração e backup) não entram nela. Nada foi alterado."
@@ -1050,6 +1075,7 @@ gerar() {
 # função dele, defaults com sequência dele, casts e o que mais o Postgres registrar.
 # Regra, trigger, default e policy não têm schema próprio em pg_identify_object: valem o da
 # tabela ou view dona (dependência 'a' ou 'i'); sem dono (cast, event trigger), contam como fora.
+# Com mais de um dono, vence o de fora do wakeclub (na dúvida, lista: fail-closed).
 # Default privileges do schema wakeclub dependem do schema e são dele (o dump as traz).
 # Corpo de função (plpgsql, ou SQL entre aspas) não entra em pg_depend: o cascade não apaga a
 # função por citar uma tabela do wakeclub, e ela volta a funcionar depois da restauração.
@@ -1068,6 +1094,7 @@ select distinct pg_describe_object(d.classid, d.objid, d.objsubid)
           cross join lateral pg_identify_object(dp.refclassid, dp.refobjid, dp.refobjsubid) p
           where dp.classid = d.classid and dp.objid = d.objid and dp.objsubid = d.objsubid
             and dp.deptype in ('a', 'i') and dp.refclassid in ('pg_class'::regclass, 'pg_namespace'::regclass)
+          order by (case when dp.refclassid = 'pg_namespace'::regclass then p.identity else p.schema end) is not distinct from 'wakeclub'
           limit 1)) is distinct from 'wakeclub'
  order by 1"
 
@@ -1110,7 +1137,7 @@ confirmar() {
 
   Postgres        $PG_SERVICO (Postgres $PG_MAJOR, usuário $PG_USUARIO, senha $PG_SENHA_ORIGEM)
   Traefik         $TRAEFIK_SERVICO, certresolver $CERTRESOLVER, entrypoint $ENTRYPOINT
-  Rede            $REDE
+  Rede            $REDE ($REDE_ORIGEM)
   Evolution       ${EVO_SERVICO:-não encontrada} ${EVOLUTION_URL:+($EVOLUTION_URL, $EVOLUTION_URL_ORIGEM)}
   Chave Evolution $(mascarar "$EVOLUTION_API_KEY")${EVOLUTION_API_KEY:+, $EVOLUTION_API_KEY_ORIGEM}
   Portainer       ${PORTAINER_SERVICO:-não encontrado}

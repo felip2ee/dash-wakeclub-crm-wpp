@@ -130,6 +130,26 @@ api_simulada() {
 # shellcheck disable=SC2329 # portainer_api chamada por endpoint_do_swarm
 r="$(portainer_api() { api_simulada "$@"; }; endpoint_do_swarm abc123)"
 assert_eq 6 "$r" "endpoint_do_swarm escolhe pelo ID do Swarm, não o primeiro"
+# shellcheck disable=SC2329
+assert_eq 1 "$(portainer_api() { return 22; }; endpoint_do_swarm abc123; echo $?)" "lista de endpoints falhou (401, rede): código 1, não 'nenhum endpoint'"
+# shellcheck disable=SC2329
+assert_eq 0 "$(portainer_api() { api_simulada "$@"; }; endpoint_do_swarm zzz >/dev/null; echo $?)" "nenhum endpoint bate: código 0 e vazio"
+# As sondas de /docker/swarm têm 15 s; o resto fica com 300 s.
+api_tempo() {
+  if [ "$2" = /api/endpoints ]; then printf '%s' "$EP"; else config_portainer "$@" | grep '^max-time' >>"$TMP/tempos"; fi
+}
+# shellcheck disable=SC2329
+(portainer_api() { api_tempo "$@"; }; PORTAINER_BASE=http://p:9000; endpoint_do_swarm abc123 >/dev/null)
+r="$(sort -u "$TMP/tempos")"
+assert_eq "max-time = 15" "$r" "sonda de endpoint com max-time 15"
+# shellcheck disable=SC2034
+PORTAINER_BASE=http://p:9000
+assert_eq "max-time = 300" "$(config_portainer GET /api/stacks | grep '^max-time')" "chamada normal com max-time 300"
+# Falha da API: diz de onde veio a credencial, sem mostrá-la.
+r="$( (PORTAINER_DOMINIO=painel.exemplo.com PORTAINER_TOKEN=ptr_segredo PORTAINER_BASE=https://painel.exemplo.com ORION_DIR=/root/dados_vps; aviso_api_portainer) 2>&1)"
+assert_eq "! O Portainer em https://painel.exemplo.com recusou o token de /root/dados_vps/dados_portainer ou não respondeu (erro do curl acima)." "$r" "falha da API com token do Orion"
+r="$( (PORTAINER_DOMINIO="" PORTAINER_TOKEN="" PORTAINER_BASE=https://pt:9443; aviso_api_portainer) 2>&1)"
+assert_eq "! O Portainer em https://pt:9443 recusou o usuário e a senha digitados ou não respondeu (erro do curl acima)." "$r" "falha da API com credencial digitada"
 ST='[{"Id":2,"Name":"evolution","ResourceControl":{"Id":7}},{"Id":12,"Name":"wakecrm","Type":1}]'
 assert_eq 12 "$(id_stack "$ST" wakecrm)" "id da stack wakecrm"
 assert_eq "" "$(id_stack '[{"Id":2,"Name":"wakecrm2"}]' wakecrm)" "nome parecido não casa"
@@ -243,7 +263,7 @@ docker() {
     *ContainerSpec.Env*) case "$a" in *pg_pg) printf '%s\n' "${ENV_PG:-}" ;; *evo_evo) printf '%s\n' "${ENV_EVO:-}" ;; esac ;;
     *ContainerSpec.Image*) echo postgres:14 ;;
     *ContainerSpec.Command*) printf '%s\n' --certificatesresolvers.le.acme.email=x --entrypoints.websecure.address=:443 ;;
-    *TaskTemplate.Networks*) case "$a" in *pg_pg) echo "$REDES_PG" ;; *tr_tr) echo "$REDES_TR" ;; *) echo n1 ;; esac ;;
+    *TaskTemplate.Networks*) case "$a" in *pg_pg) [ "$REDES_PG" != FALHA ] || { echo "Error: erro real do docker" >&2; return 1; }; echo "$REDES_PG" ;; *tr_tr) echo "$REDES_TR" ;; *) echo n1 ;; esac ;;
     "network inspect --format {{.Name}} "*) echo "${a##* }" ;;
     "network inspect --format {{.Attachable}} "*) echo true ;;
     "network inspect "*) case "${a##* }" in n1 | n2 | n3) ;; *) return 1 ;; esac ;;
@@ -254,9 +274,9 @@ docker() {
 rodar_detectar() {
   (
     # shellcheck disable=SC2034 # lidas dentro de detectar
-    SIM=1 CREDENCIAIS="$TMP/sem-credenciais.env" ORION_USADOS=""
+    SIM=1 CREDENCIAIS="${CRED_TESTE:-$TMP/sem-credenciais.env}" ORION_USADOS=""
     detectar >"$TMP/detectar.log" 2>&1 || exit $?
-    printf '%s\n' "pg=$PG_USUARIO/$PG_SENHA ($PG_SENHA_ORIGEM)" "rede=$REDE" \
+    printf '%s\n' "pg=$PG_USUARIO/$PG_SENHA ($PG_SENHA_ORIGEM)" "rede=$REDE ($REDE_ORIGEM)" \
       "evo=$EVOLUTION_URL ($EVOLUTION_URL_ORIGEM) chave=$EVOLUTION_API_KEY${EVOLUTION_API_KEY:+ ($EVOLUTION_API_KEY_ORIGEM)}" \
       "portainer=$PORTAINER_DOMINIO token=$PORTAINER_TOKEN" "orion=$ORION_USADOS"
   )
@@ -271,7 +291,7 @@ printf '%s\n' '[ PORTAINER ]' 'Dominio do portainer: painel.exemplo.com' '' 'Usu
 
 # Serviço sem senha nem chave: Orion cobre; rede ambígua: vale a do Orion.
 r="$(EVO=1 ENV_PG='' ENV_EVO='SERVER_PORT=8080' REDES_PG='n1 n2' REDES_TR='n1 n2' rodar_detectar)"
-assert_eq "$(printf '%s\n' "pg=orion_pg/pg-orion (lida do Orion)" "rede=n2" \
+assert_eq "$(printf '%s\n' "pg=orion_pg/pg-orion (lida do Orion)" "rede=n2 (lida do Orion)" \
   "evo=http://evo_evo:8080 (detectada no serviço) chave=chave-orion (lida do Orion)" \
   "portainer=painel.exemplo.com token=ptr_1" "orion=dados_postgres dados_vps dados_evolution dados_portainer")" "$r" \
   "detectar: Orion cobre senha, chave, rede ambígua e Portainer"
@@ -280,7 +300,7 @@ assert_eq ok "$r" "detectar não imprime segredo"
 # Serviço completo: ele manda; o Orion só entra no que faltar.
 r="$(EVO=1 ENV_PG="$(printf 'POSTGRES_USER=pgsvc\nPOSTGRES_PASSWORD=pg-svc')" ENV_EVO='AUTHENTICATION_API_KEY=chave-svc' \
   REDES_PG='n1 n2' REDES_TR='n2' rodar_detectar)"
-assert_eq "$(printf '%s\n' "pg=pgsvc/pg-svc (lida do serviço)" "rede=n2" \
+assert_eq "$(printf '%s\n' "pg=pgsvc/pg-svc (lida do serviço)" "rede=n2 (única comum a Postgres e Traefik)" \
   "evo=http://evo_evo:8080 (detectada no serviço) chave=chave-svc (lida do serviço)" \
   "portainer=painel.exemplo.com token=ptr_1" "orion=dados_portainer")" "$r" "detectar: o serviço vem antes do Orion"
 # Sem serviço da Evolution: BaseUrl e chave do Orion; nunca a Evolution Go.
@@ -290,15 +310,30 @@ mv "$ORION_DIR/dados_evolution" "$TMP/dados_evolution.fora"
 r="$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar | sed -n 3p)"
 assert_eq "evo= (salva) chave=" "$r" "detectar: dados_evolution_go nunca é lido"
 mv "$TMP/dados_evolution.fora" "$ORION_DIR/dados_evolution"
-# Postgres e Traefik sem rede comum: a Rede interna do Orion, se existir.
-r="$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n3' rodar_detectar | sed -n 2p)"
-assert_eq "rede=n2" "$r" "detectar: sem rede comum, a do Orion"
-case "$(cat "$TMP/detectar.log")" in *"uso a Rede interna do Orion (n2)"*) r=ok ;; *) r=nao ;; esac
-assert_eq ok "$r" "detectar: avisa que usou a rede do Orion"
+# Sem rede comum: para, mesmo com a Rede interna do Orion existindo (o CRM precisa dos dois).
+assert_eq 1 "$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n3' rodar_detectar >/dev/null; echo $?)" "sem rede comum: para mesmo com Orion"
+case "$(cat "$TMP/detectar.log")" in *"não compartilham nenhuma rede"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "sem rede comum: diz por quê"
+# Rede ambígua: a salva vem antes da do Orion.
+printf 'REDE=n1\n' >"$TMP/cred-rede.env"
+r="$(CRED_TESTE="$TMP/cred-rede.env" ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1 n2' REDES_TR='n1 n2' rodar_detectar | sed -n 2p)"
+assert_eq "rede=n1 (salva)" "$r" "rede ambígua: a salva antes do Orion"
+# Erro do Docker ao ler as redes: para mostrando o erro real.
+assert_eq 1 "$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG=FALHA REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "redes ilegíveis: para"
+case "$(cat "$TMP/detectar.log")" in *"erro real do docker"*"Não consegui ler as redes do serviço pg_pg"*) r=ok ;; *) r="$(cat "$TMP/detectar.log")" ;; esac
+assert_eq ok "$r" "redes ilegíveis: erro do Docker aparece"
+# Usuário do Postgres com aspas (aqui do Orion): para antes da confirmação.
+printf '%s\n' 'Usuario: pg"mau' 'Senha: x' >"$TMP/dados_postgres.mau"
+mv "$ORION_DIR/dados_postgres" "$TMP/dados_postgres.bom"
+mv "$TMP/dados_postgres.mau" "$ORION_DIR/dados_postgres"
+assert_eq 1 "$(ENV_PG='' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "usuário do Postgres com aspas: para"
+case "$(cat "$TMP/detectar.log")" in *"Usuário do Postgres inválido para a stack"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "usuário do Postgres inválido: mensagem"
+mv "$TMP/dados_postgres.bom" "$ORION_DIR/dados_postgres"
 # Sem Orion: como antes (rede ambígua fica com a primeira; sem senha no serviço, para).
 ORION_DIR="$TMP/sem-orion"
 r="$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1 n2' REDES_TR='n1 n2' rodar_detectar)"
-assert_eq "$(printf '%s\n' "pg=postgres/x (lida do serviço)" "rede=n1" "evo= (salva) chave=" "portainer= token=" "orion=")" "$r" \
+assert_eq "$(printf '%s\n' "pg=postgres/x (lida do serviço)" "rede=n1 (escolhida)" "evo= (salva) chave=" "portainer= token=" "orion=")" "$r" \
   "detectar sem Orion: comportamento antigo"
 assert_eq 1 "$(ENV_PG='' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "sem Orion e sem senha no serviço: para"
 assert_eq 1 "$(ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n3' rodar_detectar >/dev/null; echo $?)" "sem Orion e sem rede comum: para"
