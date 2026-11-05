@@ -134,8 +134,8 @@ Regras deste projeto:
 - O Composer segue o WhatsApp iOS: `[＋] [campo em pílula] [microfone | enviar]`. O `＋`
   abre foto ou vídeo, documento e localização; o campo cresce até ~5 linhas e depois rola
   por dentro; à direita fica o microfone com o campo vazio e o enviar com texto. Enter
-  envia só com ponteiro fino (desktop, Shift+Enter quebra linha); no toque, Enter quebra
-  linha e o envio é pelo botão.
+  envia no desktop (Shift+Enter quebra linha); no toque (`(hover: none) and (pointer:
+  coarse)`), Enter quebra linha e o envio é pelo botão.
 - Campos (`input`, `textarea`, `select`) ficam com no mínimo 16px no celular, em qualquer
   densidade, para o iOS não dar zoom ao focar (`src/styles.css`). Nunca desligar o zoom com
   `maximum-scale` ou `user-scalable=no`.

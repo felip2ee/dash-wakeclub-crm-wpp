@@ -5,8 +5,16 @@
  * servidor diz que há adaptador (`envioDisponivel`).
  */
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { FileText, Image, MapPin, Mic, Plus, SendHorizontal, Square } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  FileText,
+  Image as ImageIcon,
+  MapPin,
+  Mic,
+  Plus,
+  SendHorizontal,
+  Square,
+} from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,8 +31,10 @@ import { enviarMensagem } from "@/server/envio";
 import { listarRespostasRapidas } from "@/server/respostas-rapidas";
 
 import { iniciarGravacao, paraBase64 } from "./gravador";
+import { CONSULTA_TOQUE, deveEnviarComEnter } from "./teclado";
 
 const MAX_BYTES = 16 * 1024 * 1024;
+const LINHAS_MAX = 5;
 // Mesmos tipos que `MIME_DOCUMENTO` aceita no servidor.
 const ACEITA_DOCUMENTO =
   ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -36,6 +46,23 @@ function tipoDoArquivo(mime: string): "imagem" | "video" | "documento" {
   if (mime.startsWith("image/")) return "imagem";
   if (mime.startsWith("video/")) return "video";
   return "documento";
+}
+
+/** Pede a posição (o navegador pergunta a permissão no toque); falha vira toast. */
+function pedirLocalizacao(onPosicao: (c: GeolocationCoordinates) => void) {
+  if (!("geolocation" in navigator)) {
+    toast.error("Este aparelho não informa a localização.");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (p) => onPosicao(p.coords),
+    (erro) =>
+      toast.error(
+        erro.code === erro.PERMISSION_DENIED
+          ? "Permissão de localização negada. Libere nos ajustes do navegador."
+          : "Não foi possível obter a localização.",
+      ),
+  );
 }
 
 /** `＋` do WhatsApp: um input por tipo para o seletor do aparelho já abrir no certo. */
@@ -50,6 +77,14 @@ function MenuAnexar({
 }) {
   const midia = useRef<HTMLInputElement>(null);
   const documento = useRef<HTMLInputElement>(null);
+  const [aberto, setAberto] = useState(false);
+  // O Safari só abre o seletor se o click() sair direto do toque. O preventDefault impede
+  // o Radix de fechar e devolver o foco antes; o menu fecha logo depois do click().
+  const escolher = (input: RefObject<HTMLInputElement | null>) => (e: Event) => {
+    e.preventDefault();
+    input.current?.click();
+    setAberto(false);
+  };
   return (
     <>
       <input
@@ -66,7 +101,7 @@ function MenuAnexar({
         accept={ACEITA_DOCUMENTO}
         onChange={(e) => onArquivo(e.currentTarget)}
       />
-      <DropdownMenu>
+      <DropdownMenu open={aberto} onOpenChange={setAberto}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
@@ -80,11 +115,11 @@ function MenuAnexar({
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="min-w-52">
           <DropdownMenuGroup>
-            <DropdownMenuItem className="min-h-11" onSelect={() => midia.current?.click()}>
-              <Image aria-hidden />
+            <DropdownMenuItem className="min-h-11" onSelect={escolher(midia)}>
+              <ImageIcon aria-hidden />
               Foto ou vídeo
             </DropdownMenuItem>
-            <DropdownMenuItem className="min-h-11" onSelect={() => documento.current?.click()}>
+            <DropdownMenuItem className="min-h-11" onSelect={escolher(documento)}>
               <FileText aria-hidden />
               Documento
             </DropdownMenuItem>
@@ -96,6 +131,46 @@ function MenuAnexar({
         </DropdownMenuContent>
       </DropdownMenu>
     </>
+  );
+}
+
+/** Direita do campo: microfone com o campo vazio, parar durante a gravação, enviar com texto. */
+function BotaoDireito({
+  modo,
+  desabilitado,
+  onGravar,
+  onEnviar,
+}: {
+  modo: "gravar" | "gravando" | "enviar";
+  desabilitado: boolean;
+  onGravar: () => void;
+  onEnviar: () => void;
+}) {
+  if (modo === "enviar") {
+    return (
+      <Button
+        size="icon"
+        aria-label="Enviar mensagem"
+        disabled={desabilitado}
+        className="size-11 shrink-0 rounded-full [&_svg]:size-5"
+        onClick={onEnviar}
+      >
+        <SendHorizontal />
+      </Button>
+    );
+  }
+  const gravando = modo === "gravando";
+  return (
+    <Button
+      variant={gravando ? "destructive" : "ghost"}
+      size="icon"
+      aria-label={gravando ? "Parar e enviar áudio" : "Gravar áudio"}
+      disabled={desabilitado}
+      className="size-11 shrink-0 rounded-full [&_svg]:size-6"
+      onClick={onGravar}
+    >
+      {gravando ? <Square /> : <Mic />}
+    </Button>
   );
 }
 
@@ -128,13 +203,20 @@ export function Composer({ leadId, queryKey }: { leadId: string; queryKey: Query
   // Solta o microfone se a conversa fechar durante a gravação.
   useEffect(() => () => gravacaoAtual.current?.cancelar(), []);
 
-  // Cresce com o texto até o max-h (~5 linhas), depois rola por dentro; volta a 1 linha
-  // quando o texto é enviado. A borda (2px) entra porque o box-sizing é border-box.
+  // Cresce com o texto até ~5 linhas, depois rola por dentro; volta a 1 linha quando o
+  // texto é enviado. O teto é calculado aqui porque iOS < 16.4 descarta o max-h com `lh`.
+  // A borda (2px) entra porque o box-sizing é border-box.
   useLayoutEffect(() => {
     const el = campo.current;
     if (!el) return;
+    const s = getComputedStyle(el);
+    const maxima =
+      parseFloat(s.lineHeight) * LINHAS_MAX +
+      parseFloat(s.paddingTop) +
+      parseFloat(s.paddingBottom) +
+      2;
     el.style.height = "auto";
-    el.style.height = `${el.scrollHeight + 2}px`;
+    el.style.height = `${Math.min(el.scrollHeight + 2, maxima)}px`;
   }, [texto]);
 
   function enviarTexto() {
@@ -182,23 +264,8 @@ export function Composer({ leadId, queryKey }: { leadId: string; queryKey: Query
 
   function enviarLocalizacao() {
     if (envio.isPending) return;
-    if (!("geolocation" in navigator)) {
-      toast.error("Este aparelho não informa a localização.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (p) =>
-        envio.mutate({
-          tipo: "localizacao",
-          latitude: p.coords.latitude,
-          longitude: p.coords.longitude,
-        }),
-      (erro) =>
-        toast.error(
-          erro.code === erro.PERMISSION_DENIED
-            ? "Permissão de localização negada. Libere nos ajustes do navegador."
-            : "Não foi possível obter a localização.",
-        ),
+    pedirLocalizacao(({ latitude, longitude }) =>
+      envio.mutate({ tipo: "localizacao", latitude, longitude }),
     );
   }
 
@@ -244,41 +311,20 @@ export function Composer({ leadId, queryKey }: { leadId: string; queryKey: Query
             aria-label="Mensagem"
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => {
-              // Desktop: Enter envia e Shift+Enter quebra linha. Toque: Enter quebra
-              // linha e o envio é só pelo botão, como no WhatsApp.
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.nativeEvent.isComposing &&
-                !window.matchMedia("(pointer: coarse)").matches
-              ) {
+              const { key, shiftKey } = e;
+              const tecla = { key, shiftKey, isComposing: e.nativeEvent.isComposing };
+              if (deveEnviarComEnter(tecla, window.matchMedia(CONSULTA_TOQUE).matches)) {
                 e.preventDefault();
                 enviarTexto();
               }
             }}
           />
-          {gravacao || !temTexto ? (
-            <Button
-              variant={gravacao ? "destructive" : "ghost"}
-              size="icon"
-              aria-label={gravacao ? "Parar e enviar áudio" : "Gravar áudio"}
-              disabled={envio.isPending}
-              className="size-11 shrink-0 rounded-full [&_svg]:size-6"
-              onClick={() => void alternarGravacao()}
-            >
-              {gravacao ? <Square /> : <Mic />}
-            </Button>
-          ) : (
-            <Button
-              size="icon"
-              aria-label="Enviar mensagem"
-              disabled={envio.isPending}
-              className="size-11 shrink-0 rounded-full [&_svg]:size-5"
-              onClick={enviarTexto}
-            >
-              <SendHorizontal />
-            </Button>
-          )}
+          <BotaoDireito
+            modo={gravacao ? "gravando" : temTexto ? "enviar" : "gravar"}
+            desabilitado={envio.isPending}
+            onGravar={() => void alternarGravacao()}
+            onEnviar={enviarTexto}
+          />
         </div>
       </div>
     </div>
