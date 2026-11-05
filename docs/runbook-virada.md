@@ -95,20 +95,24 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
 - `WEBHOOK_EVOLUTION_SECRET`: segredo do webhook da Evolution API.
 - `WEBHOOK_VENDAS_SECRET`: segredo do webhook de vendas.
 - `EVOLUTION_INSTANCIA`: nome da instância da Evolution API que o motor atende.
-- `EVOLUTION_URL` e `EVOLUTION_API_KEY`: URL interna e `AUTHENTICATION_API_KEY` da Evolution API 2.3.7, gravadas pelo instalador. Hoje nada no app as lê (ficam para o adaptador).
+- `EVOLUTION_URL` e `EVOLUTION_API_KEY`: URL interna e `AUTHENTICATION_API_KEY` da Evolution API 2.3.7, gravadas pelo instalador. Com elas e `EVOLUTION_INSTANCIA`, o adaptador existe; faltando qualquer uma, o motor não processa eventos da Evolution nem envia.
 - `OPENAI_API_KEY`: chave da OpenAI para qualificador, porteiro, redator e transcrição. Sem ela, essas tarefas ficam ociosas (log `ia.sem_chave`) e o resto do motor funciona. Opcional: `OPENAI_MODELO_TRANSCRICAO` (padrão `whisper-1`). Chave nova é custo: só com autorização.
 
 `ADMIN_DATABASE_URL` (dono do banco) continua só para o `db:migrate`; o app nunca lê.
 
 ## Portões da Task 13 (antes de publicar o adaptador)
 
-Revise o adaptador da Evolution API contra estes pontos antes do passo 7:
+Revise o adaptador da Evolution API contra estes pontos antes do passo 7. Os marcados
+estão no código (`src/server/evolution/`) com teste sem rede; os abertos dependem do
+ambiente real.
 
-- `enviar` lança `ErroEnvio` (`src/server/evolution/tipos.ts`) com `certeza`: `nao_saiu` só quando a Evolution recusou antes de entregar ao WhatsApp; `incerto` para timeout, 5xx ou resposta ilegível. Erro não tipado é tratado como `incerto`. O follow-up `incerto` é abortado e o vendedor confere; nunca é reenviado sozinho.
-- O timeout do `enviar` é muito menor que 15 min (o órfão em `enviando` é abortado aos 15 min). A mensagem de erro não leva corpo da resposta nem segredo.
-- Recálculo de `chave_ordem` (passo 10) com `adaptador.chaveDeOrdem(corpo)`.
-- Confira nos eventos capturados se o webhook da Evolution manda a mídia em base64 ou só o identificador; isso define o `baixarMidia` e o limite de 25 MB.
-- O formato do webhook de vendas é provisório (`src/server/vendas/normalizar.ts`): calibre com o payload real. Veja as suposições registradas em `decisoes` do evento `sale_received`.
+- [x] `enviar` lança `ErroEnvio` (`src/server/evolution/tipos.ts`) com `certeza`: `nao_saiu` só quando a Evolution recusou antes de entregar ao WhatsApp (4xx exceto 408); `incerto` para timeout, rede, 5xx, 408 ou resposta sem `key.id`. Erro não tipado é tratado como `incerto`. O follow-up `incerto` é abortado e o vendedor confere; nunca é reenviado sozinho.
+- [x] O timeout do `enviar` é muito menor que 15 min (30 s texto e localização, 120 s mídia; o órfão em `enviando` é abortado aos 15 min). A mensagem de erro não leva corpo da resposta nem segredo.
+- [x] `adaptador.chaveDeOrdem(corpo)` existe para o recálculo de `chave_ordem` (passo 10): telefone E.164 da conversa, `instancia:<nome>` para eventos da instância.
+- [x] `baixarMidia` busca a mídia sob demanda em `POST /chat/getBase64FromMediaMessage` (o evento capturado não traz base64); 400/404 viram `sem_midia`.
+- [ ] Confirme com envio real: texto, imagem, vídeo, documento, áudio de voz (chega como PTT?) e localização, e que o eco volta com o mesmo `key.id` devolvido pelo envio.
+- [ ] Confira nos eventos capturados o tamanho dos corpos frente ao limite de 25 MB (webhook com base64 ligado estoura).
+- [ ] O formato do webhook de vendas é provisório (`src/server/vendas/normalizar.ts`): calibre com o payload real. Veja as suposições registradas em `decisoes` do evento `sale_received`.
 
 ## Pré-checagem do corte
 

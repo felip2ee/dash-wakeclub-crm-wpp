@@ -1,6 +1,6 @@
 /**
  * Envio de mensagem pelo app (design §5.3): valida, confere a posse do lead, manda pela
- * Evolution Go e grava a mensagem como `enviada_por = 'app'` com o autor. A lógica de
+ * Evolution API e grava a mensagem como `enviada_por = 'app'` com o autor. A lógica de
  * banco (`podeEnviar`, `gravarEnvio`) é separada das server functions para ser testável
  * sem cookie.
  */

@@ -1,5 +1,5 @@
 /**
- * Entrada dos webhooks externos (Evolution Go e sistema de vendas).
+ * Entrada dos webhooks externos (Evolution API e sistema de vendas).
  *
  * Só autentica e grava o corpo bruto em `webhook_eventos`; o motor processa depois.
  * Assim um pico de eventos nunca perde mensagem por timeout de processamento

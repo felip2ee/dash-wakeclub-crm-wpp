@@ -130,6 +130,11 @@ descrito em §5–§8.
 
 ### 4.3 Evolution Go
 
+> **Nota (04/11/2026, decisão do dono):** a Evolution API 2.3.7 substituiu o Evolution Go.
+> O número continua na 2.3.7 e o adaptador (`src/server/evolution/`) fala com ela; onde esta
+> spec diz "Evolution Go", leia "Evolution API 2.3.7". O formato veio de evento real
+> capturado em produção e do WF-01/WF-07, e as rotas de envio do código-fonte da tag 2.3.7.
+
 O número hoje está na Evolution API 2.3.7; vamos para o **Evolution Go**
 **[decidido]**, que tem rotas e formato de webhook diferentes. **Não chutar o
 formato pela documentação.** Passo obrigatório antes de escrever o normalizador:
