@@ -35,6 +35,19 @@ SIM="${WAKECRM_SIM:-}"
 TMP="$(mktemp -d)"
 chmod 700 "$TMP"
 MIGRANDO=""
+# 1 depois de um banco migrado com o CRM escalado a 0, até a stack sair publicada.
+CRM_PARADO=""
+ATUALIZADO_ANTES=""
+ESTADO_UPDATE=""
+
+# aviso_crm_parado: saída com erro entre a migração e a publicação deixa o CRM em 0.
+# Não religa sozinho: a imagem antiga pode não bater com o schema novo.
+aviso_crm_parado() {
+  falha "O CRM está parado (0 réplicas): $SERVICO_APP foi escalado para 0 antes de migrar."
+  echo "  O banco já está migrado. Para sair daqui:"
+  echo "  - rode o instalador de novo (publica a imagem nova), ou"
+  echo "  - docker service scale $SERVICO_APP=$REPLICAS_ANTES (volta a imagem antiga, que pode não funcionar com o schema novo)."
+}
 
 # Saída (normal, erro ou sinal): interrompido no meio da migração, tenta a volta
 # automática antes de apagar TMP. Os traps são desfeitos e os sinais ignorados
@@ -50,6 +63,7 @@ ao_sair() {
     if restaurar "$BACKUP"; then religar_app; fi
     echo "Backup: $BACKUP"
   fi
+  if [ "$rc" != 0 ] && [ -n "$CRM_PARADO" ]; then aviso_crm_parado; fi
   rm -rf "$TMP"
   exit "$rc"
 }
@@ -490,24 +504,42 @@ texto_config() {
   sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk 'BEGIN { printf "\"" } { printf "%s", $0 } END { printf "\"" }'
 }
 
+# base_portainer RC: código do curl na 9443. Só recusa (7), timeout (28) ou nome que não
+# resolve (6) contam como "não responde" e caem no HTTP da 9000; o resto fica no HTTPS.
+base_portainer() {
+  case "$1" in
+    6 | 7 | 28) printf 'http://%s:9000\n' "$PORTAINER_SERVICO" ;;
+    *) printf 'https://%s:9443\n' "$PORTAINER_SERVICO" ;;
+  esac
+}
+
 # config_portainer METODO CAMINHO [CORPO]: config do curl para uma chamada à API do Portainer
-# (porta 9000 interna). Token e corpo moram aqui dentro, nunca em argumento.
+# em PORTAINER_BASE. Token e corpo moram aqui dentro, nunca em argumento.
 config_portainer() {
-  printf 'url = "http://%s:9000%s"\nrequest = "%s"\n' "$PORTAINER_SERVICO" "$2" "$1"
-  printf 'fail\nsilent\nshow-error\nmax-time = 300\nheader = "Content-Type: application/json"\n'
+  printf 'url = "%s%s"\nrequest = "%s"\n' "$PORTAINER_BASE" "$2" "$1"
+  # O certificado do Portainer na 9443 é autoassinado.
+  case "$PORTAINER_BASE" in https:*) printf 'insecure\n' ;; esac
+  printf 'fail\nsilent\nshow-error\nconnect-timeout = 10\nmax-time = 300\nheader = "Content-Type: application/json"\n'
   if [ -n "${PORTAINER_JWT:-}" ]; then printf 'header = "Authorization: Bearer %s"\n' "$PORTAINER_JWT"; fi
   if [ -n "${3:-}" ]; then printf 'data-binary = %s\n' "$(printf '%s' "$3" | texto_config)"; fi
 }
 
 # portainer_api METODO CAMINHO [CORPO]: a chamada sai de um contêiner curlimages/curl na REDE,
-# com a config pelo stdin (curl -K -).
+# com a config pelo stdin (curl -K -). A saída tem token e Env de outras stacks: sem log do Docker.
 portainer_api() {
-  config_portainer "$@" | docker run --rm -i --network "$REDE" curlimages/curl:8.11.1 -K -
+  config_portainer "$@" | docker run --rm -i --log-driver none --network "$REDE" curlimages/curl:8.11.1 -K -
 }
 
 # publicar_portainer: cria ou atualiza (pullImage) a stack wakecrm pela API. Falha => 1.
 publicar_portainer() {
-  local corpo resp endpoint swarm id conteudo
+  local corpo resp endpoint swarm id conteudo rc=0
+  PORTAINER_BASE="https://$PORTAINER_SERVICO:9443"
+  portainer_api GET /api/system/status >/dev/null 2>&1 || rc=$?
+  PORTAINER_BASE="$(base_portainer "$rc")"
+  case "$PORTAINER_BASE" in
+    https:*) ok "Portainer por HTTPS ($PORTAINER_BASE)" ;;
+    *) aviso "O Portainer não respondeu na 9443; uso $PORTAINER_BASE (senha sem criptografia na rede overlay)." ;;
+  esac
   corpo="{\"username\":$(printf '%s' "$PORTAINER_USUARIO" | json_texto),\"password\":$(printf '%s' "$PORTAINER_SENHA" | json_texto)}"
   resp="$(portainer_api POST /api/auth "$corpo")" || return 1
   PORTAINER_JWT="$(jwt_portainer "$resp")"
@@ -530,20 +562,36 @@ publicar_portainer() {
   fi
 }
 
-# replica_rodando: uma tarefa Running e nenhuma atualização em curso (start-first deixa a
-# antiga Running até a nova subir).
-replica_rodando() {
-  local estado
-  estado="$(docker service inspect --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' "$SERVICO_APP" 2>/dev/null)" ||
+# update_falhou ESTADO: 0 se o Swarm pausou ou voltou a atualização.
+update_falhou() {
+  case "$1" in paused | rollback_*) return 0 ;; *) return 1 ;; esac
+}
+
+# replica_pronta: 0 quando o serviço já recebeu o deploy (UpdatedAt mudou desde
+# ATUALIZADO_ANTES; o Portainer aplica depois de responder), há tarefa running com a imagem
+# e o Env atuais e nenhuma atualização em curso (logo depois do deploy a tarefa antiga ainda
+# responde). Também 0 se a atualização falhou, para parar de esperar; ESTADO_UPDATE diz qual.
+replica_pronta() {
+  local esperado id
+  [ "$(docker service inspect --format '{{.UpdatedAt}}' "$SERVICO_APP" 2>/dev/null)" != "$ATUALIZADO_ANTES" ] ||
     return 1
-  case "$estado" in updating | paused | rollback_started | rollback_paused) return 1 ;; esac
-  docker service ps --filter desired-state=running --format '{{.CurrentState}}' "$SERVICO_APP" 2>/dev/null |
-    grep -q '^Running'
+  ESTADO_UPDATE="$(docker service inspect --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' "$SERVICO_APP" 2>/dev/null)" ||
+    return 1
+  if update_falhou "$ESTADO_UPDATE"; then return 0; fi
+  [ "$ESTADO_UPDATE" != updating ] || return 1
+  # Só imagem e Env (o que o instalador muda): o JSON inteiro da tarefa omite campos do serviço.
+  esperado="$(docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}} {{json .Spec.TaskTemplate.ContainerSpec.Env}}' "$SERVICO_APP")" || return 1
+  for id in $(docker service ps -q --filter desired-state=running "$SERVICO_APP" 2>/dev/null); do
+    [ "$(docker inspect --type task --format '{{.Status.State}}' "$id" 2>/dev/null)" = running ] || continue
+    [ "$(docker inspect --type task --format '{{.Spec.ContainerSpec.Image}} {{json .Spec.ContainerSpec.Env}}' "$id" 2>/dev/null)" = "$esperado" ] && return 0
+  done
+  return 1
 }
 
 # WAKECRM_CURL_INSECURE só serve ao teste local (certificado padrão do Traefik).
 login_ok() {
-  curl ${WAKECRM_CURL_INSECURE:+"-k"} -fsS -o /dev/null --max-time 10 "https://$DOMINIO/login" 2>/dev/null
+  [ "$(curl ${WAKECRM_CURL_INSECURE:+"-k"} -s -o /dev/null -w '%{http_code}' --max-time 10 \
+    "https://$DOMINIO/login" 2>/dev/null)" = 200 ]
 }
 codigo_webhook() {
   curl ${WAKECRM_CURL_INSECURE:+"-k"} -s -o /dev/null -w '%{http_code}' --max-time 10 \
@@ -770,7 +818,7 @@ gerar() {
   if [ -z "$VITE_VAPID_PUBLIC_KEY" ]; then
     # web-push é dependência de produção do app: gera offline, dentro da imagem.
     local par
-    par="$(docker run --rm --network none "$IMAGEM" bun -e \
+    par="$(docker run --rm --log-driver none --network none "$IMAGEM" bun -e \
       'const k=require("web-push").generateVAPIDKeys();console.log(k.publicKey);console.log(k.privateKey)')" ||
       morrer "Não consegui gerar as chaves VAPID."
     VITE_VAPID_PUBLIC_KEY="$(printf '%s\n' "$par" | sed -n 1p)"
@@ -884,6 +932,7 @@ banco() {
   [ -z "$BACKUP" ] || MIGRANDO=1
   if aplicar_banco; then
     MIGRANDO=""
+    if [ -n "${REPLICAS_ANTES:-}" ] && [ "$REPLICAS_ANTES" -gt 0 ]; then CRM_PARADO=1; fi
     ok "banco migrado, roles e views aplicadas"
     return 0
   fi
@@ -961,8 +1010,11 @@ publicar() {
   env="$(arquivo_env $CHAVES_STACK)"
   (umask 077 && stack_publicavel "$MODELO_STACK" "$env" >"$STACK") || morrer "Não consegui preencher $MODELO_STACK."
   rm -f "$env"
+  # Vazio se o serviço não existe; conferir espera o deploy mudar isto.
+  ATUALIZADO_ANTES="$(docker service inspect --format '{{.UpdatedAt}}' "$SERVICO_APP" 2>/dev/null || true)"
   if [ -n "$PORTAINER_USUARIO" ]; then
     if publicar_portainer; then
+      CRM_PARADO=""
       religar_depois_do_deploy
       return 0
     fi
@@ -970,6 +1022,7 @@ publicar() {
   fi
   docker stack deploy --with-registry-auth=false -c - wakecrm <"$STACK" ||
     morrer "docker stack deploy falhou. O banco já está como o instalador deixou; corrija e rode de novo. Log: docker service logs --tail 100 $SERVICO_APP"
+  CRM_PARADO=""
   ok "stack wakecrm publicada por docker stack deploy"
   religar_depois_do_deploy
 }
@@ -984,11 +1037,15 @@ religar_depois_do_deploy() {
 conferir() {
   passo 9 "Conferindo"
   local codigo
-  if ! esperar_ate 180 5 replica_rodando; then
-    falha "A réplica de $SERVICO_APP não ficou Running em 180 s. Veja o log: docker service logs --tail 100 $SERVICO_APP"
+  if ! esperar_ate 180 5 replica_pronta; then
+    falha "A réplica nova de $SERVICO_APP não ficou Running em 180 s. Veja o log: docker service logs --tail 100 $SERVICO_APP"
     return 1
   fi
-  ok "réplica Running"
+  if update_falhou "$ESTADO_UPDATE"; then
+    falha "O Swarm não concluiu a atualização de $SERVICO_APP (estado $ESTADO_UPDATE). Veja: docker service ps $SERVICO_APP e docker service logs --tail 100 $SERVICO_APP"
+    return 1
+  fi
+  ok "réplica nova Running (atualização concluída)"
   if ! esperar_ate 180 10 login_ok; then
     falha "https://$DOMINIO/login não respondeu 200 em 180 s. Log: docker service logs --tail 100 $SERVICO_APP"
     aviso "O CRM está de pé: confira se o DNS de $DOMINIO aponta para este servidor e se o Traefik emitiu o certificado (docker service logs --tail 100 $TRAEFIK_SERVICO)."

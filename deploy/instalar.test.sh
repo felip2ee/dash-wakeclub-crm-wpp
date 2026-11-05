@@ -114,15 +114,44 @@ assert_eq "" "$(id_stack '[{"Id":2,"Name":"wakecrm2"}]' wakecrm)" "nome parecido
 
 # Config do curl para o Portainer: corpo e token dentro da config, escapados.
 # shellcheck disable=SC2034 # lidas dentro de config_portainer
-{ PORTAINER_SERVICO=portainer_portainer; PORTAINER_JWT=jwt1; }
+{ PORTAINER_SERVICO=portainer_portainer; PORTAINER_JWT=jwt1; PORTAINER_BASE=https://portainer_portainer:9443; }
 CFG="$(config_portainer PUT '/api/stacks/3?endpointId=1' '{"a":"x\\ny \"q\""}')"
-case "$CFG" in *'url = "http://portainer_portainer:9000/api/stacks/3?endpointId=1"'*'request = "PUT"'*'Authorization: Bearer jwt1"'*) r=ok ;; *) r="$CFG" ;; esac
+case "$CFG" in *'url = "https://portainer_portainer:9443/api/stacks/3?endpointId=1"'*'request = "PUT"'*insecure*'Authorization: Bearer jwt1"'*) r=ok ;; *) r="$CFG" ;; esac
 assert_eq ok "$r" "config do curl com url, método e token"
 assert_eq 'data-binary = "{\"a\":\"x\\\\ny \\\"q\\\"\"}"' "$(printf '%s\n' "$CFG" | grep '^data-binary')" "corpo escapado na config do curl"
 # shellcheck disable=SC2034 # lida dentro de config_portainer
 PORTAINER_JWT=""
 case "$(config_portainer GET /api/endpoints)" in *Authorization* | *data-binary*) r=nao ;; *) r=ok ;; esac
 assert_eq ok "$r" "sem token e sem corpo: nem header nem data"
+
+# Portainer: HTTPS na 9443; só recusa, timeout ou nome sem resposta caem no HTTP da 9000.
+for rc in 0 22 35 60; do
+  assert_eq https://portainer_portainer:9443 "$(base_portainer "$rc")" "curl $rc na 9443: fica no HTTPS"
+done
+for rc in 6 7 28; do
+  assert_eq http://portainer_portainer:9000 "$(base_portainer "$rc")" "curl $rc na 9443: cai no HTTP"
+done
+# shellcheck disable=SC2034 # lida dentro de config_portainer
+PORTAINER_BASE=http://portainer_portainer:9000
+case "$(config_portainer GET /api/stacks)" in *insecure*) r=nao ;; *) r=ok ;; esac
+assert_eq ok "$r" "HTTP sem insecure"
+
+# Atualização do Swarm: pausada ou voltada é falha; o resto espera ou segue.
+for e in paused rollback_started rollback_paused rollback_completed; do
+  assert_eq 0 "$(update_falhou "$e"; echo $?)" "update $e falhou"
+done
+for e in "" updating completed; do
+  assert_eq 1 "$(update_falhou "$e"; echo $?)" "update [$e] não é falha"
+done
+
+# Saída com erro depois da migração com o CRM em 0: o trap avisa, não religa.
+SAIDA="$(bash -c '. "$1"; set +e; CRM_PARADO=1; REPLICAS_ANTES=2; docker() { echo "docker $*"; }; exit 1' _ "$AQUI/instalar.sh" 2>&1)"
+case "$SAIDA" in *"✗ O CRM está parado (0 réplicas)"*"banco já está migrado"*"rode o instalador de novo"*"docker service scale wakecrm_wakecrm=2"*) r=ok ;; *) r="$SAIDA" ;; esac
+assert_eq ok "$r" "saída com erro e CRM parado: mensagem com as duas saídas"
+case "$SAIDA" in *"docker service"*"docker service"*) r=religou ;; *) r=ok ;; esac
+assert_eq ok "$r" "trap não escala nada sozinho"
+assert_eq "" "$(bash -c '. "$1"; CRM_PARADO=1; REPLICAS_ANTES=2; exit 0' _ "$AQUI/instalar.sh" 2>&1)" "saída 0: sem aviso"
+assert_eq "" "$(bash -c '. "$1"; set +e; REPLICAS_ANTES=2; exit 1' _ "$AQUI/instalar.sh" 2>&1)" "sem CRM_PARADO: sem aviso"
 
 # Resumo final: URLs sem segredo, scp pronto com backup; sem backup diz nenhum.
 # shellcheck disable=SC2034 # lidas dentro de texto_resumo

@@ -39,9 +39,16 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
 - Migração ou views: ele restaura o backup sozinho, religa o CRM e para com a mensagem do erro.
   Corrija e rode de novo. Se a restauração também falhar, ele imprime o comando manual (pede a
   senha do superusuário) e o CRM fica parado até restaurar.
-- Publicação: com a API do Portainer falhando (por exemplo, stack `wakecrm` criada fora dele),
-  cai para `docker stack deploy` com aviso.
-- Conferência: réplica parada, `/login` sem 200 ou webhook sem 404 saem com `✗` e o comando
+- Depois da migração e antes da stack publicada (admin, publicação ou interrupção): o CRM
+  fica parado (0 réplicas) e o banco já está migrado. O instalador avisa e não religa sozinho.
+  Saídas: rode o instalador de novo (publica a imagem nova), ou
+  `docker service scale wakecrm_wakecrm=<réplicas de antes>` para voltar a imagem antiga, que
+  pode não funcionar com o schema novo.
+- Publicação: a API do Portainer vai por HTTPS na 9443 (certificado autoassinado); só se a
+  9443 não responder usa HTTP na 9000, com aviso. Com a API falhando (por exemplo, stack
+  `wakecrm` criada fora dele), cai para `docker stack deploy` com aviso.
+- Conferência: espera a tarefa nova (da atualização recém-publicada) ficar Running; atualização
+  pausada ou desfeita pelo Swarm sai com `✗` e o estado. Réplica parada, `/login` sem 200 ou webhook sem 404 saem com `✗` e o comando
   `docker service logs --tail 100 wakecrm_wakecrm`. Com a réplica de pé e `/login` falhando,
   confira o DNS do domínio e o certificado no log do Traefik. O banco não é restaurado nesse
   caso: o schema novo já está aplicado e o backup continua guardado.
