@@ -211,7 +211,7 @@ describe.skipIf(process.env.TESTE_BANCO !== "1")("db:origem", () => {
     const antes = await foto();
     const r = rodar();
     expect(r.status).toBe(0);
-    // Deste arquivo: p1–p5, p7 e p8 (p6 é 'direto' sem evidência e não conta; p9 segue nulo).
+    // Deste arquivo: p0, p1, p3–p5, p7 e p8 (p2 e p6 são 'direto' sem evidência e não contam; p9 segue nulo).
     expect(Number(r.stdout.match(/^já tinham origem\t(\d+)$/m)?.[1])).toBeGreaterThanOrEqual(7);
     expect(r.stdout).toMatch(/^anuncio\t0$/m);
     expect(r.stdout).toMatch(/^direto\t0$/m);
