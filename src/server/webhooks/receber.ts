@@ -5,7 +5,8 @@
  * Assim um pico de eventos nunca perde mensagem por timeout de processamento
  * (design §4.1). Segredo inválido ou ausente responde 404 para não revelar a rota.
  * Corpo acima de 25 MB responde 413, mas nada some: fica uma linha `falhou` com o
- * tamanho (sem o corpo), visível no monitor do admin.
+ * tamanho (sem o corpo), visível no monitor do admin. No corpo da Evolution o `apikey`
+ * de nível superior (chave global da API) é removido antes de gravar.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
 
@@ -82,6 +83,15 @@ export async function receberWebhook(origem: Origem, request: Request): Promise<
   }
 
   const chave = origem === "evolution" ? chaveDeOrdemEvolution(corpo) : null;
+  // O envelope da Evolution traz `apikey` (a chave GLOBAL da API): nunca vai para o banco.
+  if (
+    origem === "evolution" &&
+    corpo !== null &&
+    typeof corpo === "object" &&
+    !Array.isArray(corpo)
+  ) {
+    delete (corpo as Record<string, unknown>).apikey;
+  }
   const id = await enfileirar(getPoolWebhook(), origem, corpo, chave);
   return Response.json({ ok: true, id });
 }

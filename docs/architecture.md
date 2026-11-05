@@ -225,7 +225,7 @@ Rotas anteriores, ainda acessíveis por URL:
 | `POST /api/webhooks/evolution` | segredo (header `x-webhook-secret` ou `?token=`) | grava o corpo bruto em `webhook_eventos` com chave de ordem  |
 | `POST /api/webhooks/vendas`    | idem                                             | grava o corpo bruto em `webhook_eventos`                      |
 
-Os webhooks respondem 404 com segredo inválido ou ausente, 400 para JSON inválido e 413
+O corpo da Evolution é gravado sem o `apikey` de nível superior (chave global da API); a migração `0006` limpa linhas antigas. Os webhooks respondem 404 com segredo inválido ou ausente, 400 para JSON inválido e 413
 acima de 25 MB (nesse caso fica uma linha `falhou` com o tamanho, sem o corpo).
 
 O cartão "Webhooks" de `/configuracoes` (só admin, `getWebhooks` em `configuracoes.ts`) mostra a
