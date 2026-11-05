@@ -65,7 +65,7 @@ export async function carregarVendedores(db: ClienteDb): Promise<Vendedor[]> {
                 and e.ocorrido_em > now() - interval '30 days') as recebidos_30d,
             (select count(*)::int from wakeclub.leads l
               where l.atendente_id = u.id and l.opt_out = false
-                and l.etiqueta <> 'Negociação encerrada') as carga_ativa
+                and l.etiqueta <> 'Encerrado') as carga_ativa
        from wakeclub.usuarios u
       where u.ativo = true and u.papel = 'atendente'`,
   );

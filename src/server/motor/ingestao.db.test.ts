@@ -34,11 +34,11 @@ async function lead(id: string) {
   return rows[0];
 }
 
-async function criarFollowup(leadId: string, status = "pendente") {
+async function criarFollowup(leadId: string, status = "pendente", tipo = "reengajar") {
   const { rows } = await db().query(
     `insert into wakeclub.followups (lead_id, agendado_para, tipo, status)
-     values ($1::uuid, now() + interval '1 day', 'reengajar', $2::text) returning id`,
-    [leadId, status],
+     values ($1::uuid, now() + interval '1 day', $3::text, $2::text) returning id`,
+    [leadId, status, tipo],
   );
   return rows[0].id as string;
 }
@@ -111,11 +111,7 @@ describe.skipIf(!bancoTesteAtivo)("entrada de mensagens", () => {
     const f = await criarFollowup(leadId);
     await registrar(msg({ telefone, texto: "parar" }));
     const l = await lead(leadId);
-    expect([l.opt_out, l.etiqueta, l.qualificar_apos]).toEqual([
-      true,
-      "Negociação encerrada",
-      null,
-    ]);
+    expect([l.opt_out, l.etiqueta, l.qualificar_apos]).toEqual([true, "Encerrado", null]);
     expect(await followup(f)).toEqual({
       status: "cancelado",
       motivo_cancelamento: "opt-out: o lead pediu para parar",
@@ -127,7 +123,7 @@ describe.skipIf(!bancoTesteAtivo)("entrada de mensagens", () => {
     );
     expect(rows[0].n).toBe(1);
     expect(await eventosOptOut(leadId)).toMatchObject([
-      { estado_novo: { opt_out: true, etiqueta: "Negociação encerrada", qualificar_apos: null } },
+      { estado_novo: { opt_out: true, etiqueta: "Encerrado", qualificar_apos: null } },
     ]);
   });
 
@@ -198,6 +194,41 @@ describe.skipIf(!bancoTesteAtivo)("entrada de mensagens", () => {
       ]);
       expect(n.rows[0].status).toBe("cancelada");
     }
+  });
+
+  test("equipe responde a Novo lead: Em atendimento com um stage_changed", async () => {
+    const telefone = telefoneUnico();
+    const { leadId } = await registrar(msg({ telefone }));
+    expect((await lead(leadId)).etiqueta).toBe("Novo lead");
+    await registrar(msg({ telefone, daEquipe: true, nome: null, texto: "oi!" }));
+    await registrar(msg({ telefone, daEquipe: true, nome: null, texto: "tudo bem?" }));
+    expect((await lead(leadId)).etiqueta).toBe("Em atendimento");
+    const { rows } = await db().query(
+      `select agente, decisao, motivo from wakeclub.eventos_automacao
+        where entidade_id = $1::uuid and tipo_evento = 'stage_changed'`,
+      [leadId],
+    );
+    expect(rows).toEqual([
+      { agente: "sistema", decisao: "Novo lead -> Em atendimento", motivo: "equipe respondeu" },
+    ]);
+  });
+
+  test("mensagem do lead cancela parado mas preserva lembrete_dia", async () => {
+    const telefone = telefoneUnico();
+    const { leadId } = await registrar(msg({ telefone }));
+    const parado = await criarFollowup(leadId, "aprovado", "parado");
+    const lembrete = await criarFollowup(leadId, "aprovado", "lembrete_dia");
+    await registrar(msg({ telefone, texto: "voltei" }));
+    expect((await followup(parado)).status).toBe("cancelado");
+    expect((await followup(lembrete)).status).toBe("aprovado");
+  });
+
+  test("opt-out cancela inclusive lembrete", async () => {
+    const telefone = telefoneUnico();
+    const { leadId } = await registrar(msg({ telefone }));
+    const lembrete = await criarFollowup(leadId, "aprovado", "lembrete_d1");
+    await registrar(msg({ telefone, texto: "parar" }));
+    expect((await followup(lembrete)).status).toBe("cancelado");
   });
 
   test("nao cancela enviando", async () => {

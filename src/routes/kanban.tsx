@@ -33,14 +33,14 @@ const RECARREGAR_A_CADA_MS = 30_000;
 
 /** As colunas são as etapas do funil do playbook (§24), nesta ordem. */
 const COLUNAS: { etiqueta: string; cor: string }[] = [
-  { etiqueta: "Novo Lead", cor: "oklch(0.7 0.02 250)" },
-  { etiqueta: "Atendimento", cor: "oklch(0.62 0.14 240)" },
+  { etiqueta: "Novo lead", cor: "oklch(0.7 0.02 250)" },
+  { etiqueta: "Em atendimento", cor: "oklch(0.62 0.14 240)" },
   { etiqueta: "Link enviado", cor: "oklch(0.6 0.13 200)" },
+  { etiqueta: "Cadastrado", cor: "oklch(0.58 0.15 270)" },
   { etiqueta: "Aguardando pagamento", cor: "oklch(0.72 0.15 78)" },
-  { etiqueta: "Agendado", cor: "oklch(0.55 0.18 300)" },
-  { etiqueta: "Aula realizada", cor: "oklch(0.55 0.16 158)" },
-  { etiqueta: "Follow-up", cor: "oklch(0.65 0.17 45)" },
-  { etiqueta: "Negociação encerrada", cor: "oklch(0.55 0.08 20)" },
+  { etiqueta: "Aluno com horas", cor: "oklch(0.55 0.16 158)" },
+  { etiqueta: "Aluno sem horas", cor: "oklch(0.65 0.17 45)" },
+  { etiqueta: "Encerrado", cor: "oklch(0.55 0.08 20)" },
 ];
 
 const TEMPERATURA_ESTILO: Record<string, string> = {

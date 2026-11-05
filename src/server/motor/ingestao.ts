@@ -89,7 +89,10 @@ async function registrarMovimento(db: PoolClient, leadId: string, m: EventoMensa
                 else l.ultima_msg_equipe_em end,
               n_toques = case when $2::text = 'lead' then 0 else l.n_toques end,
               opt_out = l.opt_out or $4::boolean,
-              etiqueta = case when $4::boolean then 'Negociação encerrada' else l.etiqueta end,
+              etiqueta = case
+                when $4::boolean then 'Encerrado'
+                when $2::text = 'equipe' and l.etiqueta = 'Novo lead' then 'Em atendimento'
+                else l.etiqueta end,
               qualificar_apos = case
                 when l.opt_out or $4::boolean then null
                 else now() + interval '2 minutes' end
@@ -107,6 +110,8 @@ async function registrarMovimento(db: PoolClient, leadId: string, m: EventoMensa
          from wakeclub.followups a
         where a.id = f.id and f.lead_id = $1::uuid
           and f.status in ('pendente', 'aguardando_aprovacao', 'aprovado')
+          -- Lembrete de aula sobrevive à conversa viva; só o opt-out cancela tudo.
+          and (f.tipo not in ('lembrete_d1', 'lembrete_dia') or $4::boolean)
        returning f.id, f.lead_id, f.tipo, f.agendado_para, f.motivo_cancelamento,
                  a.status as status_antes
      ),
@@ -133,7 +138,7 @@ async function registrarMovimento(db: PoolClient, leadId: string, m: EventoMensa
               'opt-out por regex determinística',
               jsonb_build_object('opt_out', false, 'etiqueta', a.etiqueta_antes,
                                  'qualificar_apos', a.qualificar_apos_antes),
-              jsonb_build_object('opt_out', true, 'etiqueta', 'Negociação encerrada',
+              jsonb_build_object('opt_out', true, 'etiqueta', 'Encerrado',
                                  'qualificar_apos', null),
               '{}'::jsonb, 'lead', m.id, 'motor', $5::text,
               'motor:' || $5::text || ':' || m.id::text
@@ -149,6 +154,22 @@ async function registrarMovimento(db: PoolClient, leadId: string, m: EventoMensa
           and t.aberto_em >= $3::timestamptz - interval '60 minutes'
           and t.aberto_em <= $3::timestamptz + interval '5 minutes'
         order by t.followup_id, t.aberto_em desc
+     ),
+     ev_etapa as (
+       insert into wakeclub.eventos_automacao
+         (lead_id, agente, tipo_evento, gatilho, decisao, motivo,
+          estado_anterior, estado_novo, metadados,
+          entidade_tipo, entidade_id, origem_tipo, origem_id, correlacao_id)
+       select m.id, 'sistema', 'stage_changed', 'webhook',
+              'Novo lead -> Em atendimento', 'equipe respondeu',
+              jsonb_build_object('etiqueta', a.etiqueta_antes),
+              jsonb_build_object('etiqueta', m.etiqueta),
+              '{}'::jsonb, 'lead', m.id, 'motor', $5::text,
+              'motor:' || $5::text || ':etapa:' || m.id::text
+         from mov m join antes a on a.id = m.id
+        where a.etiqueta_antes = 'Novo lead' and m.etiqueta = 'Em atendimento'
+       on conflict do nothing
+       returning id
      ),
      ev_enviado as (
        insert into wakeclub.eventos_automacao
