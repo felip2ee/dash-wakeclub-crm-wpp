@@ -86,6 +86,15 @@ async function eventosLead(id: string, tipo: string) {
   return rows;
 }
 
+async function lembretes(id: string) {
+  const { rows } = await db().query(
+    `select tipo from wakeclub.followups
+      where lead_id = $1::uuid and tipo like 'lembrete%' order by tipo`,
+    [id],
+  );
+  return rows.map((r) => r.tipo);
+}
+
 async function appEvento(tipo: string, chave: string) {
   const { rows } = await db().query(
     "select * from wakeclub.app_eventos where tipo = $1::text and chave = $2::text",
@@ -281,6 +290,70 @@ describe.skipIf(!bancoTesteAtivo)("eventos do app", () => {
       [l.leadId],
     );
     expect(rows[0].n).toBe(0);
+  });
+
+  test("aula amanhã 07:00 ou 09:00 → só lembrete_d1, e só se ainda dá para mandar na véspera (antes das 20h SP)", async () => {
+    // Relógio real: depois das 20h SP o lembrete_d1 já perdeu a janela da véspera.
+    const antesDas20 = Number(quando(0).time_slot.slice(0, 2)) < 20;
+    for (const time_slot of ["07:00", "09:00"]) {
+      const l = await criarLead();
+      await enviar("USER_HOUR_BOOKED", {
+        booking_id: randomUUID(),
+        phone: l.telefone,
+        date: quando(24 * HORA).date,
+        time_slot,
+      });
+      expect(await lembretes(l.leadId)).toEqual(antesDas20 ? ["lembrete_d1"] : []);
+    }
+  });
+
+  test("aula hoje com 3h ou mais de antecedência → só lembrete_dia", async () => {
+    // Aula às 10h ou mais (08:00 + 2h) e no mesmo dia SP; sem horário possível, não há caso.
+    const agora = quando(0);
+    const hora = Math.max(10, Number(agora.time_slot.slice(0, 2)) + 4);
+    if (hora > 23) return;
+    const l = await criarLead();
+    await enviar("USER_HOUR_BOOKED", {
+      booking_id: randomUUID(),
+      phone: l.telefone,
+      date: agora.date,
+      time_slot: `${String(hora).padStart(2, "0")}:00`,
+    });
+    expect(await lembretes(l.leadId)).toEqual(["lembrete_dia"]);
+  });
+
+  test("PAID com user_id de outro lead: venda, horas e etapa vão para o lead do cpf/telefone; conflito marcado", async () => {
+    const a = await criarLead();
+    const b = await criarLead();
+    const userId = randomUUID();
+    await db().query("update wakeclub.leads set app_user_id = $2::text where id = $1::uuid", [
+      b.leadId,
+      userId,
+    ]);
+    const tx = randomUUID();
+    await enviar("USER_HOUR_PURCHASE_PAID", {
+      transaction_id: tx,
+      price_paid: 360,
+      phone: a.telefone,
+      user_id: userId,
+      hours: 3,
+    });
+    const { rows } = await db().query(
+      "select lead_id from wakeclub.vendas where id_externo = $1::text",
+      [tx],
+    );
+    expect(rows[0].lead_id).toBe(a.leadId);
+    const la = await lead(a.leadId);
+    expect(la.saldo_horas).toBe(3);
+    expect(la.etiqueta).toBe("Aluno com horas");
+    expect(la.app_user_id).toBeNull();
+    const lb = await lead(b.leadId);
+    expect(lb.saldo_horas).toBeNull();
+    expect(lb.etiqueta).toBe("Novo lead");
+    const ae = await appEvento("compra_paga", tx);
+    expect(ae.lead_id).toBe(a.leadId);
+    expect(ae.resultado).toBe("aplicado");
+    expect(ae.dados.conflito_app_user_id).toBe(true);
   });
 
   test("evento com data.test 'true' → ignorado, sem app_eventos, etiqueta igual", async () => {

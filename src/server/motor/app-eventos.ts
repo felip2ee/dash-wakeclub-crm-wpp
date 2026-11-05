@@ -23,10 +23,18 @@ type Mudanca = {
   atendidaEm?: string;
 };
 
-/** Lead do evento: app_user_id, depois CPF, depois telefone. Completa app_user_id e CPF vazios. */
-async function localizarLead(db: PoolClient, p: PessoaApp): Promise<string | null> {
-  let leadId: string | null = null;
-  if (p.userId) {
+/**
+ * Lead do evento: o já conhecido (o da venda), depois app_user_id, CPF e telefone. Completa
+ * app_user_id e CPF vazios; se o app_user_id já é de outro lead, não liga e marca o conflito.
+ */
+async function localizarLead(
+  db: PoolClient,
+  p: PessoaApp,
+  appEventoId: string,
+  leadIdConhecido: string | null,
+): Promise<string | null> {
+  let leadId = leadIdConhecido;
+  if (!leadId && p.userId) {
     const { rows } = await db.query<{ id: string }>(
       "select id from wakeclub.leads where app_user_id = $1::text",
       [p.userId],
@@ -43,6 +51,14 @@ async function localizarLead(db: PoolClient, p: PessoaApp): Promise<string | nul
         and not exists (select 1 from wakeclub.leads o
                          where o.app_user_id = $2::text and o.id <> $1::uuid)`,
     [leadId, p.userId, p.cpf],
+  );
+  await db.query(
+    `update wakeclub.app_eventos
+        set dados = dados || jsonb_build_object('conflito_app_user_id', true)
+      where id = $1::text::bigint
+        and exists (select 1 from wakeclub.leads o
+                     where o.app_user_id = $2::text and o.id <> $3::uuid)`,
+    [appEventoId, p.userId, leadId],
   );
   return leadId;
 }
@@ -173,14 +189,19 @@ const SQL_LEMBRETES = `
 with alvo as (
   select tipo, greatest(nominal, now()) as agendado_para
     from (values
+      -- d1 sai na véspera, até 20h SP (janela 8h–19h59); dia sai até 2h antes da aula.
       ('lembrete_d1',
        (((($2::timestamptz at time zone 'America/Sao_Paulo')::date - 1) + time '10:00')
+         at time zone 'America/Sao_Paulo'),
+       (((($2::timestamptz at time zone 'America/Sao_Paulo')::date - 1) + time '20:00')
          at time zone 'America/Sao_Paulo')),
       ('lembrete_dia',
        ((($2::timestamptz at time zone 'America/Sao_Paulo')::date + time '08:00')
-         at time zone 'America/Sao_Paulo'))
-    ) v (tipo, nominal)
+         at time zone 'America/Sao_Paulo'),
+       $2::timestamptz - interval '2 hours')
+    ) v (tipo, nominal, limite)
    where $2::timestamptz - now() >= interval '2 hours'
+     and greatest(nominal, now()) <= limite
 ),
 criado as (
   insert into wakeclub.followups (lead_id, tipo, agendado_para, motivo, aula_em, status)
@@ -208,7 +229,10 @@ select c.lead_id, 'app', 'followup_created', 'webhook',
   from criado c
 on conflict do nothing`;
 
-/** Lembretes "amanhã" (10h do dia anterior) e "hoje" (8h) da aula, só com 2 h ou mais de antecedência. */
+/**
+ * Lembretes "amanhã" (10h do dia anterior, até 20h) e "hoje" (8h, até 2 h antes da aula); só
+ * nasce o que ainda cabe na própria janela.
+ */
 async function criarLembretes(
   db: PoolClient,
   leadId: string,
@@ -222,6 +246,7 @@ export async function processarEventoApp(
   db: PoolClient,
   ev: EventoApp,
   corpoBruto: unknown,
+  leadIdConhecido: string | null = null,
 ): Promise<"processado" | "ignorado"> {
   const { rows } = await db.query<{ id: string }>(
     `insert into wakeclub.app_eventos (tipo, chave, ocorrido_em, dados)
@@ -233,7 +258,7 @@ export async function processarEventoApp(
   const appEventoId = rows[0]?.id;
   if (!appEventoId) return "ignorado"; // reentrega
 
-  const leadId = await localizarLead(db, ev.pessoa);
+  const leadId = await localizarLead(db, ev.pessoa, appEventoId, leadIdConhecido);
   if (!leadId) {
     await db.query("update wakeclub.app_eventos set resultado = 'sem_lead' where id = $1::bigint", [
       appEventoId,

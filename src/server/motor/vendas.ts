@@ -235,12 +235,18 @@ export async function vincular(
       where v.id = $1::uuid and l.id = $2::uuid and l.cpf is null and v.cpf is not null`,
     [vendaId, leadId],
   );
-  const { rows } = await db.query<{ horas: number | null; status: string }>(
-    "select horas, status from wakeclub.vendas where id = $1::uuid",
+  const { rows } = await db.query<{ horas: number | null; status: string; ja_creditada: boolean }>(
+    `select v.horas, v.status,
+            exists (select 1 from wakeclub.app_eventos a
+                     where a.tipo = 'compra_paga' and a.chave = btrim(v.id_externo)
+                       and a.resultado = 'aplicado') as ja_creditada
+       from wakeclub.vendas v where v.id = $1::uuid`,
     [vendaId],
   );
-  // Venda paga ligada pelo admin move etapa e saldo como a compra paga do app.
-  if (rows[0]?.status === "paga") await avancarPorVendaVinculada(db, leadId, rows[0].horas);
+  // Venda paga ligada pelo admin move etapa e saldo como a compra paga do app, salvo se o
+  // evento do app já creditou essas horas (achou o lead pelo app_user_id).
+  if (rows[0]?.status === "paga" && !rows[0].ja_creditada)
+    await avancarPorVendaVinculada(db, leadId, rows[0].horas);
 }
 
 /** Envelope `{ event: "USER_*", data }` do app; o resto segue o formato flat de venda. */
@@ -263,8 +269,13 @@ export function criarProcessadorVendas(): Processador {
         const v = normalizarVenda(evento.corpo);
         if ("erro" in v) throw new ErroPermanente(v.erro);
         if ("ignorar" in v) return "ignorado";
-        // A venda liga o lead primeiro; o evento do app acha o mesmo lead depois.
-        await processarVenda(db, v, evento.corpo);
+        // A venda liga o lead primeiro; o evento do app usa o mesmo lead (venda e horas juntas).
+        const { vendaId } = await processarVenda(db, v, evento.corpo);
+        const { rows } = await db.query<{ lead_id: string | null }>(
+          "select lead_id from wakeclub.vendas where id = $1::uuid",
+          [vendaId],
+        );
+        return processarEventoApp(db, ev, evento.corpo, rows[0]?.lead_id ?? null);
       }
       return processarEventoApp(db, ev, evento.corpo);
     }
