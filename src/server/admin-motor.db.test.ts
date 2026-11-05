@@ -31,4 +31,21 @@ describe.skipIf(!bancoTesteAtivo)("admin do motor no banco", () => {
     expect((await lerMonitorFila(db())).falhos).toBe(comFalha.falhos - 1);
     await expect(reprocessarOuFalhar(db(), id)).rejects.toThrow();
   });
+
+  test("horas sem saldo traz as ocorrências com o nome do lead", async () => {
+    const chave = `t14-${Date.now()}`;
+    const { rows } = await db().query(
+      `insert into wakeclub.leads (nome, telefone) values ('Lead T14', $1::text) returning id`,
+      [`+55119${String(Date.now()).slice(-8)}`],
+    );
+    await db().query(
+      `insert into wakeclub.app_eventos (tipo, chave, lead_id, ocorrido_em, resultado)
+       values ('compra_paga', $1::text, $2::uuid, now(), 'hora_sem_saldo')`,
+      [chave, rows[0].id],
+    );
+    const { horasSemSaldo } = await lerMonitorFila(db());
+    const achado = horasSemSaldo.find((h) => h.leadNome === "Lead T14");
+    expect(achado?.telefone).toMatch(/^\+55119/);
+    expect(new Date(achado?.ocorridoEm ?? "").getTime()).not.toBeNaN();
+  });
 });
