@@ -30,8 +30,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
   (Enter pula e publica por `docker stack deploy`). Uma confirmação `s/N` antes de mexer.
 - **Dados do SetupOrion.** Se existir `/root/dados_vps/`, o instalador lê só quatro arquivos
   (nunca `dados_evolution_go`) e o resumo mostra quais usou:
-  - `dados_vps`: `Rede interna`, quando a rede comum a Postgres e Traefik é ambígua ou não aparece
-    (continua exigindo rede attachable);
+  - `dados_vps`: `Rede interna`, para desempatar quando Postgres e Traefik têm mais de uma rede
+    em comum e não há escolha salva (sem rede comum o instalador para; continua exigindo rede
+    attachable);
   - `dados_postgres`: `Senha` e `Usuario`, só se o serviço do Postgres não tiver `POSTGRES_PASSWORD`;
   - `dados_evolution`: `Global API Key`, se o serviço da Evolution não tiver a chave, e `BaseUrl`,
     se não houver serviço da Evolution;
