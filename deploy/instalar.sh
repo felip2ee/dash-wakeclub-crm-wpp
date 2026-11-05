@@ -203,6 +203,29 @@ servicos_por() {
 
 servico_existe() { docker service inspect "$1" >/dev/null 2>&1; }
 
+# entrypoint_https TEXTO: nome do entrypoint do Traefik na porta 443
+# (--entrypoints.NOME.address=:443, em argumento ou label); vazio se não houver.
+entrypoint_https() {
+  printf '%s\n' "$1" | grep -Eio 'entrypoints\.[a-z0-9_-]+\.address=[^ ]*:443([^0-9]|$)' | head -n1 |
+    sed -E 's/^[^.]*\.([^.]+)\..*/\1/' || true
+}
+
+# valor_seguro_stack VALOR: 1 se tiver ", \ ou quebra de linha (quebraria o valor entre
+# aspas duplas no arquivo da stack, e isso só apareceria depois da migração).
+valor_seguro_stack() {
+  case "$1" in *'"'* | *\\* | *$'\n'* | *$'\r'*) return 1 ;; esac
+}
+
+# exigir_valor_seguro VAR ROTULO [-s]: pede de novo enquanto o valor não servir na stack;
+# com WAKECRM_SIM para (antes da confirmação, nada foi alterado).
+exigir_valor_seguro() {
+  while ! valor_seguro_stack "${!1}"; do
+    aviso "$2 tem \", \\ ou quebra de linha e quebraria o arquivo da stack."
+    [ -z "$SIM" ] || morrer "$2 inválido para a stack. Nada foi alterado."
+    perguntar "$1" "$2 (sem \" nem \\; Enter deixa vazio)" "" "${3:-}"
+  done
+}
+
 # env_servico SERVICO: linhas CHAVE=valor do serviço. Só para variável, nunca imprimir.
 env_servico() {
   docker service inspect --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' "$1"
@@ -474,7 +497,7 @@ mascarar() {
 }
 
 # Chaves do ambiente do app na stack. Nunca ADMIN_DATABASE_URL nem a senha do superusuário.
-CHAVES_STACK="IMAGEM DOMINIO REDE CERTRESOLVER DATABASE_URL DATABASE_URL_RW DATABASE_URL_MOTOR VITE_VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY PUSH_DISPATCH_SECRET WEBHOOK_EVOLUTION_SECRET WEBHOOK_VENDAS_SECRET EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY"
+CHAVES_STACK="IMAGEM DOMINIO REDE CERTRESOLVER ENTRYPOINT DATABASE_URL DATABASE_URL_RW DATABASE_URL_MOTOR VITE_VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY PUSH_DISPATCH_SECRET WEBHOOK_EVOLUTION_SECRET WEBHOOK_VENDAS_SECRET EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY"
 
 # stack_publicavel MODELO ENV: render_stack com cada $ dobrado, porque docker stack deploy
 # (e o Portainer) interpolam $VAR no arquivo; o modelo já preenchido não tem outro $.
@@ -694,7 +717,25 @@ detectar() {
     perguntar CERTRESOLVER "Nome do certresolver do Traefik" "$(ler_credencial "$CREDENCIAIS" CERTRESOLVER)"
     [ -n "$CERTRESOLVER" ] || morrer "Certresolver é obrigatório (HTTPS)."
   fi
+  exigir_valor_seguro CERTRESOLVER "Certresolver do Traefik"
   ok "certresolver: $CERTRESOLVER"
+
+  # Entrypoint HTTPS (porta 443) do Traefik; sem achar, o salvo ou websecure (padrão Orion).
+  ENTRYPOINT="$(entrypoint_https "$texto_traefik")"
+  if [ -z "$ENTRYPOINT" ]; then
+    texto_traefik="$(docker service inspect --format \
+      '{{range .Spec.TaskTemplate.ContainerSpec.Args}}{{println .}}{{end}}{{range $k, $v := .Spec.Labels}}{{$k}}={{$v}}{{println}}{{end}}' \
+      "$TRAEFIK_SERVICO")"
+    ENTRYPOINT="$(entrypoint_https "$texto_traefik")"
+  fi
+  if [ -z "$ENTRYPOINT" ]; then
+    ENTRYPOINT="$(ler_credencial "$CREDENCIAIS" ENTRYPOINT)"
+    ENTRYPOINT="${ENTRYPOINT:-websecure}"
+    aviso "Não achei o entrypoint do Traefik na porta 443; uso \"$ENTRYPOINT\"."
+  fi
+  exigir_valor_seguro ENTRYPOINT "Entrypoint HTTPS do Traefik"
+  [ -n "$ENTRYPOINT" ] || morrer "Entrypoint do Traefik é obrigatório."
+  ok "entrypoint HTTPS: $ENTRYPOINT"
 
   # Rede overlay compartilhada entre Postgres e Traefik
   local redes_pg redes_tr r
@@ -743,6 +784,8 @@ detectar() {
     EVOLUTION_API_KEY="$(ler_credencial "$CREDENCIAIS" EVOLUTION_API_KEY)"
     aviso "Sem Evolution: EVOLUTION_URL e EVOLUTION_API_KEY ficam como estavam (hoje o app não as lê)."
   fi
+  exigir_valor_seguro EVOLUTION_URL "URL interna da Evolution"
+  exigir_valor_seguro EVOLUTION_API_KEY "Chave da API da Evolution" -s
 
   # Portainer (a publicação pela API pergunta a credencial depois, Task 7)
   detectar_servico PORTAINER_SERVICO "Portainer" '^portainer/portainer' 'portainer' "" ""
@@ -773,6 +816,7 @@ perguntas() {
     aviso "Instância inválida: use letras, números, ponto, hífen ou sublinhado."
     if [ -n "$SIM" ] || [ -n "${WAKECRM_INSTANCIA:-}" ]; then morrer "Instância inválida."; fi
   done
+  exigir_valor_seguro EVOLUTION_INSTANCIA "Instância da Evolution"
   ok "instância: $EVOLUTION_INSTANCIA"
 
   # Portainer: com credencial, a stack sai pela API (controle total no Portainer).
@@ -786,7 +830,7 @@ perguntas() {
 }
 
 SEGREDOS="WEBHOOK_EVOLUTION_SECRET WEBHOOK_VENDAS_SECRET PAINEL_RO_PASSWORD PAINEL_RW_PASSWORD WAKECRM_MOTOR_PASSWORD PUSH_DISPATCH_SECRET"
-DECIDIDOS="DOMINIO EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY REDE CERTRESOLVER PG_SERVICO"
+DECIDIDOS="DOMINIO EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY REDE CERTRESOLVER ENTRYPOINT PG_SERVICO"
 
 # Lê o que já existe em credenciais.env e gera o que falta, só em memória: o arquivo
 # é gravado depois da confirmação (gravar_credenciais), para "N" não deixar rastro.
@@ -838,6 +882,21 @@ gerar() {
   fi
 }
 
+# Views e FKs fora do schema wakeclub que dependem dele. A volta automática faz
+# `drop schema wakeclub cascade`: apagaria esses objetos e o dump do schema não os traz.
+# to_regnamespace: banco sem o schema não tem dependentes (e não dá erro).
+SQL_DEPENDENTES="select distinct c2.oid::regclass::text from pg_depend d join pg_rewrite r on d.objid = r.oid join pg_class c2 on r.ev_class = c2.oid join pg_class c on d.refobjid = c.oid where c.relnamespace = to_regnamespace('wakeclub') and c2.relnamespace <> to_regnamespace('wakeclub')
+union select conrelid::regclass::text from pg_constraint where confrelid in (select oid from pg_class where relnamespace = to_regnamespace('wakeclub')) and connamespace <> to_regnamespace('wakeclub')"
+
+# checar_dependentes: só leitura, antes do backup. Qualquer dependente ou erro para.
+checar_dependentes() {
+  local fora
+  fora="$(sql_pg "$SQL_DEPENDENTES")" ||
+    morrer "Não consegui conferir dependências de fora do schema wakeclub. Nada foi alterado."
+  [ -z "$fora" ] && return 0
+  morrer "Objetos fora do schema wakeclub dependem dele: $(printf '%s' "$fora" | tr '\n' ' ' | sed 's/ $//; s/ /, /g'). A volta automática (drop schema wakeclub cascade) os apagaria sem trazer de volta. Remova ou mova esses objetos e rode de novo. Nada foi alterado."
+}
+
 # Migrações pendentes, só leitura. Saída vazia = nada pendente; erro = para.
 listar_pendentes() {
   local env n
@@ -846,8 +905,9 @@ listar_pendentes() {
   PENDENTES="$(rodar_no_app "$env" bun scripts/migrar.mjs --pendentes)" ||
     morrer "Não consegui listar as migrações pendentes (o banco wakeclub existe em $PG_SERVICO?). Nada foi alterado."
   rm -f "$env"
-  # Pré-checagem do runbook: nenhum follow-up no meio de um envio antes de migrar.
   [ -n "$PENDENTES" ] || return 0
+  checar_dependentes
+  # Pré-checagem do runbook: nenhum follow-up no meio de um envio antes de migrar.
   n="$(sql_pg "select to_regclass('wakeclub.followups') is not null")" ||
     morrer "Não consegui consultar o banco wakeclub. Nada foi alterado."
   [ "$n" = t ] || return 0
@@ -864,7 +924,7 @@ confirmar() {
   cat <<EOF
 
   Postgres        $PG_SERVICO (Postgres $PG_MAJOR, usuário $PG_USUARIO, senha $PG_SENHA_ORIGEM)
-  Traefik         $TRAEFIK_SERVICO, certresolver $CERTRESOLVER
+  Traefik         $TRAEFIK_SERVICO, certresolver $CERTRESOLVER, entrypoint $ENTRYPOINT
   Rede            $REDE
   Evolution       ${EVO_SERVICO:-não encontrada} ${EVOLUTION_URL:+($EVOLUTION_URL)}
   Chave Evolution $(mascarar "$EVOLUTION_API_KEY")

@@ -81,7 +81,7 @@ assert_eq ok "$r" "comando manual sem senha"
 # Publicação: modelo real preenchido, sem segredo do superusuário e com $ dobrado.
 # shellcheck disable=SC2034,SC2016 # lidas por nome em arquivo_env; $ literal de propósito
 {
-  IMAGEM=img:1 DOMINIO=crm.exemplo.com REDE=rede CERTRESOLVER=le DATABASE_URL=u1 DATABASE_URL_RW=u2
+  IMAGEM=img:1 DOMINIO=crm.exemplo.com REDE=rede CERTRESOLVER=le ENTRYPOINT=https443 DATABASE_URL=u1 DATABASE_URL_RW=u2
   DATABASE_URL_MOTOR=u3 VITE_VAPID_PUBLIC_KEY=p VAPID_PRIVATE_KEY=v PUSH_DISPATCH_SECRET=s1
   WEBHOOK_EVOLUTION_SECRET=s2 WEBHOOK_VENDAS_SECRET=s3 EVOLUTION_INSTANCIA=wakeclub EVOLUTION_URL=http://evo:8080
   EVOLUTION_API_KEY='a$b' ADMIN_DATABASE_URL=postgres://postgres:superu@pg/wakeclub
@@ -94,6 +94,8 @@ case "$PUB" in *superu* | *ADMIN_DATABASE_URL*) r=vazou ;; *) r=ok ;; esac
 assert_eq ok "$r" "stack sem a URL do superusuário"
 case "$PUB" in *"image: img:1"*) r=ok ;; *) r=nao ;; esac
 assert_eq ok "$r" "stack usa IMAGEM"
+case "$PUB" in *'"traefik.http.routers.wakecrm.entrypoints=https443"'*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "stack usa ENTRYPOINT"
 # shellcheck disable=SC2016 # $ literal
 case "$PUB" in *'EVOLUTION_API_KEY=a$$b"'*) r=ok ;; *) r=nao ;; esac
 assert_eq ok "$r" "\$ do valor vira \$\$ (docker stack deploy interpola)"
@@ -152,6 +154,41 @@ case "$SAIDA" in *"docker service"*"docker service"*) r=religou ;; *) r=ok ;; es
 assert_eq ok "$r" "trap não escala nada sozinho"
 assert_eq "" "$(bash -c '. "$1"; CRM_PARADO=1; REPLICAS_ANTES=2; exit 0' _ "$AQUI/instalar.sh" 2>&1)" "saída 0: sem aviso"
 assert_eq "" "$(bash -c '. "$1"; set +e; REPLICAS_ANTES=2; exit 1' _ "$AQUI/instalar.sh" 2>&1)" "sem CRM_PARADO: sem aviso"
+
+# Entrypoint HTTPS do Traefik: o que escuta na 443, em argumento ou label.
+ARGS="$(printf '%s\n' --providers.swarm=true --entrypoints.web.address=:80 --entrypoints.websecure.address=:443 \
+  --certificatesresolvers.le.acme.httpchallenge.entrypoint=web)"
+assert_eq websecure "$(entrypoint_https "$ARGS")" "entrypoint da 443 nos argumentos"
+assert_eq https "$(entrypoint_https '--entryPoints.https.address=0.0.0.0:443/tcp')" "entryPoints com host e /tcp"
+assert_eq "" "$(entrypoint_https '--entrypoints.alt.address=:4430')" "4430 não é 443"
+assert_eq "" "$(entrypoint_https '--entrypoints.web.address=:80')" "sem 443: vazio"
+assert_eq tls "$(entrypoint_https 'traefik.entrypoints.tls.address=:443')" "entrypoint em label"
+
+# Valores de fora que entram entre aspas no arquivo da stack.
+# shellcheck disable=SC2016 # $ literal
+for v in "" abc-123 'http://evolution_api:8080' 'a$b&c'; do
+  assert_eq 0 "$(valor_seguro_stack "$v"; echo $?)" "valor [$v] serve na stack"
+done
+for v in 'a"b' 'a\b' "$(printf 'a\nb')" "$(printf 'a\rb')"; do
+  assert_eq 1 "$(valor_seguro_stack "$v"; echo $?)" "valor com aspas, barra ou quebra é recusado"
+done
+saida="$( (SIM=1; X='chave"ruim'; exigir_valor_seguro X "Chave da API da Evolution") 2>&1)"
+# shellcheck disable=SC2034 # lidas dentro de exigir_valor_seguro
+assert_eq 1 "$( (SIM=1; X='chave"ruim'; exigir_valor_seguro X "Chave") >/dev/null 2>&1; echo $?)" "SIM com valor ruim: para"
+case "$saida" in *"✗ Chave da API da Evolution inválido para a stack. Nada foi alterado."*) r=ok ;; *) r="$saida" ;; esac
+assert_eq ok "$r" "mensagem diz qual valor e que nada mudou"
+case "$saida" in *ruim*) r=vazou ;; *) r=ok ;; esac
+assert_eq ok "$r" "mensagem não mostra o valor"
+
+# checar_dependentes: lista os objetos e para; vazio segue; erro na consulta para.
+# shellcheck disable=SC2329 # sql_pg chamada por checar_dependentes
+saida="$( (sql_pg() { printf 'public.v_leads\noutro.pedidos\n'; }; checar_dependentes) 2>&1)"
+case "$saida" in *"✗ Objetos fora do schema wakeclub dependem dele: public.v_leads, outro.pedidos."*"drop schema wakeclub cascade"*"Nada foi alterado."*) r=ok ;; *) r="$saida" ;; esac
+assert_eq ok "$r" "dependentes listados e parada"
+# shellcheck disable=SC2329
+assert_eq 0 "$( (sql_pg() { :; }; checar_dependentes) >/dev/null 2>&1; echo $?)" "sem dependentes: segue"
+# shellcheck disable=SC2329
+assert_eq 1 "$( (sql_pg() { return 2; }; checar_dependentes) >/dev/null 2>&1; echo $?)" "consulta falhou: para"
 
 # Resumo final: URLs sem segredo, scp pronto com backup; sem backup diz nenhum.
 # shellcheck disable=SC2034 # lidas dentro de texto_resumo

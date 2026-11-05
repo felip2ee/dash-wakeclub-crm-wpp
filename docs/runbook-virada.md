@@ -36,6 +36,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
 
 **Se o instalador falhar:**
 
+- Antes de mexer em qualquer coisa (só com migração pendente): se houver view ou FK fora do
+  schema `wakeclub` que dependa dele, o instalador para e lista esses objetos. A volta
+  automática faz `drop schema wakeclub cascade` e os apagaria sem trazer de volta. Nada foi
+  alterado: remova ou mova esses objetos e rode de novo. Se a consulta falhar, ele também para.
+- Também antes da confirmação: chave ou URL da Evolution, instância, certresolver ou entrypoint
+  com `"`, `\` ou quebra de linha são recusados (quebrariam o arquivo da stack). Interativo,
+  ele pergunta de novo; com `WAKECRM_SIM=1`, para.
+
 - Migração ou views: ele restaura o backup sozinho, religa o CRM e para com a mensagem do erro.
   Corrija e rode de novo. Se a restauração também falhar, ele imprime o comando manual (pede a
   senha do superusuário) e o CRM fica parado até restaurar.

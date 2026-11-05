@@ -5,10 +5,11 @@
 # nome "wakecrm"; substitua todos os marcadores de cifrão e chaves abaixo pelos valores reais antes de salvar.
 #
 # Atenção: cada valor de environment fica entre aspas duplas, então não pode conter
-# " nem \. Os segredos gerados são hex e a senha do Postgres vai percent-encoded
-# dentro das URLs, então isso vale por construção.
+# ", \ nem quebra de linha. Os segredos gerados são hex e a senha do Postgres vai
+# percent-encoded dentro das URLs; os valores de fora (chave e URL da Evolution, instância,
+# certresolver, entrypoint) o instalador confere antes da confirmação e recusa se tiverem.
 # Placeholders de infraestrutura: IMAGEM (em produção ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest),
-# DOMINIO, REDE (overlay externa do Traefik), CERTRESOLVER.
+# DOMINIO, REDE (overlay externa do Traefik), CERTRESOLVER, ENTRYPOINT (o de HTTPS do Traefik).
 
 version: "3.7"
 
@@ -41,7 +42,7 @@ services:
         - "traefik.enable=true"
         - "traefik.docker.network=${REDE}"
         - "traefik.http.routers.wakecrm.rule=Host(`${DOMINIO}`)"
-        - "traefik.http.routers.wakecrm.entrypoints=websecure"
+        - "traefik.http.routers.wakecrm.entrypoints=${ENTRYPOINT}"
         - "traefik.http.routers.wakecrm.tls.certresolver=${CERTRESOLVER}"
         - "traefik.http.routers.wakecrm.service=wakecrm"
         - "traefik.http.services.wakecrm.loadbalancer.server.port=3000"
