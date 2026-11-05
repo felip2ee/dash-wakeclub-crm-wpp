@@ -28,6 +28,7 @@ import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as VendasRouteImport } from './routes/vendas'
 import { Route as VisaoGeralRouteImport } from './routes/visao-geral'
 import { Route as Wf02RouteImport } from './routes/wf02'
+import { Route as ApiMidiaMensagemIdRouteImport } from './routes/api/midia/$mensagemId'
 import { Route as ApiPushEnviarRouteImport } from './routes/api/push/enviar'
 import { Route as ApiWebhooksEvolutionRouteImport } from './routes/api/webhooks/evolution'
 import { Route as ApiWebhooksVendasRouteImport } from './routes/api/webhooks/vendas'
@@ -127,6 +128,11 @@ const Wf02Route = Wf02RouteImport.update({
   path: '/wf02',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMidiaMensagemIdRoute = ApiMidiaMensagemIdRouteImport.update({
+  id: '/api/midia/$mensagemId',
+  path: '/api/midia/$mensagemId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPushEnviarRoute = ApiPushEnviarRouteImport.update({
   id: '/api/push/enviar',
   path: '/api/push/enviar',
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
   '/wf02': typeof Wf02Route
+  '/api/midia/$mensagemId': typeof ApiMidiaMensagemIdRoute
   '/api/push/enviar': typeof ApiPushEnviarRoute
   '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
   '/api/webhooks/vendas': typeof ApiWebhooksVendasRoute
@@ -187,6 +194,7 @@ export interface FileRoutesByTo {
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
   '/wf02': typeof Wf02Route
+  '/api/midia/$mensagemId': typeof ApiMidiaMensagemIdRoute
   '/api/push/enviar': typeof ApiPushEnviarRoute
   '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
   '/api/webhooks/vendas': typeof ApiWebhooksVendasRoute
@@ -212,6 +220,7 @@ export interface FileRoutesById {
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
   '/wf02': typeof Wf02Route
+  '/api/midia/$mensagemId': typeof ApiMidiaMensagemIdRoute
   '/api/push/enviar': typeof ApiPushEnviarRoute
   '/api/webhooks/evolution': typeof ApiWebhooksEvolutionRoute
   '/api/webhooks/vendas': typeof ApiWebhooksVendasRoute
@@ -238,6 +247,7 @@ export interface FileRouteTypes {
     | '/vendas'
     | '/visao-geral'
     | '/wf02'
+    | '/api/midia/$mensagemId'
     | '/api/push/enviar'
     | '/api/webhooks/evolution'
     | '/api/webhooks/vendas'
@@ -262,6 +272,7 @@ export interface FileRouteTypes {
     | '/vendas'
     | '/visao-geral'
     | '/wf02'
+    | '/api/midia/$mensagemId'
     | '/api/push/enviar'
     | '/api/webhooks/evolution'
     | '/api/webhooks/vendas'
@@ -286,6 +297,7 @@ export interface FileRouteTypes {
     | '/vendas'
     | '/visao-geral'
     | '/wf02'
+    | '/api/midia/$mensagemId'
     | '/api/push/enviar'
     | '/api/webhooks/evolution'
     | '/api/webhooks/vendas'
@@ -311,6 +323,7 @@ export interface RootRouteChildren {
   VendasRoute: typeof VendasRoute
   VisaoGeralRoute: typeof VisaoGeralRoute
   Wf02Route: typeof Wf02Route
+  ApiMidiaMensagemIdRoute: typeof ApiMidiaMensagemIdRoute
   ApiPushEnviarRoute: typeof ApiPushEnviarRoute
   ApiWebhooksEvolutionRoute: typeof ApiWebhooksEvolutionRoute
   ApiWebhooksVendasRoute: typeof ApiWebhooksVendasRoute
@@ -451,6 +464,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Wf02RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/midia/$mensagemId': {
+      id: '/api/midia/$mensagemId'
+      path: '/api/midia/$mensagemId'
+      fullPath: '/api/midia/$mensagemId'
+      preLoaderRoute: typeof ApiMidiaMensagemIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/push/enviar': {
       id: '/api/push/enviar'
       path: '/api/push/enviar'
@@ -495,6 +515,7 @@ const rootRouteChildren: RootRouteChildren = {
   VendasRoute: VendasRoute,
   VisaoGeralRoute: VisaoGeralRoute,
   Wf02Route: Wf02Route,
+  ApiMidiaMensagemIdRoute: ApiMidiaMensagemIdRoute,
   ApiPushEnviarRoute: ApiPushEnviarRoute,
   ApiWebhooksEvolutionRoute: ApiWebhooksEvolutionRoute,
   ApiWebhooksVendasRoute: ApiWebhooksVendasRoute,
