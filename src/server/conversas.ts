@@ -205,6 +205,8 @@ export async function leadsComSugestao(
   return new Set(rows.map((r) => r.lead_id));
 }
 
+export type TipoMidiaVisual = "imagem" | "video" | "documento" | "figurinha";
+
 export type LinhaDoTempo = {
   criadoEm: string;
   /** Só `stage_changed` e `followup_sent`, em ordem cronológica. */
@@ -212,6 +214,8 @@ export type LinhaDoTempo = {
   sugestao: { followupId: string; texto: string; modo: string | null } | null;
   /** Mensagens de áudio → status da transcrição (o texto delas é a transcrição). */
   audios: Record<string, string | null>;
+  /** Mensagens de imagem, vídeo, documento e figurinha → tipo (bytes em `/api/midia/$id`). */
+  midias: Record<string, TipoMidiaVisual>;
   /** Vendas pagas do lead (estornadas ficam de fora), em ordem cronológica. */
   compras: { compradaEm: string; produto: string | null; horas: number | null }[];
 };
@@ -221,6 +225,7 @@ type LinhaLinhaDoTempo = {
   eventos: { tipo: string; ocorrido_em: string; de: string | null; para: string | null }[];
   sugestao: { followup_id: string; texto: string; modo: string | null } | null;
   audios: Record<string, string | null>;
+  midias: Record<string, TipoMidiaVisual>;
   compras: { comprada_em: string; produto: string | null; horas: number | null }[];
 };
 
@@ -258,6 +263,11 @@ export async function lerLinhaDoTempo(
                where m.lead_id = l.id and m.tipo = 'audio'
             ), '{}'::json) as audios,
             coalesce((
+              select json_object_agg(m.id, m.tipo)
+                from wakeclub.mensagens m
+               where m.lead_id = l.id and m.tipo in ('imagem', 'video', 'documento', 'figurinha')
+            ), '{}'::json) as midias,
+            coalesce((
               select json_agg(json_build_object(
                        'comprada_em', v.comprada_em, 'produto', v.produto, 'horas', v.horas)
                      order by v.comprada_em, v.id)
@@ -284,6 +294,7 @@ export async function lerLinhaDoTempo(
       modo: r.sugestao.modo,
     },
     audios: r.audios,
+    midias: r.midias,
     compras: r.compras.map((c) => ({
       compradaEm: new Date(c.comprada_em).toISOString(),
       produto: c.produto,

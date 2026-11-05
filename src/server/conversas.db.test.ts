@@ -8,7 +8,7 @@ import { registrarMensagem } from "./motor/ingestao";
 
 const db = () => getPoolMotor();
 
-async function lead(tipoMidia: "texto" | "audio" = "texto") {
+async function lead(tipoMidia: "texto" | "audio" | "imagem" = "texto") {
   const dono = await criarVendedor("Dona");
   const { leadId } = await comTransacao((c) =>
     registrarMensagem(c, {
@@ -16,7 +16,7 @@ async function lead(tipoMidia: "texto" | "audio" = "texto") {
       telefone: telefoneUnico(),
       nome: "Lead Linha",
       daEquipe: false,
-      texto: tipoMidia === "audio" ? "" : "oi",
+      texto: tipoMidia === "audio" ? "" : tipoMidia === "imagem" ? "[imagem]" : "oi",
       tipoMidia,
       enviadaEm: new Date().toISOString(),
       evolutionMsgId: randomUUID(),
@@ -50,6 +50,7 @@ describe.skipIf(!bancoTesteAtivo)("lerLinhaDoTempo", () => {
     expect(r.eventos).toEqual([]);
     expect(r.sugestao).toBeNull();
     expect(r.audios).toEqual({});
+    expect(r.midias).toEqual({});
     expect(r.compras).toEqual([]);
   });
 
@@ -82,6 +83,14 @@ describe.skipIf(!bancoTesteAtivo)("lerLinhaDoTempo", () => {
     const { leadId } = await lead("audio");
     const r = await lerLinhaDoTempo(db(), leadId, null);
     expect(Object.values(r.audios)).toEqual(["pendente"]);
+    expect(r.midias).toEqual({});
+  });
+
+  test("imagem aparece em midias com o tipo", async () => {
+    const { leadId } = await lead("imagem");
+    const r = await lerLinhaDoTempo(db(), leadId, null);
+    expect(Object.values(r.midias)).toEqual(["imagem"]);
+    expect(r.audios).toEqual({});
   });
 
   test("venda paga do lead entra em compras; estornada não", async () => {

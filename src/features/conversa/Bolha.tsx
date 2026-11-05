@@ -2,9 +2,10 @@ import { Bot, Check, CheckCheck, Mic, TriangleAlert } from "lucide-react";
 
 import { hora, rotuloAutoria } from "@/lib/formato";
 import { cn } from "@/lib/utils";
-import type { Autoria, Direcao } from "@/server/conversas";
+import type { Autoria, Direcao, TipoMidiaVisual } from "@/server/conversas";
 
-import { rotuloAudio } from "./linha-do-tempo";
+import { legendaDaMidia, rotuloAudio } from "./linha-do-tempo";
+import { AudioDaBolha, MidiaDaBolha } from "./MidiaDaBolha";
 
 export type MensagemConversa = {
   id: string;
@@ -20,16 +21,20 @@ export type MensagemConversa = {
 export function Bolha({
   mensagem: m,
   audio,
+  midia,
 }: {
   mensagem: MensagemConversa;
   /** Status da transcrição quando a mensagem é áudio; `undefined` = não é áudio. */
   audio?: string | null;
+  /** Tipo da mídia visual (imagem, vídeo, documento, figurinha); `undefined` = não é. */
+  midia?: TipoMidiaVisual;
 }) {
   const daEquipe = m.direcao !== "lead";
   const ehAudio = audio !== undefined;
   // Áudio decide pelo status: só o "ok" mostra o texto (a transcrição).
   const rotulo = ehAudio ? rotuloAudio(audio) : null;
-  const texto = rotulo ?? m.texto;
+  // Na mídia visual só a legenda de verdade aparece, nunca o marcador `[imagem]`.
+  const texto = rotulo ?? (midia ? legendaDaMidia(m.texto) : m.texto);
 
   return (
     <div className={cn("flex flex-col", daEquipe ? "items-end" : "items-start")}>
@@ -57,14 +62,20 @@ export function Bolha({
             <Mic aria-hidden className="h-3.5 w-3.5" /> Áudio{rotulo ? "" : " · transcrição"}
           </p>
         )}
-        <p
-          className={cn(
-            "whitespace-pre-wrap break-words leading-relaxed",
-            (rotulo || !m.texto) && "italic opacity-75",
-          )}
-        >
-          {texto ?? "(sem texto)"}
-        </p>
+        {ehAudio && audio !== "sem_midia" && <AudioDaBolha mensagemId={m.id} daEquipe={daEquipe} />}
+        {midia && (
+          <MidiaDaBolha mensagemId={m.id} daEquipe={daEquipe} tipo={midia} texto={m.texto} />
+        )}
+        {(texto || !midia) && (
+          <p
+            className={cn(
+              "whitespace-pre-wrap break-words leading-relaxed",
+              (rotulo || !m.texto) && "italic opacity-75",
+            )}
+          >
+            {texto ?? "(sem texto)"}
+          </p>
+        )}
         <p
           className={cn(
             "mt-0.5 flex items-center justify-end gap-1 text-[11px]",
