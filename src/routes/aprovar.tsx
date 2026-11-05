@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BotaoVarredura } from "@/features/aprovacao/BotaoVarredura";
 import { CardAprovacao } from "@/features/aprovacao/CardAprovacao";
 import { FolhaMotivos } from "@/features/aprovacao/FolhaMotivos";
 import type { Decisao } from "@/features/aprovacao/motivos";
@@ -33,6 +34,21 @@ export const Route = createFileRoute("/aprovar")({
   head: () => ({ meta: [{ title: "Para avaliar — Wake Club" }] }),
   component: AprovarPage,
 });
+
+// Só para admin: a revisão das decisões e a varredura sob demanda (spec pipeline §7, §9).
+function AtalhosAdmin() {
+  return (
+    <div className="flex w-full flex-wrap items-start justify-between gap-3">
+      <Link
+        to="/revisar-decisoes"
+        className="inline-flex min-h-11 items-center text-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Revisão das decisões
+      </Link>
+      <BotaoVarredura />
+    </div>
+  );
+}
 
 type Pendente = { card: Card; decisao: Decisao; texto: string };
 
@@ -112,25 +128,28 @@ function AprovarPage() {
           </span>
         )}
         {admin && (
-          <Select
-            value={vendedor ?? TODOS}
-            onValueChange={(v) => {
-              setAtual(0);
-              void navigate({ search: v === TODOS ? {} : { vendedor: v } });
-            }}
-          >
-            <SelectTrigger aria-label="Vendedor" className="h-11 w-full sm:w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={TODOS}>Todos os vendedores</SelectItem>
-              {vendedores.data?.map((v) => (
-                <SelectItem key={v.id} value={v.id}>
-                  {v.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <>
+            <Select
+              value={vendedor ?? TODOS}
+              onValueChange={(v) => {
+                setAtual(0);
+                void navigate({ search: v === TODOS ? {} : { vendedor: v } });
+              }}
+            >
+              <SelectTrigger aria-label="Vendedor" className="h-11 w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS}>Todos os vendedores</SelectItem>
+                {vendedores.data?.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <AtalhosAdmin />
+          </>
         )}
       </header>
 
