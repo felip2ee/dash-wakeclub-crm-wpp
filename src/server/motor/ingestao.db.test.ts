@@ -312,3 +312,74 @@ describe.skipIf(!bancoTesteAtivo)("entrada de mensagens", () => {
     expect(porTelefone).toEqual({ [doLead.telefone]: true, [daEquipe.telefone]: false });
   });
 });
+
+describe.skipIf(!bancoTesteAtivo)("origem do lead", () => {
+  const anuncio = {
+    canal: "anuncio",
+    app: "instagram",
+    anuncioId: "123",
+    anuncioTitulo: "Aula grátis",
+  } as const;
+  const link = { canal: "link", app: "facebook", anuncioId: null, anuncioTitulo: null } as const;
+
+  async function origem(id: string) {
+    const { rows } = await db().query(
+      `select origem_canal, origem_app, origem_anuncio_id, origem_anuncio_titulo,
+              origem_detectada_em::text as detectada_em
+         from wakeclub.leads where id = $1::uuid`,
+      [id],
+    );
+    return rows[0];
+  }
+
+  test("primeira mensagem do lead com anúncio preenche origem e detectada_em", async () => {
+    const enviadaEm = "2026-11-05T12:00:00.000Z";
+    const r = await registrar(msg({ origem: anuncio, enviadaEm }));
+    const o = await origem(r.leadId);
+    expect(o.origem_canal).toBe("anuncio");
+    expect(o.origem_app).toBe("instagram");
+    expect(o.origem_anuncio_id).toBe("123");
+    expect(o.origem_anuncio_titulo).toBe("Aula grátis");
+    expect(new Date(o.detectada_em).toISOString()).toBe(enviadaEm);
+  });
+
+  test("marca posterior não sobrescreve a primeira", async () => {
+    const telefone = telefoneUnico();
+    const r = await registrar(msg({ telefone, origem: anuncio }));
+    await registrar(msg({ telefone, origem: link }));
+    const o = await origem(r.leadId);
+    expect(o.origem_canal).toBe("anuncio");
+    expect(o.origem_app).toBe("instagram");
+  });
+
+  test("direto sem evidência, depois marca: vira anuncio", async () => {
+    const telefone = telefoneUnico();
+    const r = await registrar(msg({ telefone }));
+    await registrar(msg({ telefone, origem: anuncio }));
+    const o = await origem(r.leadId);
+    expect(o.origem_canal).toBe("anuncio");
+    expect(o.detectada_em).not.toBeNull();
+  });
+
+  test("lead sem marca é direto, sem detectada_em", async () => {
+    const r = await registrar(msg());
+    const o = await origem(r.leadId);
+    expect(o.origem_canal).toBe("direto");
+    expect(o.detectada_em).toBeNull();
+  });
+
+  test("equipe inicia, lead responde com marca", async () => {
+    const telefone = telefoneUnico();
+    const r = await registrar(msg({ telefone, daEquipe: true }));
+    expect((await origem(r.leadId)).origem_canal).toBeNull();
+    await registrar(msg({ telefone, origem: anuncio }));
+    expect((await origem(r.leadId)).origem_canal).toBe("anuncio");
+  });
+
+  test("mensagem da equipe nunca preenche origem", async () => {
+    const r = await registrar(msg({ daEquipe: true, origem: anuncio }));
+    const o = await origem(r.leadId);
+    expect(o.origem_canal).toBeNull();
+    expect(o.origem_anuncio_id).toBeNull();
+  });
+});

@@ -49,10 +49,11 @@ Variáveis do WakeCRM além das do painel:
   corte da virada e só entra no momento do corte (`--ate 0002` antes disso). Como `db:migrate`
   aplica 0003, 0004 e 0005 juntas, a 0004 e a 0005 também esperam o corte (ver
   `docs/runbook-virada.md`). Só rode contra ambiente autorizado.
+- `bun run db:origem` preenche a origem dos leads antigos a partir do banco `evolution` (só leitura; escreve só as colunas `origem_*` de `wakeclub.leads`; idempotente; exige `ADMIN_DATABASE_URL` e autorização do dono; roda depois da migração 0007).
 - Banco de teste descartável (precisa de Docker):
 
   ```sh
-  bash scripts/banco-teste.sh   # Postgres 14, porta 54339, schema migrado (0001 a 0005)
+  bash scripts/banco-teste.sh   # Postgres 14, porta 54339, schema migrado (0001 a 0007)
   bun run test:db               # testes *.db.test.ts
   bun run test:db src/server/aprovacao.db.test.ts   # um arquivo
   ```

@@ -20,14 +20,46 @@ export type Autoria = { usuarioId: string; followupId?: string };
 
 export type ResultadoMensagem = { leadId: string; mensagemId: string | null; nova: boolean };
 
+// Lead ainda sem origem, ou 'direto' sem evidência (sem detectada_em) e esta mensagem traz marca.
+const ORIGEM_LIVRE = `(wakeclub.leads.origem_canal is null
+  or (wakeclub.leads.origem_canal = 'direto' and wakeclub.leads.origem_detectada_em is null
+      and excluded.origem_detectada_em is not null))`;
+
 async function upsertLead(db: PoolClient, m: EventoMensagem): Promise<string> {
+  // Origem só vem de mensagem do lead; a primeira marca vale. Sem marca = 'direto' sem evidência,
+  // que uma marca posterior substitui (mesma regra do db:origem).
+  const o = m.daEquipe ? null : (m.origem ?? null);
+  const canal = m.daEquipe ? null : (o?.canal ?? "direto");
   const { rows } = await db.query<{ id: string }>(
-    `insert into wakeclub.leads (telefone, nome)
-     values ($1::text, nullif($2::text, ''))
+    `insert into wakeclub.leads (telefone, nome, origem_canal, origem_app, origem_anuncio_id,
+                                 origem_anuncio_titulo, origem_detectada_em)
+     values ($1::text, nullif($2::text, ''), $3::text, $4::text, $5::text, $6::text,
+             $7::timestamptz)
      on conflict (telefone) do update
-        set nome = coalesce(wakeclub.leads.nome, nullif(excluded.nome, ''))
+        set nome = coalesce(wakeclub.leads.nome, nullif(excluded.nome, '')),
+            origem_canal = case when ${ORIGEM_LIVRE}
+                                then excluded.origem_canal else wakeclub.leads.origem_canal end,
+            origem_app = case when ${ORIGEM_LIVRE}
+                              then excluded.origem_app else wakeclub.leads.origem_app end,
+            origem_anuncio_id = case when ${ORIGEM_LIVRE}
+                              then excluded.origem_anuncio_id
+                              else wakeclub.leads.origem_anuncio_id end,
+            origem_anuncio_titulo = case when ${ORIGEM_LIVRE}
+                              then excluded.origem_anuncio_titulo
+                              else wakeclub.leads.origem_anuncio_titulo end,
+            origem_detectada_em = case when ${ORIGEM_LIVRE}
+                              then excluded.origem_detectada_em
+                              else wakeclub.leads.origem_detectada_em end
      returning id`,
-    [m.telefone, m.daEquipe ? "" : (m.nome ?? "").slice(0, 120)],
+    [
+      m.telefone,
+      m.daEquipe ? "" : (m.nome ?? "").slice(0, 120),
+      canal,
+      o?.app ?? null,
+      o?.anuncioId ?? null,
+      o?.anuncioTitulo ?? null,
+      o ? m.enviadaEm : null,
+    ],
   );
   return rows[0].id;
 }

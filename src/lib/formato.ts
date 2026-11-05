@@ -110,3 +110,11 @@ const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 export function moeda(valor: number): string {
   return BRL.format(valor);
 }
+
+/** 32 → "32 min"; 65 → "1 h 05"; null → "—". */
+export function textoMinutos(min: number | null): string {
+  if (min === null) return "—";
+  const m = Math.round(min);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
+}

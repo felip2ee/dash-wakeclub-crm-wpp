@@ -59,11 +59,16 @@ describe.skipIf(process.env.TESTE_BANCO !== "1")("migrar --pendentes", () => {
       const r = migrar("--pendentes");
       expect(r.stderr).toBe("");
       expect(r.status).toBe(0);
-      expect(r.stdout.trim().split("\n")).toEqual([
+      // Contém 0003..0007 em ordem; migrações futuras não quebram o teste.
+      const pendentes = r.stdout.trim().split("\n");
+      const esperadas = [
         "0003_virada.sql",
         "0004_ia_followup.sql",
         "0005_vendas.sql",
-      ]);
+        "0006_webhook_sem_apikey.sql",
+        "0007_origem_e_meta.sql",
+      ];
+      expect(pendentes.slice(0, esperadas.length)).toEqual(esperadas);
       expect(lerMigracoes()).toBe(antes);
     } finally {
       sql(urlDe("postgres"), `drop database ${nome} with (force)`);
