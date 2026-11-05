@@ -24,6 +24,7 @@ import { Route as MinhaFilaRouteImport } from './routes/minha-fila'
 import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as PipelineRouteImport } from './routes/pipeline'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as RevisarDecisoesRouteImport } from './routes/revisar-decisoes'
 import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as VendasRouteImport } from './routes/vendas'
 import { Route as VisaoGeralRouteImport } from './routes/visao-geral'
@@ -107,6 +108,11 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RevisarDecisoesRoute = RevisarDecisoesRouteImport.update({
+  id: '/revisar-decisoes',
+  path: '/revisar-decisoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TemplatesRoute = TemplatesRouteImport.update({
   id: '/templates',
   path: '/templates',
@@ -159,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/perfil': typeof PerfilRoute
   '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
+  '/revisar-decisoes': typeof RevisarDecisoesRoute
   '/templates': typeof TemplatesRoute
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
@@ -183,6 +190,7 @@ export interface FileRoutesByTo {
   '/perfil': typeof PerfilRoute
   '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
+  '/revisar-decisoes': typeof RevisarDecisoesRoute
   '/templates': typeof TemplatesRoute
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
@@ -208,6 +216,7 @@ export interface FileRoutesById {
   '/perfil': typeof PerfilRoute
   '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
+  '/revisar-decisoes': typeof RevisarDecisoesRoute
   '/templates': typeof TemplatesRoute
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
@@ -234,6 +243,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/pipeline'
     | '/reports'
+    | '/revisar-decisoes'
     | '/templates'
     | '/vendas'
     | '/visao-geral'
@@ -258,6 +268,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/pipeline'
     | '/reports'
+    | '/revisar-decisoes'
     | '/templates'
     | '/vendas'
     | '/visao-geral'
@@ -282,6 +293,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/pipeline'
     | '/reports'
+    | '/revisar-decisoes'
     | '/templates'
     | '/vendas'
     | '/visao-geral'
@@ -307,6 +319,7 @@ export interface RootRouteChildren {
   PerfilRoute: typeof PerfilRoute
   PipelineRoute: typeof PipelineRoute
   ReportsRoute: typeof ReportsRoute
+  RevisarDecisoesRoute: typeof RevisarDecisoesRoute
   TemplatesRoute: typeof TemplatesRoute
   VendasRoute: typeof VendasRoute
   VisaoGeralRoute: typeof VisaoGeralRoute
@@ -423,6 +436,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/revisar-decisoes': {
+      id: '/revisar-decisoes'
+      path: '/revisar-decisoes'
+      fullPath: '/revisar-decisoes'
+      preLoaderRoute: typeof RevisarDecisoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/templates': {
       id: '/templates'
       path: '/templates'
@@ -491,6 +511,7 @@ const rootRouteChildren: RootRouteChildren = {
   PerfilRoute: PerfilRoute,
   PipelineRoute: PipelineRoute,
   ReportsRoute: ReportsRoute,
+  RevisarDecisoesRoute: RevisarDecisoesRoute,
   TemplatesRoute: TemplatesRoute,
   VendasRoute: VendasRoute,
   VisaoGeralRoute: VisaoGeralRoute,
