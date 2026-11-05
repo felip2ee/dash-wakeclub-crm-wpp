@@ -31,6 +31,22 @@ valor_env_servico() {
   printf '%s\n' "$1" | grep -m1 "^$2=" | cut -d= -f2- || true
 }
 
+# valor_orion ARQUIVO ROTULO: valor depois de `ROTULO:` numa linha que começa pelo rótulo
+# (arquivos do SetupOrion em /root/dados_vps), sem espaços nas pontas nem CR; vazio se não
+# houver. Só o primeiro `:` depois do rótulo separa (URLs têm `:`). Sempre retorna 0.
+valor_orion() {
+  [ -f "$1" ] || return 0
+  ROTULO_ORION="$2:" awk '
+    { sub(/\r$/, "") }
+    index($0, ENVIRON["ROTULO_ORION"]) == 1 {
+      v = substr($0, length(ENVIRON["ROTULO_ORION"]) + 1)
+      sub(/^[ \t]+/, "", v)
+      sub(/[ \t]+$/, "", v)
+      print v
+      exit
+    }' "$1" 2>/dev/null || true
+}
+
 # certresolver_traefik TEXTO: nome do resolver em flag ou label; vazio se não houver.
 certresolver_traefik() {
   local nome

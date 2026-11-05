@@ -18,7 +18,9 @@
 #                                       admin do CRM com WAKECRM_SIM=1 (sem eles: pula se já
 #                                       houver admin, para se não houver)
 #   WAKECRM_PORTAINER_USUARIO, WAKECRM_PORTAINER_SENHA
-#                                       credencial do Portainer com WAKECRM_SIM=1 (sem ela: docker stack deploy)
+#                                       credencial do Portainer com WAKECRM_SIM=1 (sem ela: docker stack deploy);
+#                                       não vale quando o Orion deixou dados_portainer
+#   WAKECRM_ORION_DIR                   pasta dos dados do SetupOrion (padrão /root/dados_vps)
 #   WAKECRM_FALHAR_MIGRACAO=NNNN        só teste: aplica até a anterior e falha (exercita a volta)
 #   WAKECRM_PERMITIR_NAO_ROOT=1         só teste: roda sem root (Swarm local no Mac)
 #   WAKECRM_CURL_INSECURE=1             só teste: aceita o certificado padrão do Traefik (curl -k)
@@ -30,6 +32,14 @@ CREDENCIAIS="$DIR_WAKECRM/credenciais.env"
 DIR_BACKUPS="$DIR_WAKECRM/backups"
 SERVICO_APP="wakecrm_wakecrm"
 SIM="${WAKECRM_SIM:-}"
+# Arquivos de texto que o SetupOrion grava com o que instalou (só dados_vps, dados_postgres,
+# dados_evolution e dados_portainer; nunca dados_evolution_go).
+ORION_DIR="${WAKECRM_ORION_DIR:-/root/dados_vps}"
+ORION_USADOS=""
+PORTAINER_DOMINIO=""
+PORTAINER_TOKEN=""
+PORTAINER_USUARIO=""
+PORTAINER_SENHA=""
 
 # Tudo que é temporário (inclusive arquivos com segredo) mora aqui e sai no fim.
 TMP="$(mktemp -d)"
@@ -300,6 +310,50 @@ definir_credencial() {
   garantir_credencial "$1" "$2" "$3"
 }
 
+# ler_orion VAR ARQUIVO ROTULO: VAR recebe o campo ROTULO de ORION_DIR/ARQUIVO (vazio se não houver).
+ler_orion() {
+  printf -v "$1" '%s' "$(valor_orion "$ORION_DIR/$2" "$3")"
+}
+
+# usou_orion ARQUIVO: anota o arquivo do Orion cujo valor foi adotado (para o resumo).
+usou_orion() {
+  case " $ORION_USADOS " in *" $1 "*) ;; *) ORION_USADOS="${ORION_USADOS:+$ORION_USADOS }$1" ;; esac
+}
+
+# dominio_sem_esquema TEXTO: tira http(s):// e tudo a partir da primeira barra.
+dominio_sem_esquema() {
+  local d="${1#*://}"
+  printf '%s\n' "${d%%/*}"
+}
+
+# portainer_do_orion: com dados_portainer, a API vai pelo domínio público em HTTPS verificado.
+# Preenche PORTAINER_DOMINIO e PORTAINER_TOKEN (preferido) ou, sem token, usuário e senha.
+# Sem domínio válido ou sem credencial, deixa tudo vazio (perguntas segue como antes).
+portainer_do_orion() {
+  local dom
+  PORTAINER_DOMINIO="" PORTAINER_TOKEN=""
+  ler_orion dom dados_portainer "Dominio do portainer"
+  dom="$(dominio_sem_esquema "$dom")"
+  [ -n "$dom" ] || return 0
+  if ! [[ "$dom" =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
+    aviso "Domínio do Portainer em $ORION_DIR/dados_portainer inválido; ignoro o arquivo."
+    return 0
+  fi
+  ler_orion PORTAINER_TOKEN dados_portainer Token
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    ler_orion PORTAINER_USUARIO dados_portainer Usuario
+    ler_orion PORTAINER_SENHA dados_portainer Senha
+    if [ -z "$PORTAINER_USUARIO" ] || [ -z "$PORTAINER_SENHA" ]; then
+      aviso "$ORION_DIR/dados_portainer sem token nem usuário e senha; ignoro o arquivo."
+      PORTAINER_USUARIO="" PORTAINER_SENHA=""
+      return 0
+    fi
+  fi
+  PORTAINER_DOMINIO="$dom"
+  usou_orion dados_portainer
+  ok "Portainer do Orion: https://$dom ($(if [ -n "$PORTAINER_TOKEN" ]; then echo token; else echo "usuário $PORTAINER_USUARIO"; fi))"
+}
+
 # arquivo_env CHAVE...: arquivo temporário 600 com CHAVE=valor das variáveis de shell.
 # Segredos chegam aos contêineres por --env-file, nunca por argumento (ps).
 arquivo_env() {
@@ -492,6 +546,19 @@ checar_par_vapid() {
   fi
 }
 
+# texto_publicacao: como a stack sai, para o resumo (sem segredo).
+texto_publicacao() {
+  if [ -n "$PORTAINER_DOMINIO" ] && [ -n "$PORTAINER_TOKEN" ]; then
+    echo "API do Portainer em https://$PORTAINER_DOMINIO (token do Orion)"
+  elif [ -n "$PORTAINER_DOMINIO" ]; then
+    echo "API do Portainer em https://$PORTAINER_DOMINIO (usuário $PORTAINER_USUARIO, do Orion)"
+  elif [ -n "$PORTAINER_USUARIO" ]; then
+    echo "API do Portainer (usuário $PORTAINER_USUARIO)"
+  else
+    echo "docker stack deploy"
+  fi
+}
+
 mascarar() {
   if [ -z "$1" ]; then echo "(vazio)"; else echo "•••••••• (${#1} caracteres)"; fi
 }
@@ -516,7 +583,19 @@ json_texto() {
 # na ordem das structs do Portainer: o objeto de endpoint e o de stack começam por "Id",
 # e na stack "Name" vem logo depois.
 jwt_portainer() { printf '%s\n' "$1" | sed -n 's/.*"jwt": *"\([^"]*\)".*/\1/p' | head -n1; }
-primeiro_id() { printf '%s\n' "$1" | grep -o '"Id": *[0-9][0-9]*' | head -n1 | sed 's/[^0-9]//g' || true; }
+# ids_endpoints_docker JSON: Id dos endpoints Docker (Type 1 local, 2 agente, 4 edge), um por linha.
+# shortcut: Name com aspas escapadas não casa; o endpoint some da lista e cai no docker stack deploy.
+ids_endpoints_docker() {
+  printf '%s\n' "$1" | grep -o '"Id": *[0-9][0-9]*, *"Name": *"[^"]*", *"Type": *[124][,}]' |
+    sed 's/^"Id": *\([0-9]*\).*/\1/' || true
+}
+# id_swarm_json: stdin é a resposta de /docker/swarm; imprime o ID do cluster (primeiro "ID").
+id_swarm_json() { grep -o '"ID": *"[^"]*"' | head -n1 | sed 's/^"ID": *"\(.*\)"$/\1/' || true; }
+# endpoint_por_swarm SWARM PARES: PARES tem "id swarmID" por linha; imprime o id cujo swarmID é SWARM.
+endpoint_por_swarm() {
+  [ -n "$1" ] || return 0
+  printf '%s\n' "$2" | awk -v s="$1" '$2 == s { print $1; exit }'
+}
 id_stack() { # JSON NOME
   printf '%s\n' "$1" | grep -o "\"Id\": *[0-9][0-9]*, *\"Name\": *\"$2\"" | head -n1 |
     sed 's/^"Id": *\([0-9]*\).*/\1/' || true
@@ -540,37 +619,68 @@ base_portainer() {
 # em PORTAINER_BASE. Token e corpo moram aqui dentro, nunca em argumento.
 config_portainer() {
   printf 'url = "%s%s"\nrequest = "%s"\n' "$PORTAINER_BASE" "$2" "$1"
-  # O certificado do Portainer na 9443 é autoassinado.
-  case "$PORTAINER_BASE" in https:*) printf 'insecure\n' ;; esac
+  # O certificado do Portainer na 9443 é autoassinado; o domínio público do Orion tem
+  # certificado de verdade e é verificado.
+  if [ -z "${PORTAINER_DOMINIO:-}" ]; then case "$PORTAINER_BASE" in https:*) printf 'insecure\n' ;; esac; fi
   printf 'fail\nsilent\nshow-error\nconnect-timeout = 10\nmax-time = 300\nheader = "Content-Type: application/json"\n'
-  if [ -n "${PORTAINER_JWT:-}" ]; then printf 'header = "Authorization: Bearer %s"\n' "$PORTAINER_JWT"; fi
+  if [ -n "${PORTAINER_TOKEN:-}" ]; then
+    printf 'header = %s\n' "$(printf 'X-API-Key: %s' "$PORTAINER_TOKEN" | texto_config)"
+  elif [ -n "${PORTAINER_JWT:-}" ]; then
+    printf 'header = "Authorization: Bearer %s"\n' "$PORTAINER_JWT"
+  fi
   if [ -n "${3:-}" ]; then printf 'data-binary = %s\n' "$(printf '%s' "$3" | texto_config)"; fi
 }
 
-# portainer_api METODO CAMINHO [CORPO]: a chamada sai de um contêiner curlimages/curl na REDE,
-# com a config pelo stdin (curl -K -). A saída tem token e Env de outras stacks: sem log do Docker.
+# portainer_api METODO CAMINHO [CORPO]: config sempre pelo stdin (curl -K -), nunca em argumento.
+# Pelo domínio público do Orion, o curl roda no próprio servidor. Senão, sai de um contêiner
+# curlimages/curl na REDE; a saída tem token e Env de outras stacks: sem log do Docker.
 portainer_api() {
-  config_portainer "$@" | docker run --rm -i --log-driver none --network "$REDE" curlimages/curl:8.11.1 -K -
+  if [ -n "${PORTAINER_DOMINIO:-}" ]; then
+    config_portainer "$@" | curl -K -
+  else
+    config_portainer "$@" | docker run --rm -i --log-driver none --network "$REDE" curlimages/curl:8.11.1 -K -
+  fi
+}
+
+# endpoint_do_swarm SWARM: id do endpoint Docker do Portainer que é este Swarm (o "ID" de
+# /api/endpoints/{id}/docker/swarm igual ao do cluster local); vazio se nenhum for.
+endpoint_do_swarm() {
+  local resp id pares=""
+  resp="$(portainer_api GET /api/endpoints)" || return 0
+  for id in $(ids_endpoints_docker "$resp"); do
+    pares="$pares$id $(portainer_api GET "/api/endpoints/$id/docker/swarm" 2>/dev/null | id_swarm_json)"$'\n'
+  done
+  endpoint_por_swarm "$1" "$pares"
 }
 
 # publicar_portainer: cria ou atualiza (pullImage) a stack wakecrm pela API. Falha => 1.
 publicar_portainer() {
   local corpo resp endpoint swarm id conteudo rc=0
-  PORTAINER_BASE="https://$PORTAINER_SERVICO:9443"
-  portainer_api GET /api/system/status >/dev/null 2>&1 || rc=$?
-  PORTAINER_BASE="$(base_portainer "$rc")"
-  case "$PORTAINER_BASE" in
-    https:*) ok "Portainer por HTTPS ($PORTAINER_BASE)" ;;
-    *) aviso "O Portainer não respondeu na 9443; uso $PORTAINER_BASE (senha sem criptografia na rede overlay)." ;;
-  esac
-  corpo="{\"username\":$(printf '%s' "$PORTAINER_USUARIO" | json_texto),\"password\":$(printf '%s' "$PORTAINER_SENHA" | json_texto)}"
-  resp="$(portainer_api POST /api/auth "$corpo")" || return 1
-  PORTAINER_JWT="$(jwt_portainer "$resp")"
-  [ -n "$PORTAINER_JWT" ] || return 1
-  resp="$(portainer_api GET /api/endpoints)" || return 1
-  endpoint="$(primeiro_id "$resp")"
-  [ -n "$endpoint" ] || return 1
+  if [ -n "$PORTAINER_DOMINIO" ]; then
+    PORTAINER_BASE="https://$PORTAINER_DOMINIO"
+    ok "Portainer por $PORTAINER_BASE (dados do Orion)"
+  else
+    PORTAINER_BASE="https://$PORTAINER_SERVICO:9443"
+    portainer_api GET /api/system/status >/dev/null 2>&1 || rc=$?
+    PORTAINER_BASE="$(base_portainer "$rc")"
+    case "$PORTAINER_BASE" in
+      https:*) ok "Portainer por HTTPS ($PORTAINER_BASE)" ;;
+      *) aviso "O Portainer não respondeu na 9443; uso $PORTAINER_BASE (senha sem criptografia na rede overlay)." ;;
+    esac
+  fi
+  # Com o token do Orion (header X-API-Key), não há login.
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    corpo="{\"username\":$(printf '%s' "$PORTAINER_USUARIO" | json_texto),\"password\":$(printf '%s' "$PORTAINER_SENHA" | json_texto)}"
+    resp="$(portainer_api POST /api/auth "$corpo")" || return 1
+    PORTAINER_JWT="$(jwt_portainer "$resp")"
+    [ -n "$PORTAINER_JWT" ] || return 1
+  fi
   swarm="$(docker info --format '{{.Swarm.Cluster.ID}}')" || return 1
+  endpoint="$(endpoint_do_swarm "$swarm")"
+  if [ -z "$endpoint" ]; then
+    aviso "Nenhum endpoint Docker do Portainer é este Swarm ($swarm)."
+    return 1
+  fi
   resp="$(portainer_api GET /api/stacks)" || return 1
   id="$(id_stack "$resp" wakecrm)"
   conteudo="$(json_texto <"$STACK")"
@@ -673,16 +783,31 @@ detectar() {
   passo 2 "Detectando o servidor"
   SERVICOS="$(docker service ls --format '{{.Name}} {{.Image}}')"
 
-  # Postgres
+  # Postgres. O serviço manda; o Orion (dados_postgres) só cobre o que ele não diz. O Host do
+  # Orion só vira sugestão do nome quando não há serviço salvo; a porta fica 5432 (a do
+  # contêiner na overlay, que é por onde o instalador e o CRM falam).
+  local pg_salvo pg_orion
+  pg_salvo="$(ler_credencial "$CREDENCIAIS" PG_SERVICO)"
+  ler_orion pg_orion dados_postgres Host
   detectar_servico PG_SERVICO "Postgres" '^(postgres(:|$)|pgvector/)' 'postgres|pgvector' \
-    "$(ler_credencial "$CREDENCIAIS" PG_SERVICO)" sim
+    "${pg_salvo:-$pg_orion}" sim
   PG_HOST="$PG_SERVICO"
   local env_pg img_pg
   env_pg="$(env_servico "$PG_SERVICO")"
   PG_USUARIO="$(valor_env_servico "$env_pg" POSTGRES_USER)"
-  PG_USUARIO="${PG_USUARIO:-postgres}"
   PG_SENHA="$(valor_env_servico "$env_pg" POSTGRES_PASSWORD)"
   PG_SENHA_ORIGEM="lida do serviço"
+  if [ -z "$PG_SENHA" ]; then
+    ler_orion PG_SENHA dados_postgres Senha
+    if [ -n "$PG_SENHA" ]; then
+      PG_SENHA_ORIGEM="lida do Orion"
+      usou_orion dados_postgres
+      # Senha e usuário do Orion andam juntos.
+      ler_orion pg_orion dados_postgres Usuario
+      PG_USUARIO="${pg_orion:-$PG_USUARIO}"
+    fi
+  fi
+  PG_USUARIO="${PG_USUARIO:-postgres}"
   if [ -z "$PG_SENHA" ]; then
     PG_SENHA_ORIGEM="digitada"
     aviso "POSTGRES_PASSWORD não está nas variáveis do serviço $PG_SERVICO."
@@ -737,18 +862,28 @@ detectar() {
   [ -n "$ENTRYPOINT" ] || morrer "Entrypoint do Traefik é obrigatório."
   ok "entrypoint HTTPS: $ENTRYPOINT"
 
-  # Rede overlay compartilhada entre Postgres e Traefik
-  local redes_pg redes_tr r
+  # Rede overlay compartilhada entre Postgres e Traefik. Ambígua ou sem resposta, vale a
+  # Rede interna do Orion (dados_vps); attachable continua obrigatório.
+  local redes_pg redes_tr r rede_orion
   local -a comuns=()
-  redes_pg="$(redes_servico "$PG_SERVICO")"
-  redes_tr="$(redes_servico "$TRAEFIK_SERVICO")"
+  redes_pg="$(redes_servico "$PG_SERVICO")" || redes_pg=""
+  redes_tr="$(redes_servico "$TRAEFIK_SERVICO")" || redes_tr=""
   while IFS= read -r r; do
     [ -n "$r" ] && printf '%s\n' "$redes_tr" | grep -qxF "$r" && comuns+=("$r")
   done <<<"$redes_pg"
-  if [ "${#comuns[@]}" -eq 0 ]; then
-    morrer "Postgres ($PG_SERVICO) e Traefik ($TRAEFIK_SERVICO) não compartilham nenhuma rede."
-  elif [ "${#comuns[@]}" -eq 1 ]; then
+  ler_orion rede_orion dados_vps "Rede interna"
+  if [ "${#comuns[@]}" -eq 1 ]; then
     REDE="${comuns[0]}"
+  elif [ "${#comuns[@]}" -gt 1 ] && [ -n "$rede_orion" ] && printf '%s\n' "${comuns[@]}" | grep -qxF "$rede_orion"; then
+    REDE="$rede_orion"
+    usou_orion dados_vps
+  elif [ "${#comuns[@]}" -eq 0 ]; then
+    if [ -z "$rede_orion" ] || ! docker network inspect "$rede_orion" >/dev/null 2>&1; then
+      morrer "Postgres ($PG_SERVICO) e Traefik ($TRAEFIK_SERVICO) não compartilham nenhuma rede."
+    fi
+    aviso "Não achei uma rede comum a Postgres e Traefik; uso a Rede interna do Orion ($rede_orion)."
+    REDE="$rede_orion"
+    usou_orion dados_vps
   else
     escolher REDE "Postgres e Traefik compartilham mais de uma rede:" \
       "$(ler_credencial "$CREDENCIAIS" REDE)" "${comuns[@]}"
@@ -760,36 +895,60 @@ detectar() {
   # Evolution API 2.3.7 (não Evolution Go)
   detectar_servico EVO_SERVICO "Evolution API" '^(atendai/evolution-api|evoapicloud/evolution-api)' \
     'evolution[_-]?api' "" ""
+  # Chave: serviço, depois Global API Key do Orion, depois a salva; só com o serviço pergunta.
+  # URL: a interna do serviço; sem serviço, a BaseUrl do Orion, depois a salva.
+  EVOLUTION_API_KEY="" EVOLUTION_URL=""
   if [ -n "$EVO_SERVICO" ]; then
     local env_evo porta
     env_evo="$(env_servico "$EVO_SERVICO")"
     porta="$(valor_env_servico "$env_evo" SERVER_PORT)"
     EVOLUTION_URL="http://$EVO_SERVICO:${porta:-8080}"
+    EVOLUTION_URL_ORIGEM="detectada no serviço"
     EVOLUTION_API_KEY="$(valor_env_servico "$env_evo" AUTHENTICATION_API_KEY)"
-    if [ -z "$EVOLUTION_API_KEY" ]; then
-      aviso "AUTHENTICATION_API_KEY não está nas variáveis de $EVO_SERVICO."
+    EVOLUTION_API_KEY_ORIGEM="lida do serviço"
+    [ -n "$EVOLUTION_API_KEY" ] || aviso "AUTHENTICATION_API_KEY não está nas variáveis de $EVO_SERVICO."
+  else
+    ler_orion EVOLUTION_URL dados_evolution BaseUrl
+    EVOLUTION_URL_ORIGEM="lida do Orion"
+    if [ -n "$EVOLUTION_URL" ]; then
+      usou_orion dados_evolution
+    else
+      EVOLUTION_URL="$(ler_credencial "$CREDENCIAIS" EVOLUTION_URL)"
+      EVOLUTION_URL_ORIGEM="salva"
+    fi
+  fi
+  if [ -z "$EVOLUTION_API_KEY" ]; then
+    ler_orion EVOLUTION_API_KEY dados_evolution "Global API Key"
+    EVOLUTION_API_KEY_ORIGEM="lida do Orion"
+    if [ -n "$EVOLUTION_API_KEY" ]; then
+      usou_orion dados_evolution
+    else
       EVOLUTION_API_KEY="$(ler_credencial "$CREDENCIAIS" EVOLUTION_API_KEY)"
+      EVOLUTION_API_KEY_ORIGEM="salva"
       if [ -n "$EVOLUTION_API_KEY" ]; then
         ok "chave da Evolution reaproveitada de $CREDENCIAIS"
-      elif [ -n "$SIM" ]; then
+      elif [ -n "$EVO_SERVICO" ] && [ -n "$SIM" ]; then
         aviso "Chave da Evolution fica vazia (o adaptador que a usa vem depois)."
-      else
+      elif [ -n "$EVO_SERVICO" ]; then
         perguntar EVOLUTION_API_KEY "Chave da API da Evolution (AUTHENTICATION_API_KEY, Enter deixa vazia)" "" -s
+        EVOLUTION_API_KEY_ORIGEM="digitada"
       fi
     fi
+  fi
+  if [ -n "$EVO_SERVICO" ]; then
     redes_servico "$EVO_SERVICO" | grep -qxF "$REDE" ||
       aviso "A Evolution não está na rede $REDE: $EVOLUTION_URL pode não ser alcançável pelo CRM."
-  else
-    EVOLUTION_URL="$(ler_credencial "$CREDENCIAIS" EVOLUTION_URL)"
-    EVOLUTION_API_KEY="$(ler_credencial "$CREDENCIAIS" EVOLUTION_API_KEY)"
+  elif [ "$EVOLUTION_URL_ORIGEM" = salva ] && [ "$EVOLUTION_API_KEY_ORIGEM" = salva ]; then
     aviso "Sem Evolution: EVOLUTION_URL e EVOLUTION_API_KEY ficam como estavam (hoje o app não as lê)."
   fi
   exigir_valor_seguro EVOLUTION_URL "URL interna da Evolution"
   exigir_valor_seguro EVOLUTION_API_KEY "Chave da API da Evolution" -s
 
-  # Portainer (a publicação pela API pergunta a credencial depois, Task 7)
+  # Portainer: com dados_portainer do Orion, a API vai pelo domínio dele; senão, perguntas
+  # pede a credencial e a API vai pelo serviço na overlay.
   detectar_servico PORTAINER_SERVICO "Portainer" '^portainer/portainer' 'portainer' "" ""
-  [ -n "$PORTAINER_SERVICO" ] || aviso "Sem Portainer: a stack sai por docker stack deploy."
+  portainer_do_orion
+  [ -n "$PORTAINER_SERVICO" ] || [ -n "$PORTAINER_DOMINIO" ] || aviso "Sem Portainer: a stack sai por docker stack deploy."
 }
 
 perguntas() {
@@ -819,7 +978,9 @@ perguntas() {
   exigir_valor_seguro EVOLUTION_INSTANCIA "Instância da Evolution"
   ok "instância: $EVOLUTION_INSTANCIA"
 
-  # Portainer: com credencial, a stack sai pela API (controle total no Portainer).
+  # Portainer: com credencial, a stack sai pela API (controle total no Portainer). Com os
+  # dados do Orion (detectar), não pergunta nada.
+  [ -z "$PORTAINER_DOMINIO" ] || return 0
   PORTAINER_USUARIO="${WAKECRM_PORTAINER_USUARIO:-}"
   PORTAINER_SENHA="${WAKECRM_PORTAINER_SENHA:-}"
   if [ -n "$PORTAINER_SERVICO" ] && [ -z "$SIM" ] && [ -z "$PORTAINER_USUARIO" ]; then
@@ -926,10 +1087,11 @@ confirmar() {
   Postgres        $PG_SERVICO (Postgres $PG_MAJOR, usuário $PG_USUARIO, senha $PG_SENHA_ORIGEM)
   Traefik         $TRAEFIK_SERVICO, certresolver $CERTRESOLVER, entrypoint $ENTRYPOINT
   Rede            $REDE
-  Evolution       ${EVO_SERVICO:-não encontrada} ${EVOLUTION_URL:+($EVOLUTION_URL)}
-  Chave Evolution $(mascarar "$EVOLUTION_API_KEY")
+  Evolution       ${EVO_SERVICO:-não encontrada} ${EVOLUTION_URL:+($EVOLUTION_URL, $EVOLUTION_URL_ORIGEM)}
+  Chave Evolution $(mascarar "$EVOLUTION_API_KEY")${EVOLUTION_API_KEY:+, $EVOLUTION_API_KEY_ORIGEM}
   Portainer       ${PORTAINER_SERVICO:-não encontrado}
-  Publicação      $(if [ -n "$PORTAINER_USUARIO" ]; then echo "API do Portainer (usuário $PORTAINER_USUARIO)"; else echo "docker stack deploy"; fi)
+  Publicação      $(texto_publicacao)
+  Dados do Orion  ${ORION_USADOS:-nenhum} (em $ORION_DIR)
   Domínio         https://$DOMINIO
   Instância       $EVOLUTION_INSTANCIA
   Credenciais     $CREDENCIAIS
@@ -1072,7 +1234,7 @@ publicar() {
   rm -f "$env"
   # Vazio se o serviço não existe; conferir espera o deploy mudar isto.
   ATUALIZADO_ANTES="$(docker service inspect --format '{{.UpdatedAt}}' "$SERVICO_APP" 2>/dev/null || true)"
-  if [ -n "$PORTAINER_USUARIO" ]; then
+  if [ -n "$PORTAINER_TOKEN" ] || [ -n "$PORTAINER_USUARIO" ]; then
     if publicar_portainer; then
       CRM_PARADO=""
       religar_depois_do_deploy
