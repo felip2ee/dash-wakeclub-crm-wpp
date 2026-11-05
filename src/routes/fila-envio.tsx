@@ -25,7 +25,8 @@ function Kpi({ rotulo, valor }: { rotulo: string; valor: string }) {
 
 function previsao(dias: number): string {
   if (dias === 0) return "Fila vazia";
-  return dias === 1 ? "Hoje" : `${dias} dias`;
+  if (dias === 1) return "Hoje";
+  return dias === 2 ? "Amanhã" : `${dias} dias`;
 }
 
 // Aprovados que ainda não saíram. O envio é da tarefa agendada, limitada pela cota do dia.

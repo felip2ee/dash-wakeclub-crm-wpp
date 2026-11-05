@@ -9,8 +9,8 @@ import { z } from "zod";
 
 import { exigirAdmin } from "./auth";
 import { type ClienteDb, comTransacao, getPoolMotor, type PoolClient } from "./db";
-import { listarCandidatos, ordenarFila } from "./motor/envio-followups";
-import { enviadosHoje, lerRitmo, MODOS } from "./motor/ritmo";
+import { LEMBRETES, listarCandidatos, ordenarFila } from "./motor/envio-followups";
+import { dentroDaJanela, enviadosHoje, HORA_SP, lerRitmo, MODOS } from "./motor/ritmo";
 
 export type ItemFila = {
   followupId: string;
@@ -23,6 +23,7 @@ export type ItemFila = {
   aprovadoEm: string;
   posicao: number;
   reconferir: boolean;
+  lembrete: boolean;
 };
 
 export type FilaEnvio = {
@@ -34,7 +35,10 @@ export type FilaEnvio = {
 };
 
 /** Aprovados na ordem real de envio, com a cota do dia e quantos dias até esvaziar. */
-export async function lerFilaEnvio(db: ClienteDb): Promise<FilaEnvio> {
+export async function lerFilaEnvio(
+  db: ClienteDb,
+  { agora = new Date() }: { agora?: Date } = {},
+): Promise<FilaEnvio> {
   const [candidatos, { modo }, enviados] = await Promise.all([
     listarCandidatos(db),
     lerRitmo(db),
@@ -55,32 +59,38 @@ export async function lerFilaEnvio(db: ClienteDb): Promise<FilaEnvio> {
     [candidatos.map((c) => c.id)],
   );
   const lead = new Map(rows.map((r) => [r.id, r]));
-  const itens = ordenarFila(candidatos).flatMap((c, i): ItemFila[] => {
+  const itens = ordenarFila(candidatos).map((c, i): ItemFila => {
     const r = lead.get(c.id);
-    // Saiu da fila entre as duas consultas: some da lista.
-    if (!r) return [];
-    return [
-      {
-        followupId: c.id,
-        leadNome: r.lead_nome,
-        telefone: r.telefone,
-        vendedorNome: r.vendedor_nome,
-        tipo: c.tipo,
-        etiqueta: r.etiqueta,
-        valorEsperado: c.valorEsperado,
-        aprovadoEm: c.aprovadoEm.toISOString(),
-        posicao: i + 1,
-        reconferir: c.reconferir,
-      },
-    ];
+    // A linha de followups nunca é apagada: sem par aqui é bug, não corrida.
+    if (!r) throw new Error(`Follow-up ${c.id} sumiu da fila.`);
+    return {
+      followupId: c.id,
+      leadNome: r.lead_nome,
+      telefone: r.telefone,
+      vendedorNome: r.vendedor_nome,
+      tipo: c.tipo,
+      etiqueta: r.etiqueta,
+      valorEsperado: c.valorEsperado,
+      aprovadoEm: c.aprovadoEm.toISOString(),
+      posicao: i + 1,
+      reconferir: c.reconferir,
+      lembrete: LEMBRETES.has(c.tipo),
+    };
   });
   const { cotaDia } = MODOS[modo];
+  // Depois das 19h59 nada mais sai hoje: a fila começa a andar amanhã às 8h.
+  const janelaFechou = !dentroDaJanela(agora) && Number(HORA_SP.format(agora)) >= 20;
   return {
     itens,
-    saemHoje: Math.min(itens.length, Math.max(0, cotaDia - enviados)),
+    saemHoje: janelaFechou ? 0 : Math.min(itens.length, Math.max(0, cotaDia - enviados)),
     cotaDia,
     enviadosHoje: enviados,
-    previsaoDias: itens.length === 0 ? 0 : Math.ceil((itens.length + enviados) / cotaDia),
+    previsaoDias:
+      itens.length === 0
+        ? 0
+        : janelaFechou
+          ? 1 + Math.ceil(itens.length / cotaDia)
+          : Math.ceil((itens.length + enviados) / cotaDia),
   };
 }
 

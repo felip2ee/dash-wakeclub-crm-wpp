@@ -64,13 +64,22 @@ describe.skipIf(!bancoTesteAtivo)("fila de envio no banco", () => {
     const outro = await followup(await lead(), admin, "reengajar");
     const lembrete = await followup(await lead(), admin, "lembrete_d1", true);
 
-    const fila = await lerFilaEnvio(db());
+    // Relógio fixo no dia de hoje em São Paulo: dentro (12h) e depois (21h) da janela de envio.
+    const hojeSp = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(
+      new Date(),
+    );
+    const fila = await lerFilaEnvio(db(), { agora: new Date(`${hojeSp}T12:00:00-03:00`) });
     expect(fila.itens).toHaveLength(3);
     expect(fila.cotaDia).toBe(20);
     expect(fila.enviadosHoje).toBe(19);
     expect(fila.saemHoje).toBe(1);
     expect(fila.previsaoDias).toBe(2);
-    expect(fila.itens[0]).toMatchObject({ followupId: lembrete, posicao: 1 });
+    expect(fila.itens[0]).toMatchObject({ followupId: lembrete, posicao: 1, lembrete: true });
+    expect(fila.itens.map((i) => i.posicao)).toEqual([1, 2, 3]);
+
+    const noite = await lerFilaEnvio(db(), { agora: new Date(`${hojeSp}T21:00:00-03:00`) });
+    expect(noite.saemHoje).toBe(0);
+    expect(noite.previsaoDias).toBe(2);
 
     await comTransacao((c) => removerDaFila(c, admin, comum));
     const { rows } = await db().query(

@@ -19,7 +19,7 @@ export type Modo = keyof typeof MODOS;
 // Entidade fixa dos eventos de configuração (migração 0004).
 const CONFIG_ID = "00000000-0000-0000-0000-000000000001";
 
-const HORA_SP = new Intl.DateTimeFormat("pt-BR", {
+export const HORA_SP = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
   hour: "numeric",
   hourCycle: "h23",

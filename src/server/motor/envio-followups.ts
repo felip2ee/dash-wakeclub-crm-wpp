@@ -82,7 +82,7 @@ async function abortar(db: PoolClient, id: string, motivo: string, statusAntes: 
 
 export type Candidato = { id: string; tipo: string; aprovadoEm: Date; valorEsperado: number };
 
-const LEMBRETES = new Set(["lembrete_d1", "lembrete_dia"]);
+export const LEMBRETES = new Set(["lembrete_d1", "lembrete_dia"]);
 
 /** Lembretes de aula primeiro (spec §6), depois maior valor esperado, depois o mais antigo. */
 export function ordenarFila<T extends Candidato>(c: T[]): T[] {

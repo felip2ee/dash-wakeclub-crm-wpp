@@ -15,8 +15,6 @@ import { Button } from "@/components/ui/button";
 import { desde, moeda, telefone } from "@/lib/formato";
 import type { ItemFila } from "@/server/fila-envio";
 
-const LEMBRETES = new Set(["lembrete_d1", "lembrete_dia"]);
-
 // Lista ordenada como o envio vai consumir; "Remover" pede confirmação porque o texto aprovado
 // se perde. A tela não envia nada: o envio é só da tarefa que respeita a cota do dia.
 export function ListaFilaEnvio({
@@ -50,7 +48,7 @@ export function ListaFilaEnvio({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {LEMBRETES.has(i.tipo) && <Badge>Lembrete de aula</Badge>}
+                {i.lembrete && <Badge>Lembrete de aula</Badge>}
                 {i.reconferir && <Badge variant="outline">Será reconferido</Badge>}
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {moeda(i.valorEsperado)}
