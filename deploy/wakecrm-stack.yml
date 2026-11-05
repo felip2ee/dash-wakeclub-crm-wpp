@@ -7,13 +7,14 @@
 # Atenção: cada valor de environment fica entre aspas duplas, então não pode conter
 # " nem \. Os segredos gerados são hex e a senha do Postgres vai percent-encoded
 # dentro das URLs, então isso vale por construção.
-# Placeholders de infraestrutura: DOMINIO, REDE (overlay externa do Traefik), CERTRESOLVER.
+# Placeholders de infraestrutura: IMAGEM (em produção ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest),
+# DOMINIO, REDE (overlay externa do Traefik), CERTRESOLVER.
 
 version: "3.7"
 
 services:
   wakecrm:
-    image: ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest
+    image: ${IMAGEM}
     networks:
       - ${REDE}
     environment:

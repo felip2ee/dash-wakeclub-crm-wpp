@@ -78,6 +78,69 @@ assert_eq ok "$r" "drop e restauração na mesma transação (psql -1)"
 case "$CMD" in *PGPASSWORD* | *teste*) r=vazou ;; *) r=ok ;; esac
 assert_eq ok "$r" "comando manual sem senha"
 
+# Publicação: modelo real preenchido, sem segredo do superusuário e com $ dobrado.
+# shellcheck disable=SC2034,SC2016 # lidas por nome em arquivo_env; $ literal de propósito
+{
+  IMAGEM=img:1 DOMINIO=crm.exemplo.com REDE=rede CERTRESOLVER=le DATABASE_URL=u1 DATABASE_URL_RW=u2
+  DATABASE_URL_MOTOR=u3 VITE_VAPID_PUBLIC_KEY=p VAPID_PRIVATE_KEY=v PUSH_DISPATCH_SECRET=s1
+  WEBHOOK_EVOLUTION_SECRET=s2 WEBHOOK_VENDAS_SECRET=s3 EVOLUTION_INSTANCIA=wakeclub EVOLUTION_URL=http://evo:8080
+  EVOLUTION_API_KEY='a$b' ADMIN_DATABASE_URL=postgres://postgres:superu@pg/wakeclub
+}
+# shellcheck disable=SC2086
+ENV_STACK="$(arquivo_env $CHAVES_STACK)"
+PUB="$(stack_publicavel "$AQUI/wakecrm-stack.yml" "$ENV_STACK")"
+assert_eq 0 "$?" "modelo real preenche com CHAVES_STACK"
+case "$PUB" in *superu* | *ADMIN_DATABASE_URL*) r=vazou ;; *) r=ok ;; esac
+assert_eq ok "$r" "stack sem a URL do superusuário"
+case "$PUB" in *"image: img:1"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "stack usa IMAGEM"
+# shellcheck disable=SC2016 # $ literal
+case "$PUB" in *'EVOLUTION_API_KEY=a$$b"'*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "\$ do valor vira \$\$ (docker stack deploy interpola)"
+# shellcheck disable=SC2016 # $ literal
+assert_eq "" "$(printf '%s\n' "$PUB" | grep -o '\${[A-Za-z_]*}')" "nenhum marcador sobra"
+
+# json_texto: escapes de string JSON.
+assert_eq '"a\"b\\c\td\nl2"' "$(printf 'a"b\\c\td\nl2\n' | json_texto)" "json_texto escapa aspas, barra, tab e linha"
+assert_eq '""' "$(printf '' | json_texto)" "json_texto vazio"
+
+# Respostas da API do Portainer.
+assert_eq tok.x-y "$(jwt_portainer '{"jwt":"tok.x-y"}')" "jwt da resposta de /api/auth"
+assert_eq 3 "$(primeiro_id '[{"Id":3,"Name":"primary","Snapshots":[{"Id":9}]},{"Id":4}]')" "primeiro endpoint"
+assert_eq "" "$(primeiro_id '[]')" "sem endpoint: vazio"
+ST='[{"Id":2,"Name":"evolution","ResourceControl":{"Id":7}},{"Id":12,"Name":"wakecrm","Type":1}]'
+assert_eq 12 "$(id_stack "$ST" wakecrm)" "id da stack wakecrm"
+assert_eq "" "$(id_stack '[{"Id":2,"Name":"wakecrm2"}]' wakecrm)" "nome parecido não casa"
+
+# Config do curl para o Portainer: corpo e token dentro da config, escapados.
+# shellcheck disable=SC2034 # lidas dentro de config_portainer
+{ PORTAINER_SERVICO=portainer_portainer; PORTAINER_JWT=jwt1; }
+CFG="$(config_portainer PUT '/api/stacks/3?endpointId=1' '{"a":"x\\ny \"q\""}')"
+case "$CFG" in *'url = "http://portainer_portainer:9000/api/stacks/3?endpointId=1"'*'request = "PUT"'*'Authorization: Bearer jwt1"'*) r=ok ;; *) r="$CFG" ;; esac
+assert_eq ok "$r" "config do curl com url, método e token"
+assert_eq 'data-binary = "{\"a\":\"x\\\\ny \\\"q\\\"\"}"' "$(printf '%s\n' "$CFG" | grep '^data-binary')" "corpo escapado na config do curl"
+# shellcheck disable=SC2034 # lida dentro de config_portainer
+PORTAINER_JWT=""
+case "$(config_portainer GET /api/endpoints)" in *Authorization* | *data-binary*) r=nao ;; *) r=ok ;; esac
+assert_eq ok "$r" "sem token e sem corpo: nem header nem data"
+
+# Resumo final: URLs sem segredo, scp pronto com backup; sem backup diz nenhum.
+# shellcheck disable=SC2034 # lidas dentro de texto_resumo
+{ BACKUP=/root/wakecrm/backups/w.dump; CREDENCIAIS=/root/wakecrm/credenciais.env; }
+RES="$(texto_resumo 203.0.113.5)"
+case "$RES" in *"https://crm.exemplo.com/api/webhooks/evolution"*"scp root@203.0.113.5:/root/wakecrm/backups/w.dump ."*) r=ok ;; *) r="$RES" ;; esac
+assert_eq ok "$r" "resumo com webhook e scp"
+case "$RES" in *s2* | *s3* | *token*) r=vazou ;; *) r=ok ;; esac
+assert_eq ok "$r" "resumo sem segredo"
+# shellcheck disable=SC2034 # lida dentro de texto_resumo
+BACKUP=""
+case "$(texto_resumo x)" in *"Backup             nenhum"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "resumo sem backup"
+# shellcheck disable=SC2034 # lida dentro de texto_resumo
+BACKUP=/b/w.dump
+case "$(texto_resumo 2804:389::1)" in *"scp root@[2804:389::1]:/b/w.dump ."*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "IPv6 entre colchetes no scp"
+
 # Guard do main (o trecho real do fim do instalar.sh): roda quando executado,
 # inclusive por /dev/fd como em `bash <(curl ...)`, e não quando carregado com `.`.
 GUARD="$(tail -n 3 "$AQUI/instalar.sh" | sed 's/main "\$@"/echo main/')"

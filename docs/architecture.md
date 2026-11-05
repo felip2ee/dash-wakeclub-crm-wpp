@@ -97,11 +97,25 @@ Responsabilidade operacional:
 Dependências externas necessárias:
 
 - PostgreSQL do CRM `wakeclub`;
-- Evolution Go para WhatsApp e mídia (adaptador pendente, Task 13);
+- Evolution API 2.3.7 para WhatsApp e mídia (substitui o Evolution Go, decisão de 04/11/2026;
+  adaptador pendente, Task 13);
 - OpenAI (chat para qualificar e redigir, transcrição de áudio), só com `OPENAI_API_KEY`;
 - sistema de vendas, que chama `POST /api/webhooks/vendas` (formato provisório);
 - provedores Web Push dos navegadores;
 - GHCR, Docker Swarm/Portainer e Traefik para publicação.
+
+Publicação em produção: `deploy/instalar.sh`, rodado como root no manager do Swarm
+(`bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-wpp/main/deploy/instalar.sh)`).
+Ele detecta Postgres, Traefik (rede e certresolver), Evolution API e Portainer, gera os
+segredos em `/root/wakecrm/credenciais.env` (600, reaproveitado nas execuções seguintes) e,
+com migração pendente, escala o CRM a 0, faz `pg_dump` em `/root/wakecrm/backups/`, roda
+`db:migrate` e `db:apply` e restaura o backup sozinho se algo falhar. Depois cria o admin,
+publica a stack `wakecrm` (serviço `wakecrm_wakecrm`, modelo `deploy/wakecrm-stack.yml`)
+pela API do Portainer quando o dono informa a credencial, senão por `docker stack deploy`,
+e confere réplica `Running`, `/login` 200 e `POST /api/webhooks/evolution` sem segredo = 404.
+O ambiente do serviço nunca recebe `ADMIN_DATABASE_URL` nem a senha do superusuário; o motor
+sai desligado (`MOTOR_ATIVO` vazio, sem `OPENAI_API_KEY`). Contrato:
+`docs/superpowers/specs/2026-11-04-wakecrm-instalador-design.md`.
 
 Variáveis consumidas pelo dashboard:
 
@@ -118,6 +132,8 @@ Variáveis consumidas pelo dashboard:
 | `WEBHOOK_EVOLUTION_SECRET`  | `webhooks/receber.ts`                         | segredo do webhook da Evolution; ausente = 404                                                                   |
 | `WEBHOOK_VENDAS_SECRET`     | `webhooks/receber.ts`                         | segredo do webhook de vendas; ausente = 404                                                                      |
 | `EVOLUTION_INSTANCIA`       | `motor/iniciar.ts`                            | nome da instância (heartbeat e saúde); padrão `wakeclub`                                                         |
+| `EVOLUTION_URL`             | nenhum (adaptador pendente)                   | URL interna da Evolution API 2.3.7 no Swarm; detectada e gravada pelo instalador                                 |
+| `EVOLUTION_API_KEY`         | nenhum (adaptador pendente)                   | `AUTHENTICATION_API_KEY` da Evolution API; detectada e gravada pelo instalador                                   |
 | `OPENAI_API_KEY`            | `ia/openai.ts`                                | chave da OpenAI. Ausente: qualificador, redator e transcrição ficam de fora (log `ia.sem_chave`); nada quebra    |
 | `OPENAI_MODELO_TRANSCRICAO` | `ia/openai.ts`                                | modelo de transcrição; padrão `whisper-1`                                                                        |
 | `ADMIN_DATABASE_URL`        | `scripts/painel-db.mjs`, `scripts/migrar.mjs` | roles, views e migrações; não usada pela aplicação                                                               |

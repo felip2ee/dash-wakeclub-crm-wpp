@@ -76,6 +76,40 @@ bun run build
 Resultado esperado: tudo com código de saída 0. O lint mostra avisos herdados
 contados em `docs/quality.md`. `bun run check` não roda os testes de banco nem o build.
 
+## Instalador de produção (`deploy/`)
+
+Testes sem Docker, em bash 3.2 (o do macOS) ou mais novo:
+
+```sh
+bash deploy/lib.test.sh
+bash deploy/instalar.test.sh
+```
+
+Lint e bash 5 (com Docker):
+
+```sh
+docker run --rm -v "$PWD:/w" -w /w koalaman/shellcheck:stable -x deploy/instalar.sh deploy/lib.sh deploy/instalar.test.sh
+docker run --rm -v "$PWD:/w" -w /w bash:5 sh -c 'apk add -q openssl >/dev/null && bash deploy/instalar.test.sh'
+```
+
+Ponta a ponta num Swarm local (só com autorização para `docker swarm init` na máquina):
+Postgres 14 e Traefik numa rede overlay attachable, banco `wakeclub` migrado `--ate 0002` (o
+stub de `v_followups_fila` precisa começar por `followup_id, lead_id, atendente_id`, senão o
+`painel-views.sql` falha), imagem `docker build -t wakecrm-local .` e:
+
+```sh
+WAKECRM_IMAGEM=wakecrm-local WAKECRM_SIM=1 WAKECRM_DOMINIO=wakecrm.localhost \
+  WAKECRM_INSTANCIA=wakeclub WAKECRM_ADMIN_USUARIO=dono WAKECRM_ADMIN_SENHA=... \
+  WAKECRM_DIR=/tmp/wakecrm-e2e WAKECRM_PERMITIR_NAO_ROOT=1 WAKECRM_CURL_INSECURE=1 \
+  bash deploy/instalar.sh
+```
+
+Só de teste: `WAKECRM_PERMITIR_NAO_ROOT=1` (roda sem root), `WAKECRM_CURL_INSECURE=1` (aceita
+o certificado padrão do Traefik), `WAKECRM_FALHAR_MIGRACAO=NNNN` (exercita a volta) e
+`WAKECRM_IMAGEM` com imagem local (aceita a imagem da máquina quando o `docker pull` falha).
+Com Portainer de teste, `WAKECRM_PORTAINER_USUARIO` e `WAKECRM_PORTAINER_SENHA`. Ao fim,
+`docker stack rm wakecrm`, remova os serviços e a rede de teste e `docker swarm leave --force`.
+
 ## Onde olhar
 
 - Produto e estado: `PRODUCT.md`. Arquitetura, motor, dados e roles: `docs/architecture.md`.

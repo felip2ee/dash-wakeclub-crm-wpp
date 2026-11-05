@@ -17,7 +17,11 @@
 #   WAKECRM_ADMIN_USUARIO, WAKECRM_ADMIN_SENHA, WAKECRM_ADMIN_NOME
 #                                       admin do CRM com WAKECRM_SIM=1 (sem eles: pula se já
 #                                       houver admin, para se não houver)
+#   WAKECRM_PORTAINER_USUARIO, WAKECRM_PORTAINER_SENHA
+#                                       credencial do Portainer com WAKECRM_SIM=1 (sem ela: docker stack deploy)
 #   WAKECRM_FALHAR_MIGRACAO=NNNN        só teste: aplica até a anterior e falha (exercita a volta)
+#   WAKECRM_PERMITIR_NAO_ROOT=1         só teste: roda sem root (Swarm local no Mac)
+#   WAKECRM_CURL_INSECURE=1             só teste: aceita o certificado padrão do Traefik (curl -k)
 set -euo pipefail
 
 IMAGEM="${WAKECRM_IMAGEM:-ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest}"
@@ -70,7 +74,6 @@ else
     fi
   done
 fi
-# shellcheck disable=SC2034 # usado pela publicação (Task 7)
 MODELO_STACK="$DIR_DEPLOY/wakecrm-stack.yml"
 # shellcheck source=deploy/lib.sh
 . "$DIR_DEPLOY/lib.sh"
@@ -456,13 +459,136 @@ mascarar() {
   if [ -z "$1" ]; then echo "(vazio)"; else echo "•••••••• (${#1} caracteres)"; fi
 }
 
+# Chaves do ambiente do app na stack. Nunca ADMIN_DATABASE_URL nem a senha do superusuário.
+CHAVES_STACK="IMAGEM DOMINIO REDE CERTRESOLVER DATABASE_URL DATABASE_URL_RW DATABASE_URL_MOTOR VITE_VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY PUSH_DISPATCH_SECRET WEBHOOK_EVOLUTION_SECRET WEBHOOK_VENDAS_SECRET EVOLUTION_INSTANCIA EVOLUTION_URL EVOLUTION_API_KEY"
+
+# stack_publicavel MODELO ENV: render_stack com cada $ dobrado, porque docker stack deploy
+# (e o Portainer) interpolam $VAR no arquivo; o modelo já preenchido não tem outro $.
+stack_publicavel() {
+  render_stack "$1" "$2" | sed 's/\$/$$/g'
+}
+
+# json_texto: stdin vira uma string JSON entre aspas (escapa \, ", tab, CR e quebra de linha).
+# shortcut: outros caracteres de controle passam crus; a API recusa e cai no docker stack deploy.
+json_texto() {
+  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$(printf '\t')/\\\\t/g" -e "s/$(printf '\r')/\\\\r/g" |
+    awk 'BEGIN { printf "\"" } { printf "%s%s", (NR > 1 ? "\\n" : ""), $0 } END { printf "\"" }'
+}
+
+# Leitura mínima das respostas da API do Portainer (JSON compacto, sem jq). Os campos saem
+# na ordem das structs do Portainer: o objeto de endpoint e o de stack começam por "Id",
+# e na stack "Name" vem logo depois.
+jwt_portainer() { printf '%s\n' "$1" | sed -n 's/.*"jwt": *"\([^"]*\)".*/\1/p' | head -n1; }
+primeiro_id() { printf '%s\n' "$1" | grep -o '"Id": *[0-9][0-9]*' | head -n1 | sed 's/[^0-9]//g' || true; }
+id_stack() { # JSON NOME
+  printf '%s\n' "$1" | grep -o "\"Id\": *[0-9][0-9]*, *\"Name\": *\"$2\"" | head -n1 |
+    sed 's/^"Id": *\([0-9]*\).*/\1/' || true
+}
+
+# texto_config: stdin vira uma string entre aspas do arquivo de config do curl (escapa \ e ").
+texto_config() {
+  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk 'BEGIN { printf "\"" } { printf "%s", $0 } END { printf "\"" }'
+}
+
+# config_portainer METODO CAMINHO [CORPO]: config do curl para uma chamada à API do Portainer
+# (porta 9000 interna). Token e corpo moram aqui dentro, nunca em argumento.
+config_portainer() {
+  printf 'url = "http://%s:9000%s"\nrequest = "%s"\n' "$PORTAINER_SERVICO" "$2" "$1"
+  printf 'fail\nsilent\nshow-error\nmax-time = 300\nheader = "Content-Type: application/json"\n'
+  if [ -n "${PORTAINER_JWT:-}" ]; then printf 'header = "Authorization: Bearer %s"\n' "$PORTAINER_JWT"; fi
+  if [ -n "${3:-}" ]; then printf 'data-binary = %s\n' "$(printf '%s' "$3" | texto_config)"; fi
+}
+
+# portainer_api METODO CAMINHO [CORPO]: a chamada sai de um contêiner curlimages/curl na REDE,
+# com a config pelo stdin (curl -K -).
+portainer_api() {
+  config_portainer "$@" | docker run --rm -i --network "$REDE" curlimages/curl:8.11.1 -K -
+}
+
+# publicar_portainer: cria ou atualiza (pullImage) a stack wakecrm pela API. Falha => 1.
+publicar_portainer() {
+  local corpo resp endpoint swarm id conteudo
+  corpo="{\"username\":$(printf '%s' "$PORTAINER_USUARIO" | json_texto),\"password\":$(printf '%s' "$PORTAINER_SENHA" | json_texto)}"
+  resp="$(portainer_api POST /api/auth "$corpo")" || return 1
+  PORTAINER_JWT="$(jwt_portainer "$resp")"
+  [ -n "$PORTAINER_JWT" ] || return 1
+  resp="$(portainer_api GET /api/endpoints)" || return 1
+  endpoint="$(primeiro_id "$resp")"
+  [ -n "$endpoint" ] || return 1
+  swarm="$(docker info --format '{{.Swarm.Cluster.ID}}')" || return 1
+  resp="$(portainer_api GET /api/stacks)" || return 1
+  id="$(id_stack "$resp" wakecrm)"
+  conteudo="$(json_texto <"$STACK")"
+  if [ -n "$id" ]; then
+    portainer_api PUT "/api/stacks/$id?endpointId=$endpoint" \
+      "{\"stackFileContent\":$conteudo,\"env\":[],\"prune\":false,\"pullImage\":true}" >/dev/null || return 1
+    ok "stack wakecrm atualizada pelo Portainer"
+  else
+    portainer_api POST "/api/stacks/create/swarm/string?endpointId=$endpoint" \
+      "{\"name\":\"wakecrm\",\"swarmID\":\"$swarm\",\"stackFileContent\":$conteudo,\"env\":[]}" >/dev/null || return 1
+    ok "stack wakecrm criada pelo Portainer"
+  fi
+}
+
+# replica_rodando: uma tarefa Running e nenhuma atualização em curso (start-first deixa a
+# antiga Running até a nova subir).
+replica_rodando() {
+  local estado
+  estado="$(docker service inspect --format '{{if .UpdateStatus}}{{.UpdateStatus.State}}{{end}}' "$SERVICO_APP" 2>/dev/null)" ||
+    return 1
+  case "$estado" in updating | paused | rollback_started | rollback_paused) return 1 ;; esac
+  docker service ps --filter desired-state=running --format '{{.CurrentState}}' "$SERVICO_APP" 2>/dev/null |
+    grep -q '^Running'
+}
+
+# WAKECRM_CURL_INSECURE só serve ao teste local (certificado padrão do Traefik).
+login_ok() {
+  curl ${WAKECRM_CURL_INSECURE:+"-k"} -fsS -o /dev/null --max-time 10 "https://$DOMINIO/login" 2>/dev/null
+}
+codigo_webhook() {
+  curl ${WAKECRM_CURL_INSECURE:+"-k"} -s -o /dev/null -w '%{http_code}' --max-time 10 \
+    -X POST "https://$DOMINIO/api/webhooks/evolution" 2>/dev/null
+}
+
+# ip_servidor: IP para o scp do resumo; placeholder se não der para descobrir.
+ip_servidor() {
+  local ip
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')" || ip=""
+  [ -n "$ip" ] || ip="$(curl -4 -fsS --max-time 5 https://ifconfig.me 2>/dev/null)" || ip=""
+  if [[ "$ip" =~ ^[0-9A-Fa-f.:]+$ ]]; then printf '%s\n' "$ip"; else echo "<ip-do-servidor>"; fi
+}
+
+# texto_resumo IP: resumo final (sem segredo). IPv6 vai entre colchetes no scp.
+texto_resumo() {
+  local host="$1"
+  case "$host" in *:*) host="[$host]" ;; esac
+  cat <<FIM
+  CRM                https://$DOMINIO
+  Webhook Evolution  https://$DOMINIO/api/webhooks/evolution
+  Webhook vendas     https://$DOMINIO/api/webhooks/vendas
+                     (as URLs com o segredo estão no CRM em Configurações › Webhooks)
+  Credenciais        $CREDENCIAIS
+FIM
+  if [ -n "$BACKUP" ]; then
+    printf '  Backup             %s\n' "$BACKUP"
+    printf '  Copie o backup para o seu computador (rode lá):\n    scp root@%s:%s .\n' "$host" "$BACKUP"
+  else
+    echo "  Backup             nenhum (sem migração pendente)"
+  fi
+  cat <<FIM
+
+  Próximo passo: na Evolution, aponte o webhook da instância $EVOLUTION_INSTANCIA para a URL
+  completa do webhook da Evolution (Configurações › Webhooks). O motor continua desligado.
+FIM
+}
+
 # ---------------------------------------------------------------------------
 # Passos
 # ---------------------------------------------------------------------------
 
 precondicoes() {
   passo 1 "Pré-condições"
-  [ "$(id -u)" -eq 0 ] || morrer "Rode como root (sudo -i)."
+  [ "$(id -u)" -eq 0 ] || [ -n "${WAKECRM_PERMITIR_NAO_ROOT:-}" ] || morrer "Rode como root (sudo -i)."
   command -v docker >/dev/null 2>&1 || morrer "Docker não encontrado."
   command -v openssl >/dev/null 2>&1 || morrer "openssl não encontrado."
   local swarm
@@ -600,6 +726,15 @@ perguntas() {
     if [ -n "$SIM" ] || [ -n "${WAKECRM_INSTANCIA:-}" ]; then morrer "Instância inválida."; fi
   done
   ok "instância: $EVOLUTION_INSTANCIA"
+
+  # Portainer: com credencial, a stack sai pela API (controle total no Portainer).
+  PORTAINER_USUARIO="${WAKECRM_PORTAINER_USUARIO:-}"
+  PORTAINER_SENHA="${WAKECRM_PORTAINER_SENHA:-}"
+  if [ -n "$PORTAINER_SERVICO" ] && [ -z "$SIM" ] && [ -z "$PORTAINER_USUARIO" ]; then
+    perguntar PORTAINER_USUARIO "Usuário do Portainer, para a stack ficar com controle total (Enter pula)" ""
+    if [ -n "$PORTAINER_USUARIO" ]; then perguntar PORTAINER_SENHA "Senha do Portainer" "" -s; fi
+  fi
+  if [ -z "$PORTAINER_SERVICO" ] || [ -z "$PORTAINER_SENHA" ]; then PORTAINER_USUARIO=""; fi
 }
 
 SEGREDOS="WEBHOOK_EVOLUTION_SECRET WEBHOOK_VENDAS_SECRET PAINEL_RO_PASSWORD PAINEL_RW_PASSWORD WAKECRM_MOTOR_PASSWORD PUSH_DISPATCH_SECRET"
@@ -621,7 +756,13 @@ gerar() {
   done
 
   echo "Baixando a imagem $IMAGEM..."
-  docker pull -q "$IMAGEM" >/dev/null || morrer "Não consegui baixar $IMAGEM."
+  if ! docker pull -q "$IMAGEM" >/dev/null; then
+    # Só com WAKECRM_IMAGEM (teste com imagem construída na máquina): aceita a local.
+    if [ -z "${WAKECRM_IMAGEM:-}" ] || ! docker image inspect "$IMAGEM" >/dev/null 2>&1; then
+      morrer "Não consegui baixar $IMAGEM."
+    fi
+    aviso "Uso a imagem local $IMAGEM (WAKECRM_IMAGEM)."
+  fi
 
   VITE_VAPID_PUBLIC_KEY="$(ler_credencial "$CREDENCIAIS" VITE_VAPID_PUBLIC_KEY)"
   VAPID_PRIVATE_KEY="$(ler_credencial "$CREDENCIAIS" VAPID_PRIVATE_KEY)"
@@ -680,6 +821,7 @@ confirmar() {
   Evolution       ${EVO_SERVICO:-não encontrada} ${EVOLUTION_URL:+($EVOLUTION_URL)}
   Chave Evolution $(mascarar "$EVOLUTION_API_KEY")
   Portainer       ${PORTAINER_SERVICO:-não encontrado}
+  Publicação      $(if [ -n "$PORTAINER_USUARIO" ]; then echo "API do Portainer (usuário $PORTAINER_USUARIO)"; else echo "docker stack deploy"; fi)
   Domínio         https://$DOMINIO
   Instância       $EVOLUTION_INSTANCIA
   Credenciais     $CREDENCIAIS
@@ -809,6 +951,66 @@ admin() {
   ADMIN_SENHA=""
 }
 
+# Publica a stack wakecrm: pela API do Portainer com credencial; senão (ou se a API falhar)
+# por docker stack deploy. O arquivo preenchido tem segredos: fica em TMP, 600.
+publicar() {
+  passo 8 "Publicando a stack wakecrm"
+  local env
+  STACK="$TMP/wakecrm-stack.yml"
+  # shellcheck disable=SC2086 # uma chave por palavra
+  env="$(arquivo_env $CHAVES_STACK)"
+  (umask 077 && stack_publicavel "$MODELO_STACK" "$env" >"$STACK") || morrer "Não consegui preencher $MODELO_STACK."
+  rm -f "$env"
+  if [ -n "$PORTAINER_USUARIO" ]; then
+    if publicar_portainer; then
+      religar_depois_do_deploy
+      return 0
+    fi
+    aviso "A API do Portainer falhou; publico por docker stack deploy (controle limitado no Portainer)."
+  fi
+  docker stack deploy --with-registry-auth=false -c - wakecrm <"$STACK" ||
+    morrer "docker stack deploy falhou. O banco já está como o instalador deixou; corrija e rode de novo. Log: docker service logs --tail 100 $SERVICO_APP"
+  ok "stack wakecrm publicada por docker stack deploy"
+  religar_depois_do_deploy
+}
+
+# O deploy volta o serviço para as réplicas do arquivo (1); com mais antes, devolve.
+religar_depois_do_deploy() {
+  if [ -n "${REPLICAS_ANTES:-}" ] && [ "$REPLICAS_ANTES" -gt 1 ]; then religar_app; fi
+}
+
+# Confere réplica, /login (certificado válido) e o webhook protegido. Falha => 1, com o
+# comando do log; não para o instalador antes do resumo.
+conferir() {
+  passo 9 "Conferindo"
+  local codigo
+  if ! esperar_ate 180 5 replica_rodando; then
+    falha "A réplica de $SERVICO_APP não ficou Running em 180 s. Veja o log: docker service logs --tail 100 $SERVICO_APP"
+    return 1
+  fi
+  ok "réplica Running"
+  if ! esperar_ate 180 10 login_ok; then
+    falha "https://$DOMINIO/login não respondeu 200 em 180 s. Log: docker service logs --tail 100 $SERVICO_APP"
+    aviso "O CRM está de pé: confira se o DNS de $DOMINIO aponta para este servidor e se o Traefik emitiu o certificado (docker service logs --tail 100 $TRAEFIK_SERVICO)."
+    return 1
+  fi
+  ok "https://$DOMINIO/login respondeu 200"
+  codigo="$(codigo_webhook)" || true
+  if [ "$codigo" != 404 ]; then
+    falha "POST /api/webhooks/evolution sem segredo respondeu ${codigo:-nada} (esperado 404). Log: docker service logs --tail 100 $SERVICO_APP"
+    return 1
+  fi
+  ok "webhook da Evolution vivo e protegido (404 sem segredo)"
+}
+
+resumo() {
+  passo 10 "Resumo final"
+  if [ "$1" != 0 ]; then
+    falha "A conferência falhou (veja acima). A stack foi publicada e o banco não foi restaurado."
+  fi
+  texto_resumo "$(ip_servidor)"
+}
+
 main() {
   precondicoes
   detectar
@@ -818,8 +1020,11 @@ main() {
   gravar_credenciais
   banco
   admin
-  # Task 7 religa o CRM (REPLICAS_ANTES) e mostra BACKUP no resumo.
-  # Task 7: publicar a stack, conferir /login e o webhook, resumo final.
+  publicar
+  local rc=0
+  conferir || rc=1
+  resumo "$rc"
+  return "$rc"
 }
 
 # Permite `. instalar.sh` em teste sem rodar nada.

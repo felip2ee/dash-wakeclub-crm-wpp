@@ -10,21 +10,58 @@ depois do backup do passo 8.
 `db:migrate` sem `--ate` aplica 0003, 0004 e 0005 na mesma execução, em ordem. A 0004 e a 0005
 não podem ir antes do corte: o passo 2 usa `--ate 0002` de propósito. Elas acrescentam colunas, tabelas e grants e ajustam constraints.
 
+## Caminho principal: o instalador
+
+A virada sai pelo instalador de produção, como root no manager do Swarm:
+
+```sh
+bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-wpp/main/deploy/instalar.sh)
+```
+
+- **Cobre os passos 1 a 4, 8 e 9.** Confirme o passo 1 (n8n desligado) antes de rodar; numa
+  execução o instalador migra, publica a imagem `ghcr.io/felip2ee/dash-wakeclub-crm-wpp:latest`
+  na stack `wakecrm` com as variáveis da lista abaixo (`MOTOR_ATIVO` vazio, sem
+  `OPENAI_API_KEY`), faz o backup (passo 8) e aplica 0003, 0004 e 0005 (passo 9, com a
+  pré-checagem do corte). Por decisão do dono (04/11/2026), o corte entra junto, antes da
+  captura: o n8n está parado desde agosto e a ordem antiga não protege nada.
+- **Evolution API 2.3.7**, não Evolution Go (decisão do dono, 04/11/2026). O instalador
+  detecta o serviço e grava `EVOLUTION_URL` e `EVOLUTION_API_KEY` para o adaptador.
+- Pergunta só domínio, instância, admin do CRM e, se houver Portainer, usuário e senha dele
+  (Enter pula e publica por `docker stack deploy`). Uma confirmação `s/N` antes de mexer.
+- O backup fica em `/root/wakecrm/backups/`; o resumo final mostra o `scp` pronto para levá-lo
+  para fora do servidor (passo 8). Credenciais em `/root/wakecrm/credenciais.env` (600).
+- Rodar de novo é seguro: reaproveita as credenciais, pula migração aplicada (sem pendente,
+  sem backup) e atualiza a stack para a imagem mais nova.
+- Depois do instalador seguem os passos 5 a 7 e 10 a 13, com o adaptador da Evolution API.
+
+**Se o instalador falhar:**
+
+- Migração ou views: ele restaura o backup sozinho, religa o CRM e para com a mensagem do erro.
+  Corrija e rode de novo. Se a restauração também falhar, ele imprime o comando manual (pede a
+  senha do superusuário) e o CRM fica parado até restaurar.
+- Publicação: com a API do Portainer falhando (por exemplo, stack `wakecrm` criada fora dele),
+  cai para `docker stack deploy` com aviso.
+- Conferência: réplica parada, `/login` sem 200 ou webhook sem 404 saem com `✗` e o comando
+  `docker service logs --tail 100 wakecrm_wakecrm`. Com a réplica de pé e `/login` falhando,
+  confira o DNS do domínio e o certificado no log do Traefik. O banco não é restaurado nesse
+  caso: o schema novo já está aplicado e o backup continua guardado.
+
 ## Variáveis de ambiente novas
 
 - `DATABASE_URL_MOTOR`: conexão do app com o banco, na role `wakecrm_motor`.
 - `WAKECRM_MOTOR_PASSWORD`: senha da role `wakecrm_motor`. Usada pelo `db:migrate` para criar ou redefinir a role. Deve bater com a senha de `DATABASE_URL_MOTOR`.
 - `MOTOR_ATIVO`: liga o motor (filas, distribuição, envio). Vazio = motor desligado. Só valor `1` liga.
-- `WEBHOOK_EVOLUTION_SECRET`: segredo do webhook da Evolution Go.
+- `WEBHOOK_EVOLUTION_SECRET`: segredo do webhook da Evolution API.
 - `WEBHOOK_VENDAS_SECRET`: segredo do webhook de vendas.
-- `EVOLUTION_INSTANCIA`: nome da instância da Evolution Go que o motor atende.
+- `EVOLUTION_INSTANCIA`: nome da instância da Evolution API que o motor atende.
+- `EVOLUTION_URL` e `EVOLUTION_API_KEY`: URL interna e `AUTHENTICATION_API_KEY` da Evolution API 2.3.7, gravadas pelo instalador. Hoje nada no app as lê (ficam para o adaptador).
 - `OPENAI_API_KEY`: chave da OpenAI para qualificador, porteiro, redator e transcrição. Sem ela, essas tarefas ficam ociosas (log `ia.sem_chave`) e o resto do motor funciona. Opcional: `OPENAI_MODELO_TRANSCRICAO` (padrão `whisper-1`). Chave nova é custo: só com autorização.
 
 `ADMIN_DATABASE_URL` (dono do banco) continua só para o `db:migrate`; o app nunca lê.
 
 ## Portões da Task 13 (antes de publicar o adaptador)
 
-Revise o adaptador do Evolution Go contra estes pontos antes do passo 7:
+Revise o adaptador da Evolution API contra estes pontos antes do passo 7:
 
 - `enviar` lança `ErroEnvio` (`src/server/evolution/tipos.ts`) com `certeza`: `nao_saiu` só quando a Evolution recusou antes de entregar ao WhatsApp; `incerto` para timeout, 5xx ou resposta ilegível. Erro não tipado é tratado como `incerto`. O follow-up `incerto` é abortado e o vendedor confere; nunca é reenviado sozinho.
 - O timeout do `enviar` é muito menor que 15 min (o órfão em `enviando` é abortado aos 15 min). A mensagem de erro não leva corpo da resposta nem segredo.
@@ -45,7 +82,7 @@ o motor de envio o grava): pare e investigue antes de migrar.
 
 ## Endpoint do webhook da Evolution
 
-`POST /api/webhooks/evolution`. Use o header `x-webhook-secret` sempre que a Evolution Go
+`POST /api/webhooks/evolution`. Use o header `x-webhook-secret` sempre que a Evolution API
 permitir: o segredo na URL acaba em log de proxy e de acesso. Só se ela não aceitar header,
 passe na query: `?token=<WEBHOOK_EVOLUTION_SECRET>`. O endpoint só enfileira o evento em
 `webhook_eventos`; quem processa é o motor.
@@ -56,9 +93,9 @@ passe na query: `?token=<WEBHOOK_EVOLUTION_SECRET>`. O endpoint só enfileira o 
 2. **Migre até a 0002.** Com `ADMIN_DATABASE_URL` e `WAKECRM_MOTOR_PASSWORD` no ambiente, rode `bun run db:migrate -- --ate 0002`. Isso cria as tabelas do motor e a role `wakecrm_motor`, sem tocar nos dados antigos.
 3. **Publique a imagem** do app com o código do motor.
 4. **Configure as variáveis de ambiente** da lista acima no serviço publicado. Deixe `MOTOR_ATIVO` vazio por enquanto.
-5. **Aponte a Evolution Go** para `POST /api/webhooks/evolution` do app, com o segredo (header `x-webhook-secret`; `?token=` só se o header não for possível). Confira que a instância bate com `EVOLUTION_INSTANCIA`.
+5. **Aponte a Evolution API** para `POST /api/webhooks/evolution` do app, com o segredo (header `x-webhook-secret`; `?token=` só se o header não for possível). Confira que a instância bate com `EVOLUTION_INSTANCIA`.
 6. **Capture.** Com `MOTOR_ATIVO` vazio, o webhook recebe e grava os eventos em `webhook_eventos`, mas nada é processado. Espere chegarem eventos reais e confira que estão na tabela. Durante a captura o monitor do motor mostra esses eventos como "atrasados": é o esperado, porque ninguém os processa ainda.
-7. **Publique a imagem que contém o adaptador do Evolution Go**, escrito a partir dos eventos capturados no passo 6. Daqui em diante, só com o adaptador publicado: sem ele o motor não sabe ler os eventos nem enviar.
+7. **Publique a imagem que contém o adaptador da Evolution API**, escrito a partir dos eventos capturados no passo 6. Daqui em diante, só com o adaptador publicado: sem ele o motor não sabe ler os eventos nem enviar.
 8. **Faça o backup do banco** imediatamente antes do corte: `pg_dump` completo do banco `wakeclub` com a `ADMIN_DATABASE_URL`, guardado fora do servidor. A `0003_virada.sql` é irreversível: só este backup desfaz o que ela muda.
 9. **Aplique o corte.** Rode a pré-checagem acima e depois `bun run db:migrate`; ela aplica a `0003_virada.sql`, a `0004_ia_followup.sql` e a `0005_vendas.sql`, cada uma numa transação. Confira no banco: nenhum follow-up `pendente`, nenhum `qualificar_apos` preenchido, eventos de auditoria criados, e que `configuracoes` tem `ritmo` (conservador) e `preco_hora` (360). Os triggers de `atualizado_em` disparam no update: os leads que tinham `qualificar_apos` (e os follow-ups cancelados) ficam com `atualizado_em` da hora do corte.
 10. **Recalcule a ordem dos capturados.** Os eventos capturados antes do adaptador entraram todos na chave única `'evolution'`. Antes de ligar o motor, recalcule `chave_ordem` dos eventos com `status = 'pendente'` e `chave_ordem = 'evolution'` usando `adaptador.chaveDeOrdem(corpo)`, para cada conversa voltar à sua fila.
@@ -68,6 +105,6 @@ passe na query: `?token=<WEBHOOK_EVOLUTION_SECRET>`. O endpoint só enfileira o 
 
 ## Se algo der errado antes do passo 9
 
-Desligue o webhook na Evolution Go e mantenha `MOTOR_ATIVO` vazio: nada foi destruído. Depois do
+Desligue o webhook na Evolution API e mantenha `MOTOR_ATIVO` vazio: nada foi destruído. Depois do
 passo 9 não há volta automática; os follow-ups cancelados e o `qualificar_apos` zerado só voltam
 pelo backup do passo 8.
