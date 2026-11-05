@@ -1,7 +1,7 @@
 /**
- * Visão geral do admin (referência 03): o pipeline por etapa reaproveita `getPipeline`,
- * os alertas contam o que pede ação (aprovações, follow-ups vencidos, vendas sem dono, fila
- * do motor) e as vendas vêm de `lerResumoDinheiro` (fase 4).
+ * Visão geral do admin (referência 03): o resumo comercial vem de `lerComercial`, os
+ * alertas contam o que pede ação (aprovações, follow-ups vencidos, vendas sem dono, fila
+ * do motor) e o ranking e a comissão vêm de `lerResumoDinheiro` (fase 4).
  */
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -11,7 +11,6 @@ import { exigirAdmin } from "./auth";
 import { lerComercial } from "./comercial";
 import { type ClienteDb, getPoolMotor } from "./db";
 import { lerResumoDinheiro } from "./dinheiro";
-import { getPipeline } from "./leads";
 
 export type AlertasOperacao = {
   aprovacoesPendentes: number;
@@ -57,27 +56,16 @@ export async function lerAlertas(
 export const getVisaoGeral = createServerFn({ method: "GET" })
   .validator(
     z.object({
-      // Período só recorta vendas; o pipeline é sempre o estado atual.
       periodo: z.object({ de: z.string().date(), ate: z.string().date() }),
       vendedorId: z.string().uuid().optional(),
     }),
   )
   .handler(async ({ data }) => {
     await exigirAdmin();
-    const [pipeline, alertas, vendas, comercial] = await Promise.all([
-      getPipeline({ data: { vendedorId: data.vendedorId } }),
+    const [alertas, vendas, comercial] = await Promise.all([
       lerAlertas(getPoolMotor(), data.vendedorId ?? null),
       lerResumoDinheiro(getPoolMotor(), data.periodo, data.vendedorId ?? null),
       lerComercial(getPoolMotor(), data.periodo, data.vendedorId ?? null),
     ]);
-    return {
-      // Sem os cards: a visão geral só mostra os totais por etapa.
-      pipeline: {
-        totais: pipeline.totais,
-        colunas: pipeline.colunas.map(({ cards: _cards, ...coluna }) => coluna),
-      },
-      alertas,
-      vendas,
-      comercial,
-    };
+    return { alertas, vendas, comercial };
   });
