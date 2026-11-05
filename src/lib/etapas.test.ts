@@ -7,7 +7,9 @@ describe("proximaEtapa", () => {
     expect(proximaEtapa("Novo lead", "cadastro", null)).toBe("Cadastrado");
     expect(proximaEtapa("Aluno com horas", "cadastro", null)).toBeNull();
     expect(proximaEtapa("Aluno sem horas", "compra_paga", 4)).toBe("Aluno com horas");
-    expect(proximaEtapa("Encerrado", "compra_paga", 4)).toBeNull();
+    expect(proximaEtapa("Encerrado", "compra_paga", 4)).toBe("Aluno com horas");
+    expect(proximaEtapa("Aluno com horas", "compra_paga", 8)).toBeNull();
+    expect(proximaEtapa("Encerrado", "aula", 3)).toBeNull();
     expect(proximaEtapa("Aluno com horas", "aula", 0)).toBe("Aluno sem horas");
     expect(proximaEtapa("Aluno com horas", "aula", 2)).toBeNull();
     expect(proximaEtapa("Cadastrado", "aula", 3)).toBe("Aluno com horas");

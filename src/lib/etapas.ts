@@ -1,5 +1,5 @@
-// Etapas do funil e regras puras de transição: eventos do app só avançam o lead e a
-// IA só etiqueta as etapas de conversa (spec §3). Sem I/O, para servidor e teste.
+// Etapas do funil e regras puras de transição: eventos do app só avançam o lead (exceto
+// compra paga, que leva qualquer etapa, inclusive Encerrado, a Aluno com horas) e a IA só etiqueta as etapas de conversa (spec §3). Sem I/O, para servidor e teste.
 
 export const ETAPAS = [
   "Novo lead",
@@ -32,6 +32,7 @@ export function proximaEtapa(
   evento: TipoEventoApp,
   saldoDepois: number | null,
 ): Etapa | null {
+  if (evento === "compra_paga") return atual === "Aluno com horas" ? null : "Aluno com horas";
   if (atual === "Encerrado") return null;
   const ordem = ordemDa(atual);
   switch (evento) {
@@ -39,8 +40,6 @@ export function proximaEtapa(
       return ordem < 4 ? "Cadastrado" : null;
     case "compra_pendente":
       return ordem < 5 ? "Aguardando pagamento" : null;
-    case "compra_paga":
-      return ordem < 6 || atual === "Aluno sem horas" ? "Aluno com horas" : null;
     case "aula":
       if (atual === "Aluno com horas" && saldoDepois === 0) return "Aluno sem horas";
       if (saldoDepois !== null && saldoDepois > 0 && ordem < 6) return "Aluno com horas";

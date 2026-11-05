@@ -13,7 +13,7 @@ export const CHANCES: Record<string, Record<string, number>> = {
   "Aluno sem horas": { quente: 0.3, morno: 0.15, frio: 0.05 },
 };
 
-// Etapa fora da tabela (ex.: Agendado no futuro) ou lead sem temperatura.
+// Etapa fora da tabela ou lead sem temperatura.
 const CHANCE_PADRAO = 0.05;
 
 const FORA_DO_PIPELINE = new Set(["Encerrado", "Aluno com horas"]);
