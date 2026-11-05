@@ -366,27 +366,65 @@ arquivo_env() {
   printf '%s\n' "$arq"
 }
 
-# rodar_no_app ENVFILE CMD...: contêiner temporário da imagem do app na REDE.
+# Os contêineres temporários (migração, backup, admin) não entram na REDE: ela pode não ser
+# attachable (NovaNet do Orion). Entram na rede do contêiner do Postgres neste nó
+# (--network container:ID) e falam com o banco em 127.0.0.1. Só o CRM, serviço do Swarm,
+# fica na REDE e usa PG_HOST (o nome do serviço).
+PG_HOST_JOB=127.0.0.1
+
+# container_pg: id do contêiner running da tarefa do Postgres neste nó; vazio se não houver.
+container_pg() {
+  docker ps -q -f "label=com.docker.swarm.service.name=$PG_SERVICO" -f status=running | head -n1
+}
+
+# rede_job: valor de --network dos contêineres temporários. Procura o contêiner a cada uso
+# (a tarefa do Postgres pode ter reiniciado); sem contêiner neste nó => ✗ e código 1.
+rede_job() {
+  local id
+  id="$(container_pg)" || id=""
+  if [ -z "$id" ]; then
+    falha "Nenhum contêiner do Postgres ($PG_SERVICO) rodando neste nó: o instalador precisa rodar no nó do Postgres." >&2
+    return 1
+  fi
+  printf 'container:%s\n' "$id"
+}
+
+# rodar_no_app ENVFILE CMD...: contêiner temporário da imagem do app na rede do Postgres.
 rodar_no_app() {
-  local env="$1"
+  local env="$1" rede
   shift
-  docker run --rm --network "$REDE" --env-file "$env" "$IMAGEM" "$@"
+  rede="$(rede_job)" || return 1
+  docker run --rm --network "$rede" --env-file "$env" "$IMAGEM" "$@"
 }
 
 # rodar_no_pg ENVFILE CMD...: contêiner temporário postgres:PG_MAJOR (mesma versão do
-# servidor, para pg_dump/pg_restore) na REDE, com DIR_BACKUPS em /backups.
+# servidor, para pg_dump/pg_restore) na rede do Postgres, com DIR_BACKUPS em /backups.
 rodar_no_pg() {
-  local env="$1"
+  local env="$1" rede
   shift
+  rede="$(rede_job)" || return 1
   (umask 077 && mkdir -p "$DIR_BACKUPS")
-  docker run --rm --network "$REDE" --env-file "$env" -v "$DIR_BACKUPS:/backups" \
+  docker run --rm --network "$rede" --env-file "$env" -v "$DIR_BACKUPS:/backups" \
     "postgres:${PG_MAJOR}" "$@"
+}
+
+# derivar_urls: URLs do banco, só em memória. As da stack (DATABASE_URL, DATABASE_URL_RW,
+# DATABASE_URL_MOTOR) usam PG_HOST, porque o CRM está na REDE; as dos contêineres temporários
+# (DATABASE_URL_JOB, DATABASE_URL_RW_JOB e ADMIN_DATABASE_URL, que só vive neles) usam PG_HOST_JOB.
+# shellcheck disable=SC2034 # lidas por nome em arquivo_env
+derivar_urls() {
+  DATABASE_URL="$(url_postgres painel_ro "$PAINEL_RO_PASSWORD" "$PG_HOST" 5432 wakeclub)"
+  DATABASE_URL_RW="$(url_postgres painel_rw "$PAINEL_RW_PASSWORD" "$PG_HOST" 5432 wakeclub)"
+  DATABASE_URL_MOTOR="$(url_postgres wakecrm_motor "$WAKECRM_MOTOR_PASSWORD" "$PG_HOST" 5432 wakeclub)"
+  DATABASE_URL_JOB="$(url_postgres painel_ro "$PAINEL_RO_PASSWORD" "$PG_HOST_JOB" 5432 wakeclub)"
+  DATABASE_URL_RW_JOB="$(url_postgres painel_rw "$PAINEL_RW_PASSWORD" "$PG_HOST_JOB" 5432 wakeclub)"
+  ADMIN_DATABASE_URL="$(url_postgres "$PG_USUARIO" "$PG_SENHA" "$PG_HOST_JOB" 5432 wakeclub)"
 }
 
 # env_pg [BANCO]: arquivo de ambiente libpq do superusuário (padrão: banco wakeclub).
 env_pg() {
   # shellcheck disable=SC2034 # lidas por nome em arquivo_env
-  local PGHOST="$PG_HOST" PGUSER="$PG_USUARIO" PGPASSWORD="$PG_SENHA" PGDATABASE="${1:-wakeclub}" \
+  local PGHOST="$PG_HOST_JOB" PGUSER="$PG_USUARIO" PGPASSWORD="$PG_SENHA" PGDATABASE="${1:-wakeclub}" \
     PGOPTIONS="-c client_min_messages=warning"
   arquivo_env PGHOST PGUSER PGPASSWORD PGDATABASE PGOPTIONS
 }
@@ -478,8 +516,9 @@ fazer_backup() {
 SCRIPT_RESTAURAR='pg_restore -L "$1" -f /tmp/r.sql "$2" && { echo "drop schema if exists wakeclub cascade;"; cat /tmp/r.sql; } | psql -X -q -1 -v ON_ERROR_STOP=1 -o /dev/null -d wakeclub'
 
 # comando_restaurar DUMP LISTA: comando manual equivalente (pede a senha do superusuário).
+# O contêiner do Postgres é procurado quando o comando roda (a tarefa pode ter reiniciado).
 comando_restaurar() {
-  printf '%s\n' "docker run --rm -it --network $REDE -v $DIR_BACKUPS:/backups -e PGHOST=$PG_HOST -e PGUSER=$PG_USUARIO postgres:$PG_MAJOR sh -c '$SCRIPT_RESTAURAR' sh /backups/${2##*/} /backups/${1##*/}"
+  printf '%s\n' "docker run --rm -it --network container:\$(docker ps -q -f label=com.docker.swarm.service.name=$PG_SERVICO -f status=running | head -n1) -v $DIR_BACKUPS:/backups -e PGHOST=$PG_HOST_JOB -e PGUSER=$PG_USUARIO postgres:$PG_MAJOR sh -c '$SCRIPT_RESTAURAR' sh /backups/${2##*/} /backups/${1##*/}"
 }
 
 # restaurar BACKUP: recria o schema wakeclub a partir do dump (donos e grants do dump),
@@ -504,7 +543,9 @@ restaurar() {
 # aplicar_banco: migrar.mjs (pendentes e a role wakecrm_motor) e painel-db.mjs apply
 # (roles painel_ro/painel_rw e views). Idempotente; falha => código != 0.
 aplicar_banco() {
-  local env
+  # As URLs do painel dentro do contêiner são as de 127.0.0.1, não as da stack.
+  # shellcheck disable=SC2034 # lidas por nome em arquivo_env
+  local env DATABASE_URL="$DATABASE_URL_JOB" DATABASE_URL_RW="$DATABASE_URL_RW_JOB"
   env="$(arquivo_env ADMIN_DATABASE_URL WAKECRM_MOTOR_PASSWORD PAINEL_RO_PASSWORD PAINEL_RW_PASSWORD \
     DATABASE_URL DATABASE_URL_RW)"
   if [ -n "${WAKECRM_FALHAR_MIGRACAO:-}" ]; then
@@ -635,7 +676,8 @@ config_portainer() {
 
 # portainer_api METODO CAMINHO [CORPO]: config sempre pelo stdin (curl -K -), nunca em argumento.
 # Pelo domínio público do Orion, o curl roda no próprio servidor. Senão, sai de um contêiner
-# curlimages/curl na REDE; a saída tem token e Env de outras stacks: sem log do Docker.
+# curlimages/curl na REDE (só com REDE attachable; perguntas garante); a saída tem token e Env
+# de outras stacks: sem log do Docker.
 portainer_api() {
   if [ -n "${PORTAINER_DOMINIO:-}" ]; then
     config_portainer "$@" | curl -K -
@@ -913,9 +955,14 @@ detectar() {
     escolher REDE "Postgres e Traefik compartilham mais de uma rede:" "" "${comuns[@]}"
     REDE_ORIGEM="escolhida"
   fi
-  rede_attachable "$(docker network inspect --format '{{.Attachable}}' "$REDE")" ||
-    morrer "A rede $REDE não é attachable: contêineres temporários (migração e backup) não entram nela. Nada foi alterado."
-  ok "rede: $REDE (attachable)"
+  # Attachable só importa para a API do Portainer pela overlay (perguntas); o CRM, serviço do
+  # Swarm, entra na REDE de qualquer jeito, e os contêineres temporários vão pela rede do Postgres.
+  REDE_ATTACHABLE=""
+  if rede_attachable "$(docker network inspect --format '{{.Attachable}}' "$REDE")"; then REDE_ATTACHABLE=1; fi
+  ok "rede: $REDE ($(if [ -n "$REDE_ATTACHABLE" ]; then echo attachable; else echo "não attachable"; fi))"
+  [ -n "$(container_pg)" ] ||
+    morrer "Nenhum contêiner do Postgres ($PG_SERVICO) rodando neste nó. Rode o instalador no nó onde o Postgres roda. Nada foi alterado."
+  ok "jobs temporários: rede do contêiner do Postgres (127.0.0.1)"
 
   # Evolution API 2.3.7 (não Evolution Go)
   detectar_servico EVO_SERVICO "Evolution API" '^(atendai/evolution-api|evoapicloud/evolution-api)' \
@@ -1006,6 +1053,12 @@ perguntas() {
   # Portainer: com credencial, a stack sai pela API (controle total no Portainer). Com os
   # dados do Orion (detectar), não pergunta nada.
   [ -z "$PORTAINER_DOMINIO" ] || return 0
+  # Sem domínio, a API vai de um contêiner na REDE, que precisa ser attachable.
+  if [ -n "$PORTAINER_SERVICO" ] && [ -z "$REDE_ATTACHABLE" ]; then
+    aviso "A rede $REDE não é attachable e o Portainer não tem domínio em $ORION_DIR/dados_portainer: a stack sai por docker stack deploy."
+    PORTAINER_USUARIO="" PORTAINER_SENHA=""
+    return 0
+  fi
   PORTAINER_USUARIO="${WAKECRM_PORTAINER_USUARIO:-}"
   PORTAINER_SENHA="${WAKECRM_PORTAINER_SENHA:-}"
   if [ -n "$PORTAINER_SERVICO" ] && [ -z "$SIM" ] && [ -z "$PORTAINER_USUARIO" ]; then
@@ -1057,11 +1110,8 @@ gerar() {
     novos=$((novos + 2))
   fi
 
-  # URLs derivadas (não gravadas). A do superusuário só vive no contêiner de migração.
-  DATABASE_URL="$(url_postgres painel_ro "$PAINEL_RO_PASSWORD" "$PG_HOST" 5432 wakeclub)"
-  DATABASE_URL_RW="$(url_postgres painel_rw "$PAINEL_RW_PASSWORD" "$PG_HOST" 5432 wakeclub)"
-  DATABASE_URL_MOTOR="$(url_postgres wakecrm_motor "$WAKECRM_MOTOR_PASSWORD" "$PG_HOST" 5432 wakeclub)"
-  ADMIN_DATABASE_URL="$(url_postgres "$PG_USUARIO" "$PG_SENHA" "$PG_HOST" 5432 wakeclub)"
+  # URLs derivadas (não gravadas). A do superusuário só vive nos contêineres temporários.
+  derivar_urls
 
   if [ "$novos" -gt 0 ]; then ok "$novos segredo(s) novo(s); os existentes ficam como estão"; else
     ok "todos os segredos reaproveitados de $CREDENCIAIS"
@@ -1137,7 +1187,8 @@ confirmar() {
 
   Postgres        $PG_SERVICO (Postgres $PG_MAJOR, usuário $PG_USUARIO, senha $PG_SENHA_ORIGEM)
   Traefik         $TRAEFIK_SERVICO, certresolver $CERTRESOLVER, entrypoint $ENTRYPOINT
-  Rede            $REDE ($REDE_ORIGEM)
+  Rede            $REDE ($REDE_ORIGEM, $(if [ -n "$REDE_ATTACHABLE" ]; then echo attachable; else echo "não attachable"; fi))
+  Jobs temporários rede do contêiner do Postgres (127.0.0.1)
   Evolution       ${EVO_SERVICO:-não encontrada} ${EVOLUTION_URL:+($EVOLUTION_URL, $EVOLUTION_URL_ORIGEM)}
   Chave Evolution $(mascarar "$EVOLUTION_API_KEY")${EVOLUTION_API_KEY:+, $EVOLUTION_API_KEY_ORIGEM}
   Portainer       ${PORTAINER_SERVICO:-não encontrado}

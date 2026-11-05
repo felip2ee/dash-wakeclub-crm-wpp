@@ -26,12 +26,20 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
   captura: o n8n está parado desde agosto e a ordem antiga não protege nada.
 - **Evolution API 2.3.7**, não Evolution Go (decisão do dono, 04/11/2026). O instalador
   detecta o serviço e grava `EVOLUTION_URL` e `EVOLUTION_API_KEY` para o adaptador.
+- **Rede e nó.** Postgres e Traefik precisam compartilhar uma rede overlay, que **não precisa
+  ser attachable** (a `NovaNet` do Orion não é): o CRM, serviço do Swarm, entra nela de qualquer
+  jeito. Os contêineres temporários (backup, migração, views, admin, restauração) não entram na
+  rede: usam a rede do contêiner do Postgres (`--network container:<id>`) e falam com o banco em
+  `127.0.0.1`. Por isso o instalador roda **no nó onde o Postgres roda** (no Orion, nó único);
+  sem contêiner do Postgres neste nó ele para antes de mexer em qualquer coisa. Com rede não
+  attachable e Portainer sem domínio em `dados_portainer`, a API do Portainer fica fora de
+  alcance e a stack sai por `docker stack deploy`, com aviso.
 - Pergunta só domínio, instância, admin do CRM e, se houver Portainer, usuário e senha dele
   (Enter pula e publica por `docker stack deploy`). Uma confirmação `s/N` antes de mexer.
 - **Dados do SetupOrion.** Se existir `/root/dados_vps/`, o instalador lê só quatro arquivos
   (nunca `dados_evolution_go`) e o resumo mostra quais usou:
   - `dados_vps`: `Rede interna`, para desempatar quando Postgres e Traefik têm mais de uma rede
-    em comum e não há escolha salva (sem rede comum o instalador para; continua exigindo rede
+    em comum e não há escolha salva (sem rede comum o instalador para; a rede não precisa ser
     attachable);
   - `dados_postgres`: `Senha` e `Usuario`, só se o serviço do Postgres não tiver `POSTGRES_PASSWORD`;
   - `dados_evolution`: `Global API Key`, se o serviço da Evolution não tiver a chave, e `BaseUrl`,
