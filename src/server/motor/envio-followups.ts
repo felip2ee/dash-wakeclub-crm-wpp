@@ -184,6 +184,7 @@ function reivindicar(id: string): Promise<Reivindicado | null> {
           where f.id = $1::uuid
             and f.status = 'aprovado' and f.aprovado_por is not null
             and l.opt_out = false and l.sem_atendimento = false
+            and (f.aula_em is null or f.aula_em > now())
           for update of f skip locked
        )
        update wakeclub.followups f

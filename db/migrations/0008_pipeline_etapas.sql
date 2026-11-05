@@ -68,6 +68,23 @@ update leads l
   from nova n
  where n.id = l.id;
 
+-- Quem já estava em "Aguardando pagamento" ganha o início da espera (última entrada na etapa ou,
+-- sem histórico, a última alteração); sem isso a tarefa pagamento-pendente nunca o move.
+update leads l
+   set pagamento_pendente_desde = coalesce(
+           (select max(e.ocorrido_em)
+              from eventos_automacao e
+             where e.lead_id = l.id
+               and e.tipo_evento = 'stage_changed'
+               and e.estado_novo ->> 'etiqueta' = 'Aguardando pagamento'),
+           l.atualizado_em)
+ where l.etiqueta = 'Aguardando pagamento' and l.pagamento_pendente_desde is null;
+
+-- Aula futura já marcada pelo qualificador vira a próxima aula: o aluno não recebe "agende".
+update leads
+   set proxima_aula_em = data_agendada
+ where proxima_aula_em is null and data_agendada > now();
+
 -- Sugestões já abertas expiram às 19h59 (São Paulo) do dia em que foram sugeridas.
 update followups
    set expira_em = ((sugerido_em at time zone 'America/Sao_Paulo')::date + time '19:59:59')

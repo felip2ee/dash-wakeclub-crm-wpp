@@ -173,7 +173,9 @@ describe.skipIf(!bancoTesteAtivo)("migração 0008", () => {
            followLink: await lead("Follow-up"),
            followSemHist: await lead("Follow-up"),
            encerrada: await lead("Negociação encerrada"),
+           aguardando: await lead("Aguardando pagamento"),
          };
+         await q("update leads set data_agendada = now() + interval '2 days' where id = $1", [ids.agendadoPago]);
          await venda(ids.agendadoPago, 2);
          await venda(ids.agendadoPago, 3);
          await venda(ids.aulaHorasNulas, 2);
@@ -181,8 +183,10 @@ describe.skipIf(!bancoTesteAtivo)("migração 0008", () => {
          await q(\`insert into eventos_automacao (agente, tipo_evento, entidade_tipo, entidade_id, lead_id,
                    origem_tipo, correlacao_id, estado_anterior, estado_novo, ocorrido_em)
                  values ('sistema', 'stage_changed', 'lead', $1, $1, 'motor', 't1', $2, $3, now() - interval '1 day'),
-                        ('sistema', 'stage_changed', 'lead', $1, $1, 'motor', 't2', $4, $3, now())\`,
-           [ids.followLink, { etiqueta: "Atendimento" }, { etiqueta: "Follow-up" }, { etiqueta: "Link enviado" }]);
+                        ('sistema', 'stage_changed', 'lead', $1, $1, 'motor', 't2', $4, $3, now()),
+                        ('sistema', 'stage_changed', 'lead', $5, $5, 'motor', 't3', $2, $6, now() - interval '2 days')\`,
+           [ids.followLink, { etiqueta: "Atendimento" }, { etiqueta: "Follow-up" }, { etiqueta: "Link enviado" },
+            ids.aguardando, { etiqueta: "Aguardando pagamento" }]);
          const f = (await q(\`insert into followups (lead_id, agendado_para, tipo, status, sugerido_em)
                    values ($1, now(), 'reengajar', 'aguardando_aprovacao', '2026-11-05T23:30:00-03:00') returning id\`,
            [ids.novo]))[0].id;
@@ -190,7 +194,10 @@ describe.skipIf(!bancoTesteAtivo)("migração 0008", () => {
          await q(readFileSync("db/migrations/0008_pipeline_etapas.sql", "utf8"));
          const out = {};
          for (const [k, id] of Object.entries(ids))
-           out[k] = (await q("select etiqueta, saldo_horas from leads where id = $1", [id]))[0];
+           out[k] = (await q(\`select etiqueta, saldo_horas,
+                               pagamento_pendente_desde < now() - interval '47 hours' as espera_antiga,
+                               proxima_aula_em is not null as tem_proxima
+                          from leads where id = $1\`, [id]))[0];
          out.expira = (await q("select to_char(expira_em at time zone 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS') as e from followups where id = $1", [f]))[0].e;
          await q("rollback");
          await c.end();
@@ -203,12 +210,13 @@ describe.skipIf(!bancoTesteAtivo)("migração 0008", () => {
     expect(out).toMatchObject({
       novo: { etiqueta: "Novo lead", saldo_horas: null },
       atend: { etiqueta: "Em atendimento" },
-      agendadoPago: { etiqueta: "Aluno com horas", saldo_horas: 5 },
+      agendadoPago: { etiqueta: "Aluno com horas", saldo_horas: 5, tem_proxima: true },
       aulaSemVenda: { etiqueta: "Em atendimento", saldo_horas: null },
       aulaHorasNulas: { etiqueta: "Aluno com horas", saldo_horas: null },
       followLink: { etiqueta: "Link enviado" },
       followSemHist: { etiqueta: "Em atendimento" },
       encerrada: { etiqueta: "Encerrado" },
+      aguardando: { etiqueta: "Aguardando pagamento", espera_antiga: true },
     });
     expect(out.expira).toBe("2026-11-05 19:59:59");
   });
