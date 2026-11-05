@@ -5,6 +5,7 @@ import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./banco-teste";
 import {
   OBJETIVOS,
   PRAZOS_PADRAO,
+  SQL_PARADOS,
   contarParados,
   gravarPrazos,
   lerPrazos,
@@ -169,6 +170,45 @@ describe.skipIf(!bancoTesteAtivo)("sinal parado", () => {
     );
     await tarefaParados(db());
     expect((await followups(outro)).map((x) => x.tipo)).toEqual(["reengajar"]);
+  });
+
+  test("um parado por episódio: encerrado não renasce até haver atividade nova", async () => {
+    const id = await criarLead({ etiqueta: "Em atendimento", equipe: "25 hours" });
+    const p = PRAZOS_PADRAO;
+    const estaParado = async () =>
+      (
+        await db().query(`select 1 from (${SQL_PARADOS}) p where p.id = $7::uuid`, [
+          p.emAtendimentoH,
+          p.linkEnviadoH,
+          p.cadastradoH,
+          p.alunoComHorasDias,
+          p.alunoSemHorasDias,
+          p.silencioAlunosH,
+          id,
+        ])
+      ).rowCount === 1;
+
+    await tarefaParados(db());
+    expect(await followups(id)).toHaveLength(1);
+
+    await db().query("update wakeclub.followups set status = 'abortado' where lead_id = $1::uuid", [
+      id,
+    ]);
+    await tarefaParados(db());
+    expect(await followups(id)).toHaveLength(1);
+    expect(await estaParado()).toBe(false);
+
+    // Episódio novo: a equipe voltou a falar depois do follow-up e o lead calou de novo.
+    await db().query(
+      "update wakeclub.followups set criado_em = now() - interval '3 days' where lead_id = $1::uuid",
+      [id],
+    );
+    await db().query(
+      "update wakeclub.leads set ultima_msg_equipe_em = now() - interval '25 hours' where id = $1::uuid",
+      [id],
+    );
+    await tarefaParados(db());
+    expect(await followups(id)).toHaveLength(2);
   });
 
   test("pagamento pendente há 25 h volta para Cadastrado com follow-up de compra", async () => {

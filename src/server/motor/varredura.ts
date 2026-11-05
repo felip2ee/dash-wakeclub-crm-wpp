@@ -5,7 +5,7 @@
  * `aguardando_aprovacao` na fila do dono do lead e valem até 19h59 do dia seguinte (§13).
  * Uma por vez (índice `varreduras_uma_rodando`); o progresso fica em `varreduras`.
  */
-import type { ClienteDb } from "../db";
+import { comTransacao, type ClienteDb } from "../db";
 import type { ClienteIa } from "../ia/tipos";
 import { logErro } from "../log";
 import { tarefaParados } from "./parado";
@@ -74,6 +74,14 @@ export async function lerVarreduraAtual(db: ClienteDb): Promise<EstadoVarredura 
   return rows[0] ? paraEstado(rows[0]) : null;
 }
 
+/** Follow-ups pendentes vencidos: a varredura analisa estes além dos parados que criar. */
+export async function contarVencidos(db: ClienteDb): Promise<number> {
+  const { rows } = await db.query<{ n: number }>(
+    `select count(*)::int as n from (${SQL_VENCIDOS}) v`,
+  );
+  return rows[0].n;
+}
+
 /** Registra a varredura e a dispara sem esperar; a segunda simultânea é recusada. */
 export async function iniciarVarredura(
   db: ClienteDb,
@@ -82,16 +90,29 @@ export async function iniciarVarredura(
 ): Promise<{ id: string }> {
   let id: string;
   try {
-    const { rows } = await db.query<{ id: string }>(
-      `with v as (
-         insert into wakeclub.varreduras (iniciada_por) values ($2::uuid)
-         returning id, status, total, sugeridos, barrados
-       ),
-       ev as (${EVENTO("sweep_started", "humano", "painel")})
-       select id from v`,
-      [CONFIG_ID, adminId],
-    );
-    id = rows[0].id;
+    id = await comTransacao(async (c) => {
+      // Processo reiniciado no meio deixa `rodando` para sempre; 2 h sem fim é tratado como falha.
+      await c.query(
+        `with v as (
+           update wakeclub.varreduras
+              set status = 'falhou', concluida_em = now(), erro = $2::text
+            where status = 'rodando' and iniciada_em < now() - interval '2 hours'
+           returning id, status, total, sugeridos, barrados
+         )
+         ${EVENTO("sweep_finished", "sistema", "motor")}`,
+        [CONFIG_ID, "sem progresso há mais de 2 h (processo reiniciado?)"],
+      );
+      const { rows } = await c.query<{ id: string }>(
+        `with v as (
+           insert into wakeclub.varreduras (iniciada_por) values ($2::uuid)
+           returning id, status, total, sugeridos, barrados
+         ),
+         ev as (${EVENTO("sweep_started", "humano", "painel")})
+         select id from v`,
+        [CONFIG_ID, adminId],
+      );
+      return rows[0].id;
+    });
   } catch (erro) {
     if ((erro as { code?: string }).code === "23505") {
       throw new Error("Já existe uma varredura em andamento.");

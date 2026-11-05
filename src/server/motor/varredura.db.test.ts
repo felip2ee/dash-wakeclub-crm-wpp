@@ -111,7 +111,8 @@ describe.skipIf(!bancoTesteAtivo)("varredura", () => {
     expect(fs).toEqual([1, 2, 3].map(() => ({ status: "aguardando_aprovacao", expira: limite })));
     const { rows } = await db().query<{ n: number }>(
       `select count(*)::int as n from wakeclub.followups
-        where status in ('aprovado', 'enviado', 'enviando')`,
+        where lead_id = any($1::uuid[]) and status in ('aprovado', 'enviado', 'enviando')`,
+      [leads.map((l) => l.id)],
     );
     expect(rows[0].n).toBe(0);
     const ev = await db().query(
@@ -182,8 +183,39 @@ describe.skipIf(!bancoTesteAtivo)("varredura", () => {
 
     liberar();
     await esperarFim(id);
-    // O lead barrado no teste anterior ganha outro `parado` aqui: o total não é 1.
-    expect(await lerVarreduraAtual(db())).toMatchObject({ id, status: "concluida", sugeridos: 1 });
+    expect(await lerVarreduraAtual(db())).toMatchObject({
+      id,
+      status: "concluida",
+      total: 1,
+      sugeridos: 1,
+    });
     expect((await followupsDe([l.id]))[0].status).toBe("aguardando_aprovacao");
+  });
+
+  test("varredura presa em rodando há mais de 2 h vira falhou e não bloqueia a nova", async () => {
+    const admin = await criarVendedor("Admin Varredura Presa");
+    const l = await leadParado();
+    const ia = iaPorLead({ [l.nome]: { porteiro: LIBERA, redator: TEXTO } });
+    const presa = await novaVarredura();
+    await db().query(
+      "update wakeclub.varreduras set iniciada_em = now() - interval '3 hours' where id = $1::uuid",
+      [presa],
+    );
+
+    const { id } = await iniciarVarredura(db(), ia, admin);
+    await esperarFim(id);
+
+    expect(await varredura(presa)).toMatchObject({
+      status: "falhou",
+      erro: "sem progresso há mais de 2 h (processo reiniciado?)",
+      fim: true,
+    });
+    const ev = await db().query(
+      `select 1 from wakeclub.eventos_automacao
+        where tipo_evento = 'sweep_finished' and metadados ->> 'varredura_id' = $1::text`,
+      [presa],
+    );
+    expect(ev.rowCount).toBe(1);
+    expect(await varredura(id)).toMatchObject({ status: "concluida", total: 1, sugeridos: 1 });
   });
 });

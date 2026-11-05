@@ -22,7 +22,14 @@ function situacao(atual: PainelVarredura["atual"]): string | null {
   if (!atual) return null;
   if (atual.status === "rodando") return `analisando ${atual.analisados} de ${atual.total}`;
   if (atual.status === "concluida") {
-    return `${atual.sugeridos} viraram sugestão, ${atual.barrados} barrados`;
+    // Falha da IA também reagenda o follow-up, então conta como adiado.
+    const adiados = atual.analisados - atual.sugeridos - atual.barrados;
+    const partes = [
+      `${atual.sugeridos} viraram sugestão`,
+      `${atual.barrados} ${atual.barrados === 1 ? "barrado" : "barrados"}`,
+    ];
+    if (adiados > 0) partes.push(`${adiados} ${adiados === 1 ? "adiado" : "adiados"}`);
+    return partes.join(", ");
   }
   return `A varredura falhou: ${atual.erro ?? "erro desconhecido"}`;
 }
@@ -82,7 +89,8 @@ export function BotaoVarredura() {
         Buscar follow-ups agora
       </Button>
       <p aria-live="polite" className="text-sm text-muted-foreground tabular-nums">
-        {situacao(painel.data?.atual ?? null)}
+        {/* O title do botão não chega ao toque; rodando, o progresso já explica o bloqueio. */}
+        {status !== "rodando" && motivo ? motivo : situacao(painel.data?.atual ?? null)}
       </p>
 
       <Dialog
@@ -96,8 +104,8 @@ export function BotaoVarredura() {
           <DialogHeader>
             <DialogTitle>Buscar follow-ups agora</DialogTitle>
             <DialogDescription>
-              {painel.data?.parados ?? 0} leads parados serão analisados. Cada análise é uma chamada
-              paga à OpenAI.
+              {painel.data?.aAnalisar ?? 0} follow-ups serão analisados (cada um é uma chamada paga
+              à OpenAI).
             </DialogDescription>
           </DialogHeader>
           <form
