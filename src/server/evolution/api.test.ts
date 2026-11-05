@@ -120,9 +120,33 @@ describe("enviar", () => {
     expect(pedidos[0].corpo).toEqual(corpo);
   });
 
-  test.each([400, 401, 403, 404, 422])("%d → nao_saiu", async (status) => {
-    const { a } = adaptador(() => json({ erro: "corpo-da-evolution" }, status));
+  const erro400 = (message: unknown) =>
+    json({ status: 400, error: "Bad Request", response: { message } }, 400);
+
+  test.each<[string, () => Response]>([
+    ["401", () => json({ erro: "corpo-da-evolution" }, 401)],
+    ["403", () => json({ erro: "corpo-da-evolution" }, 403)],
+    ["404", () => json({ erro: "corpo-da-evolution" }, 404)],
+    ["400 validação do schema", () => erro400([['text is required "corpo-da-evolution"']])],
+    [
+      "400 número fora do WhatsApp",
+      () => erro400([{ exists: false, jid: "5563900000001@s.whatsapp.net", number: "x" }]),
+    ],
+  ])("%s → nao_saiu", async (_, resposta) => {
+    const { a } = adaptador(resposta);
     expect((await erroDe(a.enviar(TEXTO))).certeza).toBe("nao_saiu");
+  });
+
+  test.each<[string, () => Response]>([
+    // O catch de sendMessageWithTyping cobre o envio e o que vem depois: pode ter saído.
+    ["400 do catch do envio", () => erro400(["Error: corpo-da-evolution"])],
+    ["400 sem corpo legível", () => new Response("corpo-da-evolution", { status: 400 })],
+    ["400 número existente", () => erro400([{ exists: true }])],
+    ["422", () => json({ erro: "corpo-da-evolution" }, 422)],
+    ["429", () => json({ erro: "corpo-da-evolution" }, 429)],
+  ])("%s → incerto", async (_, resposta) => {
+    const { a } = adaptador(resposta);
+    expect((await erroDe(a.enviar(TEXTO))).certeza).toBe("incerto");
   });
 
   test.each([

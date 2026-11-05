@@ -53,6 +53,8 @@ describe("normalizarEvolution: mensagens", () => {
     ["lista-resposta", "Aula experimental", "texto"],
     ["efemera-visualizacao-unica", "Foto única", "imagem"],
     ["editada", "Corrigindo: amanhã às 16h", "texto"],
+    ["editada-baileys", "Na verdade, às 17h", "texto"],
+    ["editada-protocolo", "Editado: sábado", "texto"],
   ])("%s", (nome, texto, tipoMidia) => {
     expect(mensagem(nome)).toMatchObject({ tipo: "mensagem", telefone: LEAD, texto, tipoMidia });
   });
@@ -151,6 +153,25 @@ describe("normalizarEvolution: saúde", () => {
     ]);
   });
 
+  test("messages.edited com status vira ack", () => {
+    expect(normalizarEvolution(fixture("mensagem-editada-evento"))).toEqual([
+      { tipo: "ack", evolutionMsgId: "3EB0A0000000000000002", nivel: 2 },
+    ]);
+  });
+
+  test("remove.instance fecha; application.startup lê o estado", () => {
+    expect(normalizarEvolution(fixture("remove-instancia"))[0]).toMatchObject({
+      evento: "remove.instance",
+      estado: "close",
+    });
+    expect(normalizarEvolution(fixture("inicio-aplicacao"))[0]).toMatchObject({
+      tipo: "conexao",
+      evento: "application.startup",
+      estado: "connecting",
+      statusReason: null,
+    });
+  });
+
   test("logout.instance fecha", () => {
     expect(normalizarEvolution(fixture("logout"))[0]).toMatchObject({
       evento: "logout.instance",
@@ -181,10 +202,20 @@ describe("chaveDeOrdemDoCorpo", () => {
     ["grupo", "120363000000000001@g.us"],
     ["ack-texto", LEAD],
     ["ack-numerico", LEAD],
+    ["ack-lid-com-alt", "+5563900000003"],
+    ["ack-lid-key-sender", "+5563900000003"],
+    ["mensagem-editada-evento", LEAD],
+    ["remove-instancia", "instancia:wakeclub"],
     ["conexao-aberta", "instancia:wakeclub"],
     ["qrcode", "instancia:wakeclub"],
   ])("%s → %s", (nome, chave) => {
     expect(chaveDeOrdemDoCorpo(fixture(nome))).toBe(chave);
+  });
+
+  test("ack do @lid cai na mesma fila da mensagem", () => {
+    const msg = chaveDeOrdemDoCorpo(fixture("lid-com-alt"));
+    expect(chaveDeOrdemDoCorpo(fixture("ack-lid-com-alt"))).toBe(msg);
+    expect(chaveDeOrdemDoCorpo(fixture("ack-lid-key-sender"))).toBe(msg);
   });
 
   test("sem nada reconhecível", () => {

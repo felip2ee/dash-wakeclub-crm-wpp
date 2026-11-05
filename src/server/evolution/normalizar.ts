@@ -42,39 +42,56 @@ function desembrulhar(msg: Obj, nivel = 0): Obj {
   ]) {
     if (msg[k]) return desembrulhar(obj(obj(msg[k]).message), nivel + 1);
   }
+  // Edição no formato do Baileys: `protocolMessage` (tipo MESSAGE_EDIT) com o novo conteúdo
+  // em `editedMessage`, direto ou dentro de `editedMessage.message`.
+  const editada = obj(obj(msg.protocolMessage).editedMessage);
+  if (Object.keys(editada).length > 0) return desembrulhar(editada, nivel + 1);
   return msg;
+}
+
+/** Mídia: chaves do Baileys, tipo e marcador quando não há legenda (textos do WF-01). */
+const MIDIAS: [string[], TipoMidia, (d: Obj) => string][] = [
+  [["imageMessage"], "imagem", () => "[imagem]"],
+  [["videoMessage"], "video", () => "[video]"],
+  [
+    ["documentMessage"],
+    "documento",
+    (d) => `[documento${str(d.fileName) ? " " + str(d.fileName) : ""}]`,
+  ],
+  [["audioMessage"], "audio", () => "[audio]"],
+  [["stickerMessage"], "figurinha", () => "[figurinha]"],
+  [["contactMessage", "contactsArrayMessage"], "contato", () => "[contato]"],
+  [["locationMessage", "liveLocationMessage"], "localizacao", () => "[localizacao]"],
+];
+
+const LEGENDADAS = new Set<TipoMidia>(["imagem", "video", "documento"]);
+
+/** Texto escolhido em botão ou lista. */
+function respostaEscolhida(m: Obj): string {
+  const lista = obj(m.listResponseMessage);
+  return (
+    str(obj(m.buttonsResponseMessage).selectedDisplayText) ||
+    str(obj(m.templateButtonReplyMessage).selectedDisplayText) ||
+    (lista.singleSelectReply
+      ? str(lista.title) || str(obj(lista.singleSelectReply).selectedRowId)
+      : "")
+  );
 }
 
 function extrairConteudo(bruta: unknown): { texto: string; tipo: TipoMidia } | null {
   const m = desembrulhar(obj(bruta));
-  const sub = (k: string) => obj(m[k]);
-  if (str(m.conversation).trim()) return { texto: str(m.conversation), tipo: "texto" };
-  if (str(sub("extendedTextMessage").text))
-    return { texto: str(sub("extendedTextMessage").text), tipo: "texto" };
-  if (m.imageMessage)
-    return { texto: str(sub("imageMessage").caption) || "[imagem]", tipo: "imagem" };
-  if (m.videoMessage)
-    return { texto: str(sub("videoMessage").caption) || "[video]", tipo: "video" };
-  if (m.documentMessage) {
-    const d = sub("documentMessage");
-    const arq = str(d.fileName) ? " " + str(d.fileName) : "";
-    return { texto: str(d.caption) || `[documento${arq}]`, tipo: "documento" };
+  const texto = str(m.conversation).trim()
+    ? str(m.conversation)
+    : str(obj(m.extendedTextMessage).text);
+  if (texto) return { texto, tipo: "texto" };
+  for (const [chaves, tipo, marcador] of MIDIAS) {
+    const k = chaves.find((c) => m[c]);
+    if (!k) continue;
+    const d = obj(m[k]);
+    return { texto: (LEGENDADAS.has(tipo) && str(d.caption)) || marcador(d), tipo };
   }
-  if (m.audioMessage) return { texto: "[audio]", tipo: "audio" };
-  if (m.stickerMessage) return { texto: "[figurinha]", tipo: "figurinha" };
-  if (m.contactMessage || m.contactsArrayMessage) return { texto: "[contato]", tipo: "contato" };
-  if (m.locationMessage || m.liveLocationMessage)
-    return { texto: "[localizacao]", tipo: "localizacao" };
-  const botao =
-    str(sub("buttonsResponseMessage").selectedDisplayText) ||
-    str(sub("templateButtonReplyMessage").selectedDisplayText);
-  if (botao) return { texto: botao, tipo: "texto" };
-  const lista = sub("listResponseMessage");
-  if (lista.singleSelectReply) {
-    const t = str(lista.title) || str(obj(lista.singleSelectReply).selectedRowId);
-    if (t) return { texto: t, tipo: "texto" };
-  }
-  return null;
+  const escolhida = respostaEscolhida(m);
+  return escolhida ? { texto: escolhida, tipo: "texto" } : null;
 }
 
 /** Segundos ou milissegundos (> 1e12); aceita também o `Long` do Baileys ({ low, high }). */
@@ -99,7 +116,8 @@ function resolverJid(jidBruto: string, chave: Obj, d: Obj): Jid {
     return { motivo: "status ou canal", jid: jidBruto };
   let pessoa = jidBruto;
   if (jidBruto.endsWith("@lid")) {
-    pessoa = str(chave.remoteJidAlt) || str(chave.senderPn) || str(d.remoteJidAlt);
+    pessoa =
+      str(chave.remoteJidAlt) || str(chave.senderPn) || str(d.remoteJidAlt) || str(d.senderPn);
     if (!pessoa) return { motivo: "jid @lid sem numero real", jid: jidBruto };
   }
   const telefone = paraE164(pessoa.split("@")[0].split(":")[0]);
@@ -223,7 +241,8 @@ export function normalizarEvolution(corpo: unknown): EventoNormalizado[] {
 
 /**
  * Mensagens e acks vão na fila da conversa (telefone E.164, ou o JID quando não há
- * número), para o ack nunca passar à frente da mensagem; eventos da instância, na fila
+ * número), para o ack nunca passar à frente da mensagem. O ack resolve o `@lid` pelos
+ * mesmos campos da mensagem (`remoteJidAlt`/`senderPn`, na `key` ou no `data` plano); eventos da instância, na fila
  * `instancia:<nome>`. Sem nada reconhecível, a chave única `evolution`.
  */
 export function chaveDeOrdemDoCorpo(corpo: unknown): string | null {

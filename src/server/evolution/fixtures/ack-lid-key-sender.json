@@ -1,0 +1,18 @@
+{
+  "event": "messages.update",
+  "instance": "wakeclub",
+  "data": {
+    "key": {
+      "remoteJid": "123456789012345@lid",
+      "senderPn": "5563900000003@s.whatsapp.net",
+      "fromMe": true,
+      "id": "3EB0A0000000000000021"
+    },
+    "status": "READ"
+  },
+  "destination": "https://crm.exemplo.test/api/webhooks/evolution",
+  "date_time": "2026-11-04T10:15:00.000Z",
+  "sender": "5563900000099@s.whatsapp.net",
+  "server_url": "http://evolution-api.exemplo.test:8080",
+  "apikey": "chave-ficticia-nao-usar"
+}

@@ -63,6 +63,19 @@ function pedidoDeEnvio(envio: Envio): { rota: string; corpo: Obj; timeout: numbe
   return { rota, corpo, timeout };
 }
 
+/**
+ * 400 só prova que a mensagem não saiu em dois formatos (resposta `{ response: { message } }`
+ * do BadRequestException da 2.3.7). Validação do schema (`dataValidate`): `message[0]` é a
+ * lista de erros. Número fora do WhatsApp (checado antes do `try` de
+ * `sendMessageWithTyping`): `message[0]` é `{ exists: false, ... }`. Qualquer outro 400
+ * pode vir do `catch` desse `try`, que cobre o envio e o que roda depois dele: incerto.
+ */
+export function recusaAntesDoEnvio(corpo: unknown): boolean {
+  const m = obj(obj(corpo).response).message;
+  if (!Array.isArray(m) || m.length === 0) return false;
+  return Array.isArray(m[0]) || obj(m[0]).exists === false;
+}
+
 export function criarAdaptadorEvolution(cfg: ConfigEvolution): AdaptadorEvolution {
   const base = cfg.url.replace(/\/+$/, "");
   const instancia = encodeURIComponent(cfg.instancia);
@@ -86,17 +99,14 @@ export function criarAdaptadorEvolution(cfg: ConfigEvolution): AdaptadorEvolutio
       // Timeout ou queda de rede: o pedido pode ter chegado. Nunca a mensagem crua (URL).
       throw new ErroEnvio(`Evolution sem resposta em ${rota}`, "incerto");
     }
-    // 4xx (exceto 408): recusa da própria Evolution antes de falar com o WhatsApp
-    // (número inválido, chave errada, instância inexistente, corpo inválido).
-    if (r.status >= 400 && r.status < 500 && r.status !== 408)
+    // 401/403 (guarda da chave) e 404 (instância) param antes de qualquer envio.
+    if (r.status === 401 || r.status === 403 || r.status === 404)
       throw new ErroEnvio(`Evolution recusou ${rota} (${r.status})`, "nao_saiu");
+    const lido: unknown = await r.json().catch(() => null);
+    if (r.status === 400 && recusaAntesDoEnvio(lido))
+      throw new ErroEnvio(`Evolution recusou ${rota} (400)`, "nao_saiu");
     if (!r.ok) throw new ErroEnvio(`Evolution respondeu ${r.status} em ${rota}`, "incerto");
-    let id = "";
-    try {
-      id = str(obj(obj(await r.json()).key).id);
-    } catch {
-      // cai no erro abaixo
-    }
+    const id = str(obj(obj(lido).key).id);
     if (!id) throw new ErroEnvio(`Evolution respondeu sem id em ${rota}`, "incerto");
     return { evolutionMsgId: id };
   }

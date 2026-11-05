@@ -135,7 +135,7 @@ Revise o adaptador da Evolution API contra estes pontos antes do passo 7. Os mar
 estão no código (`src/server/evolution/`) com teste sem rede; os abertos dependem do
 ambiente real.
 
-- [x] `enviar` lança `ErroEnvio` (`src/server/evolution/tipos.ts`) com `certeza`: `nao_saiu` só quando a Evolution recusou antes de entregar ao WhatsApp (4xx exceto 408); `incerto` para timeout, rede, 5xx, 408 ou resposta sem `key.id`. Erro não tipado é tratado como `incerto`. O follow-up `incerto` é abortado e o vendedor confere; nunca é reenviado sozinho.
+- [x] `enviar` lança `ErroEnvio` (`src/server/evolution/tipos.ts`) com `certeza`: `nao_saiu` só quando a recusa é provadamente anterior ao envio: 401/403, 404 ou 400 com corpo de validação do schema ou de número fora do WhatsApp (`exists: false`); qualquer outro 400 (o `catch` de `sendMessageWithTyping` cobre o envio e o que vem depois), demais 4xx, timeout, rede, 5xx ou resposta sem `key.id` são `incerto`. Erro não tipado é tratado como `incerto`. O follow-up `incerto` é abortado e o vendedor confere; nunca é reenviado sozinho.
 - [x] O timeout do `enviar` é muito menor que 15 min (30 s texto e localização, 120 s mídia; o órfão em `enviando` é abortado aos 15 min). A mensagem de erro não leva corpo da resposta nem segredo.
 - [x] `adaptador.chaveDeOrdem(corpo)` existe para o recálculo de `chave_ordem` (passo 10): telefone E.164 da conversa, `instancia:<nome>` para eventos da instância.
 - [x] `baixarMidia` busca a mídia sob demanda em `POST /chat/getBase64FromMediaMessage` (o evento capturado não traz base64); 400/404 viram `sem_midia`.

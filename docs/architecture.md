@@ -293,19 +293,24 @@ definidas (memoizado no processo); sem elas devolve `null` e nada é simulado.
 
 - `normalizar.ts` porta o WF-01 e o WF-07: `messages.upsert` vira mensagem (E.164 com o 9º
   dígito, `@lid` pelo `remoteJidAlt`/`senderPn`, desembrulho de efêmera, visualização única,
-  documento com legenda e editada; mídia sem legenda vira `[imagem]`, `[audio]` etc.);
+  documento com legenda e editada, inclusive o `protocolMessage.editedMessage` do Baileys; mídia sem legenda vira `[imagem]`, `[audio]` etc.);
   grupo, status, canal e `@lid` sem número são ignorados. `messages.update`/`messages.edited`
   viram ack (0 a 5); `connection.update`, `application.startup`, `qrcode.updated`,
   `logout.instance` e `remove.instance` viram evento de conexão. O `apikey` do envelope
   nunca vai para `detalhe` nem log, e o QR em si não é guardado.
-- `chave_ordem`: telefone E.164 da conversa (ou o JID sem número) para mensagens e acks,
+- `chave_ordem`: telefone E.164 da conversa (ou o JID sem número) para mensagens e acks;
+  o ack de `@lid` resolve o número pelos mesmos campos da mensagem (`remoteJidAlt`/`senderPn`),
   `instancia:<nome>` para eventos da instância, `evolution` quando nada é reconhecível.
 - `api.ts`: `POST /message/sendText|sendMedia|sendWhatsAppAudio|sendLocation/{instancia}`
   com `number` só em dígitos; `POST /chat/getBase64FromMediaMessage/{instancia}` para mídia
   (400/404 = sem mídia); `GET /instance/connectionState/{instancia}`. Chave só no header
   `apikey`. Timeout de 30 s (texto e localização), 120 s (mídia) e 15 s (estado).
-  `ErroEnvio`: 4xx exceto 408 é `nao_saiu`; timeout, rede, 5xx, 408 e resposta sem `key.id`
-  são `incerto`. Mensagens de erro não levam corpo da resposta, URL nem chave.
+  `ErroEnvio` `nao_saiu` só quando a recusa é provadamente anterior ao envio: 401/403
+  (chave), 404 (instância) e 400 com corpo de validação do schema (`response.message[0]` é
+  lista) ou de número fora do WhatsApp (`exists: false`). Qualquer outro 400 pode vir do
+  `catch` de `sendMessageWithTyping`, que cobre o envio e o que roda depois dele; esse 400,
+  os demais 4xx, timeout, rede, 5xx e resposta sem `key.id` são `incerto`. Mensagens de erro
+  não levam corpo da resposta, URL nem chave.
 - Fixtures sintéticas em `src/server/evolution/fixtures/` (sem dado real) cobrem cada caso.
 
 **Fila.** Os endpoints só inserem em `webhook_eventos`. O trabalhador roda a cada 2 s,
