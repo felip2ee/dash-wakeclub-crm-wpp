@@ -352,6 +352,15 @@ describe.skipIf(!bancoTesteAtivo)("origem do lead", () => {
     expect(o.origem_app).toBe("instagram");
   });
 
+  test("direto sem evidência, depois marca: vira anuncio", async () => {
+    const telefone = telefoneUnico();
+    const r = await registrar(msg({ telefone }));
+    await registrar(msg({ telefone, origem: anuncio }));
+    const o = await origem(r.leadId);
+    expect(o.origem_canal).toBe("anuncio");
+    expect(o.detectada_em).not.toBeNull();
+  });
+
   test("lead sem marca é direto, sem detectada_em", async () => {
     const r = await registrar(msg());
     const o = await origem(r.leadId);

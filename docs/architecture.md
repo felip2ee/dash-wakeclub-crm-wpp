@@ -139,7 +139,7 @@ Variáveis consumidas pelo dashboard:
 | `EVOLUTION_API_KEY`         | `evolution/api.ts`                            | `AUTHENTICATION_API_KEY` da Evolution API, só no header `apikey`; obrigatória para o adaptador                   |
 | `OPENAI_API_KEY`            | `ia/openai.ts`                                | chave da OpenAI. Ausente: qualificador, redator e transcrição ficam de fora (log `ia.sem_chave`); nada quebra    |
 | `OPENAI_MODELO_TRANSCRICAO` | `ia/openai.ts`                                | modelo de transcrição; padrão `whisper-1`                                                                        |
-| `ADMIN_DATABASE_URL`        | `scripts/painel-db.mjs`, `scripts/migrar.mjs` | roles, views e migrações; não usada pela aplicação                                                               |
+| `ADMIN_DATABASE_URL`        | `scripts/` (painel-db, migrar, origem-leads)  | roles, views e migrações; não usada pela aplicação                                                               |
 | `PAINEL_RO_PASSWORD`        | `scripts/painel-db.mjs`                       | configuração da role de leitura                                                                                  |
 | `PAINEL_RW_PASSWORD`        | `scripts/painel-db.mjs`                       | configuração da role limitada de escrita                                                                         |
 
@@ -364,7 +364,7 @@ eco, agenda a qualificação (`qualificar_apos` = agora + 2 min de debounce), ca
 follow-ups em aberto e distribui lead sem dono. Mensagem gravada pelo envio de um follow-up
 leva `followup_id`. Hoje só processa o tipo `mensagem` do evento normalizado.
 
-**Origem do lead.** `upsertLead` (`motor/ingestao.ts`) grava `origem_canal`, `origem_app`, `origem_anuncio_id`, `origem_anuncio_titulo` e `origem_detectada_em` em `wakeclub.leads`. Mensagem da equipe nunca define a origem. A primeira mensagem do próprio lead define: com marca, o canal mapeado (`anuncio`, `link`, `busca`, `outro`); sem marca, `direto` com `origem_detectada_em` nulo. A primeira origem vale e nunca é sobrescrita pela ingestão. `db:origem` só troca `direto` com `origem_detectada_em` nulo quando a Evolution tem marca; a varredura final marca `direto` somente o lead com ao menos uma mensagem dele; é idempotente. A meta diária é `configuracoes.meta_vendas_dia` (padrão 2, inteiro de 1 a 1000), editada em `/configuracoes` por `definirMetaVendasDia`.
+**Origem do lead.** `upsertLead` (`motor/ingestao.ts`) grava `origem_canal`, `origem_app`, `origem_anuncio_id`, `origem_anuncio_titulo` e `origem_detectada_em` em `wakeclub.leads`. Mensagem da equipe nunca define a origem. A primeira mensagem do próprio lead define: com marca, o canal mapeado (`anuncio`, `link`, `busca`, `outro`); sem marca, `direto` com `origem_detectada_em` nulo. A primeira marca vale e nunca é sobrescrita; `direto` com `origem_detectada_em` nulo significa "sem evidência" e é trocado pela primeira marca que chegar, tanto na ingestão quanto no `db:origem` (que lê a marca na Evolution). Até o `db:origem` rodar, lead antigo sem origem aparece como Direto na Visão geral; a varredura final marca `direto` somente o lead com ao menos uma mensagem dele; é idempotente. A meta diária é `configuracoes.meta_vendas_dia` (padrão 2, inteiro de 1 a 1000), editada em `/configuracoes` por `definirMetaVendasDia`.
 
 **Saúde e notificações.** `saude.ts` mantém `instancia_estado`/`instancia_eventos` a partir
 de eventos de conexão, ack e heartbeat; `notificacoes.ts` cria a fila de push e a tarefa
