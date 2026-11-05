@@ -37,6 +37,7 @@ export default defineConfig({
             "**/src/server/fechamento.ts",
             "**/src/server/dinheiro.ts",
             "**/src/server/revisao.ts",
+            "**/src/server/admin-varredura.ts",
           ],
         },
       },
