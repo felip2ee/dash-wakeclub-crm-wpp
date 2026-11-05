@@ -112,6 +112,9 @@ export const getLeadsPainel = createServerFn({ method: "GET" }).handler(
 /** Card do Pipeline: o do kanban mais horas estimadas e valores (spec das fases 2–3, §7). */
 export type LeadPipeline = LeadCard & {
   horasEstimadas: number | null;
+  saldoHoras: number | null;
+  proximaAulaEm: string | null;
+  ultimaAulaEm: string | null;
   valorCheio: number;
   valorEsperado: number;
 };
@@ -134,9 +137,12 @@ export const getPipeline = createServerFn({ method: "GET" })
     const { rows: extras } = await getPoolMotor().query<{
       id: string;
       horas_estimadas: number | null;
+      saldo_horas: number | null;
+      proxima_aula_em: Date | null;
+      ultima_aula_em: Date | null;
       preco_hora: string | null;
     }>(
-      `select l.id, l.horas_estimadas,
+      `select l.id, l.horas_estimadas, l.saldo_horas, l.proxima_aula_em, l.ultima_aula_em,
               (select c.valor #>> '{}' from wakeclub.configuracoes c
                 where c.chave = 'preco_hora') as preco_hora
          from wakeclub.leads l
@@ -145,14 +151,18 @@ export const getPipeline = createServerFn({ method: "GET" })
     );
     // Sem leads não há valor a mostrar; com leads, preço ausente é erro, não R$ 0,00.
     const precoHora = rows.length > 0 ? precoHoraDe(extras[0]) : 0;
-    const horas = new Map(extras.map((e) => [e.id, e.horas_estimadas]));
+    const porId = new Map(extras.map((e) => [e.id, e]));
 
     const cards = rows.map((r): LeadPipeline => {
       const card = paraCard(r);
-      const horasEstimadas = horas.get(r.id) ?? null;
+      const extra = porId.get(r.id);
+      const horasEstimadas = extra?.horas_estimadas ?? null;
       return {
         ...card,
         horasEstimadas,
+        saldoHoras: extra?.saldo_horas ?? null,
+        proximaAulaEm: extra?.proxima_aula_em?.toISOString() ?? null,
+        ultimaAulaEm: extra?.ultima_aula_em?.toISOString() ?? null,
         valorCheio: valorCheio(horasEstimadas, precoHora),
         valorEsperado: valorEsperado({ ...card, horasEstimadas }, precoHora),
       };

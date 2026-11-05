@@ -56,7 +56,7 @@ function lerData(bruto: unknown, decisoes: string[]): string {
   return new Date().toISOString();
 }
 
-function lerCpf(bruto: unknown, decisoes: string[]): string | null {
+export function lerCpf(bruto: unknown, decisoes: string[]): string | null {
   const digitos = bruto === null || bruto === undefined ? "" : String(bruto).replace(/\D/g, "");
   if (digitos.length === 11) return digitos;
   if (bruto !== null && bruto !== undefined && bruto !== "")
@@ -64,7 +64,7 @@ function lerCpf(bruto: unknown, decisoes: string[]): string | null {
   return null;
 }
 
-function lerTelefone(bruto: unknown, decisoes: string[]): string | null {
+export function lerTelefone(bruto: unknown, decisoes: string[]): string | null {
   let digitos = bruto === null || bruto === undefined ? "" : String(bruto).replace(/\D/g, "");
   if (digitos.length === 10 || digitos.length === 11) {
     digitos = "55" + digitos;

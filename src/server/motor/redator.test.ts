@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  formatarAvaliacoes,
+  formatarRevisoes,
   type LinhaFollowup,
   modoDoFollowup,
   montarPromptPorteiro,
@@ -56,6 +56,10 @@ describe("modoDoFollowup", () => {
       modo: "RETOMAR",
       porque: "o lead tem aula marcada",
     });
+    expect(modoDoFollowup(linha({ etiqueta: "Cadastrado", tipo: "parado" })).modo).toBe("RETOMAR");
+    expect(modoDoFollowup(linha({ etiqueta: "Aluno sem horas", tipo: "parado" })).modo).toBe(
+      "RETOMAR",
+    );
   });
 });
 
@@ -169,45 +173,50 @@ describe("prompts", () => {
     );
     expect(p.usuario).toEndWith("Escreva a mensagem no modo REABRIR.");
   });
+
+  test("objetivo do follow-up no lugar do motivo de quem agendou", () => {
+    const d = linha({ tipo: "parado", motivo: "concluir o cadastro" });
+    const r = montarPromptRedator(d, "B").usuario;
+    expect(r).toContain("OBJETIVO DESTE FOLLOW-UP: concluir o cadastro");
+    expect(r).not.toContain("por que foi agendado");
+    const p = montarPromptPorteiro(d, "B").usuario;
+    expect(p).toContain("OBJETIVO DESTE FOLLOW-UP: concluir o cadastro");
+    expect(p).not.toContain("motivo de quem agendou");
+  });
 });
 
-describe("formatarAvaliacoes", () => {
+describe("formatarRevisoes", () => {
   test("vazio", () => {
-    expect(formatarAvaliacoes([], [])).toContain("(nenhuma avaliação ainda)");
+    expect(formatarRevisoes([])).toBe(
+      "REVISOES DO ADMIN SOBRE DECISOES DA EQUIPE (calibre-se por elas)\n(nenhuma revisão ainda)",
+    );
   });
 
-  test("formata decisões e pares original/editado", () => {
-    const b = formatarAvaliacoes(
-      [
-        {
-          decisao: "enviar",
-          motivos: ["Ajustei o texto"],
-          texto_livre: "tirei o link",
-          texto_original: "Oi, segue o link",
-          texto_enviado: "Oi, tudo bem?",
-        },
-        {
-          decisao: "enviar",
-          motivos: [],
-          texto_livre: null,
-          texto_original: "Oi Ana, e aí?",
-          texto_enviado: "Oi Ana, e aí?",
-        },
-      ],
-      [
-        {
-          decisao: "recusar",
-          motivos: ["Cedo demais", "Tom errado"],
-          texto_livre: null,
-          texto_original: "Fechou?",
-          texto_enviado: null,
-        },
-      ],
+  test("uma linha por revisão: texto da IA, decisão da atendente e avaliação do admin", () => {
+    const b = formatarRevisoes([
+      {
+        texto_original: "Oi, segue o link",
+        texto_enviado: "Oi, tudo bem?",
+        decisao: "enviar",
+        motivos: ["Ajustei o texto"],
+        texto_livre: "tirei o link",
+        concorda: true,
+        observacao: "boa edição",
+      },
+      {
+        texto_original: "Fechou?",
+        texto_enviado: null,
+        decisao: "recusar",
+        motivos: [],
+        texto_livre: null,
+        concorda: false,
+        observacao: null,
+      },
+    ]);
+    expect(b).toBe(
+      "REVISOES DO ADMIN SOBRE DECISOES DA EQUIPE (calibre-se por elas)\n" +
+        '"Oi, segue o link" → atendente: enviar (Ajustei o texto; tirei o link) → admin: Concordo: boa edição\n' +
+        '"Fechou?" → atendente: recusar (sem motivo) → admin: Discordo: sem observação',
     );
-    expect(b).toContain('"Oi, segue o link" → enviar → Ajustei o texto; tirei o link');
-    expect(b).toContain('"Oi Ana, e aí?" → enviar → sem motivo');
-    expect(b).toContain('"Fechou?" → recusar → Cedo demais, Tom errado');
-    expect(b).toContain('"Oi, segue o link" → "Oi, tudo bem?"');
-    expect(b).not.toContain('"Oi Ana, e aí?" → "Oi Ana, e aí?"');
   });
 });

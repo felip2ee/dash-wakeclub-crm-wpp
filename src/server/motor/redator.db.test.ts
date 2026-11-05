@@ -5,7 +5,7 @@ import { VERSAO_PROMPT as VERSAO_PORTEIRO } from "../ia/prompts/porteiro";
 import { VERSAO_PROMPT as VERSAO_REDATOR } from "../ia/prompts/redator";
 import type { ClienteIa, PedidoChat } from "../ia/tipos";
 import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./banco-teste";
-import { tarefaRedator } from "./redator";
+import { avaliarPorteiro, blocoRevisoes, redigir, tarefaRedator } from "./redator";
 
 const db = () => getPoolMotor();
 // 12h em São Paulo: dentro da janela, qualquer que seja a hora real do teste.
@@ -61,7 +61,7 @@ async function vencido(
       telefoneUnico(),
       nome,
       dono,
-      o.etiqueta ?? "Atendimento",
+      o.etiqueta ?? "Em atendimento",
       o.temperatura ?? "morno",
       o.horas ?? 1,
       o.anos ?? 10,
@@ -75,7 +75,8 @@ async function followup(id: string) {
     `select status, texto_sugerido, sugerido_em, motivo_cancelamento,
             agendado_para > now() + interval '29 minutes' as adiado_30,
             to_char(agendado_para at time zone 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI') as quando,
-            agendado_para < now() - interval '1 year' as intocado
+            agendado_para < now() - interval '1 year' as intocado,
+            to_char(expira_em at time zone 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS') as expira
        from wakeclub.followups where id = $1::uuid`,
     [id],
   );
@@ -109,17 +110,39 @@ async function gastarCota(n: number) {
   );
 }
 
-/** Cota do dia livre: o que outros testes prepararam hoje passa a ser de ontem. */
-const liberarCota = () =>
+/** Data de São Paulo daqui a `dias` dias, com a hora em que a sugestão expira. */
+const fimDaJanela = async (dias: number) =>
+  (
+    await db().query<{ c: string }>(
+      `select to_char((now() at time zone 'America/Sao_Paulo')::date + $1::int, 'YYYY-MM-DD')
+              || ' 19:59:59' as c`,
+      [dias],
+    )
+  ).rows[0].c;
+
+/** Revisão do admin sobre uma decisão da atendente num follow-up já usado. */
+async function revisar(followupId: string, atendente: string, admin: string, texto: string) {
+  const { rows } = await db().query<{ id: string }>(
+    `insert into wakeclub.followup_avaliacoes (followup_id, usuario_id, decisao, motivos, texto_original)
+     values ($1::uuid, $2::uuid, 'recusar', '{Tom errado}', $3::text) returning id`,
+    [followupId, atendente, texto],
+  );
+  await db().query(
+    `insert into wakeclub.followup_revisoes (avaliacao_id, admin_id, concorda, observacao)
+     values ($1::uuid, $2::uuid, false, 'estava bom')`,
+    [rows[0].id, admin],
+  );
+}
+
+/** Só os follow-ups do teste vencidos: os que outros testes deixaram vão para amanhã. */
+const adiarOsOutros = () =>
   db().query(
-    `update wakeclub.followups set sugerido_em = sugerido_em - interval '1 day'
-      where (sugerido_em at time zone 'America/Sao_Paulo')::date
-          = (now() at time zone 'America/Sao_Paulo')::date`,
+    `update wakeclub.followups set agendado_para = now() + interval '1 day'
+      where status = 'pendente' and agendado_para <= now()`,
   );
 
 describe.skipIf(!bancoTesteAtivo)("redator", () => {
   beforeEach(async () => {
-    await liberarCota();
     await db().query(
       `update wakeclub.configuracoes set valor = '{"modo":"conservador"}' where chave = 'ritmo'`,
     );
@@ -169,13 +192,9 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
 
   test("redator grava aguardando_aprovacao, evento e push", async () => {
     const f = await vencido({ etiqueta: "Aguardando pagamento", temperatura: "quente" });
-    // Uma recusa do próprio vendedor volta no prompt de sistema dos dois.
+    // Uma recusa revisada pelo admin volta no prompt de sistema dos dois.
     const velho = await vencido({ anos: 0 });
-    await db().query(
-      `insert into wakeclub.followup_avaliacoes (followup_id, usuario_id, decisao, motivos, texto_original)
-       values ($1::uuid, $2::uuid, 'recusar', '{Tom errado}', 'Texto velho')`,
-      [velho.id, f.dono],
-    );
+    await revisar(velho.id, f.dono, await criarVendedor("Admin"), "Texto velho");
     const { ia, leads } = iaPorLead({
       [f.nome]: {
         porteiro: { enviar: true, motivo: "faz sentido" },
@@ -189,7 +208,9 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     expect(p).toMatchObject({ modelo: "gpt-5.4-mini", reasoningEffort: "low", timeoutMs: 60000 });
     expect(r).toMatchObject({ modelo: "gpt-5.4", reasoningEffort: "medium", timeoutMs: 90000 });
     for (const c of [p, r]) {
-      expect(c.sistema).toContain('"Texto velho" → recusar → Tom errado');
+      expect(c.sistema).toContain(
+        '"Texto velho" → atendente: recusar (Tom errado) → admin: Discordo: estava bom',
+      );
       expect(c.sistema).not.toContain("{{AVALIACOES}}");
     }
 
@@ -197,6 +218,7 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     expect(fu).toMatchObject({
       status: "aguardando_aprovacao",
       texto_sugerido: "Oi, conseguiu ver o pagamento?",
+      expira: await fimDaJanela(0),
     });
     expect(fu.sugerido_em).not.toBeNull();
 
@@ -226,63 +248,35 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     ]);
   });
 
-  test("cota corta a rodada; vencidos por valor esperado desc", async () => {
-    // A é o mais antigo, mas B vale mais (4h × 360 × 0,7) que C (2h × 360 × 0,15) e A.
-    const a = await vencido({ etiqueta: "Atendimento", temperatura: "frio", horas: 1, anos: 12 });
-    const b = await vencido({
-      etiqueta: "Aguardando pagamento",
-      temperatura: "quente",
-      horas: 4,
-      anos: 11,
+  test("prepara sem cota: 60 já preparados hoje não param a rodada", async () => {
+    await adiarOsOutros();
+    await gastarCota(60);
+    const f = await vencido();
+    const { ia } = iaPorLead({
+      [f.nome]: { porteiro: { enviar: true, motivo: "ok" }, redator: { texto: "Oi, tudo certo?" } },
     });
-    const c = await vencido({ etiqueta: "Follow-up", temperatura: "morno", horas: 2, anos: 10 });
-    const libera = {
-      porteiro: { enviar: true, motivo: "ok" },
-      redator: { texto: "Oi, tudo certo por aí?" },
-    };
-    const { ia, leads } = iaPorLead({ [a.nome]: libera, [b.nome]: libera, [c.nome]: libera });
 
-    await gastarCota(20);
-    expect(await tarefaRedator({ ia, agora: MEIO_DIA })).toBe(0);
-    expect(leads([a.nome, b.nome, c.nome])).toEqual([]);
-
-    // Na próxima, com uma vaga só: vai o de maior valor e a rodada para.
-    await liberarCota();
-    await gastarCota(19);
-    await tarefaRedator({ ia, agora: MEIO_DIA });
-
-    const chamadas = leads([a.nome, b.nome, c.nome]);
-    expect(chamadas.map((x) => x.modelo)).toEqual(["gpt-5.4-mini", "gpt-5.4"]);
-    expect(chamadas[0].usuario).toContain("LEAD: " + b.nome + "\n");
-    expect((await followup(b.id)).status).toBe("aguardando_aprovacao");
-    for (const x of [a, c])
-      expect(await followup(x.id)).toMatchObject({ status: "pendente", intocado: true });
-
-    // Cota livre de novo: C (108) antes de A (14,4).
-    await liberarCota();
-    await tarefaRedator({ ia, agora: MEIO_DIA });
-    const nomes = leads([a.nome, c.nome]).filter((x) => x.modelo === "gpt-5.4-mini");
-    expect(nomes.map((x) => x.usuario.includes(c.nome))).toEqual([true, false]);
+    expect(await tarefaRedator({ ia, agora: MEIO_DIA })).toBe(1);
+    expect(await followup(f.id)).toMatchObject({
+      status: "aguardando_aprovacao",
+      expira: await fimDaJanela(0),
+    });
   });
 
-  test("vagas do dia vão aos de maior valor entre todos os vencidos", async () => {
-    // Só os follow-ups deste teste vencidos: os que outros testes deixaram vão para amanhã.
-    await db().query(
-      `update wakeclub.followups set agendado_para = now() + interval '1 day'
-        where status = 'pendente' and agendado_para <= now()`,
-    );
-    // Do mais antigo (1º) ao mais novo (12º), valor crescente: 14,4 … 504. Os 3 de maior
-    // valor são o 12º, o 11º e o 10º, fora dos 10 mais antigos.
+  test("a rodada leva os 10 vencidos de maior valor esperado", async () => {
+    await adiarOsOutros();
+    // Do mais antigo (1º) ao mais novo (12º), chance × horas crescente: 0,04 … 1,4. Os 10
+    // de maior valor são do 12º ao 3º; os 2 mais antigos ficam para a próxima.
     const perfis: [string, string, number][] = [
-      ["Atendimento", "frio", 1],
-      ["Novo Lead", "morno", 1],
-      ["Atendimento", "frio", 2],
-      ["Novo Lead", "morno", 2],
-      ["Atendimento", "morno", 1],
-      ["Follow-up", "morno", 1],
+      ["Em atendimento", "frio", 1],
+      ["Novo lead", "morno", 1],
+      ["Em atendimento", "frio", 2],
+      ["Novo lead", "morno", 2],
+      ["Em atendimento", "morno", 1],
+      ["Aluno sem horas", "morno", 1],
       ["Link enviado", "morno", 1],
-      ["Atendimento", "quente", 1],
-      ["Follow-up", "quente", 1],
+      ["Em atendimento", "quente", 1],
+      ["Cadastrado", "morno", 1],
       ["Link enviado", "quente", 1],
       ["Aguardando pagamento", "quente", 1],
       ["Aguardando pagamento", "quente", 2],
@@ -298,15 +292,17 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     };
     const { ia, leads } = iaPorLead(Object.fromEntries(fs.map((f) => [f.nome, libera])));
 
-    await gastarCota(17);
-    expect(await tarefaRedator({ ia, agora: MEIO_DIA })).toBe(3);
+    expect(await tarefaRedator({ ia, agora: MEIO_DIA })).toBe(10);
 
     const porteiro = leads(fs.map((f) => f.nome)).filter((x) => x.modelo === "gpt-5.4-mini");
     expect(porteiro.map((x) => fs.findIndex((f) => x.usuario.includes(f.nome)))).toEqual([
-      11, 10, 9,
+      11, 10, 9, 8, 7, 6, 5, 4, 3, 2,
     ]);
     for (const [i, f] of fs.entries()) {
-      expect((await followup(f.id)).status).toBe(i >= 9 ? "aguardando_aprovacao" : "pendente");
+      const fu = await followup(f.id);
+      expect(fu.status).toBe(i >= 2 ? "aguardando_aprovacao" : "pendente");
+      // Toda sugestão que espera aprovação tem validade (a aprovação só expira com ela).
+      if (i >= 2) expect(fu.expira).toBe(await fimDaJanela(0));
     }
   });
 
@@ -361,5 +357,93 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
       });
       expect(await eventos(f.id)).toEqual([]);
     }
+  });
+
+  test("redigir: validade de hoje (automático) ou de amanhã (varredura)", async () => {
+    const hoje = await vencido();
+    const amanha = await vencido();
+    const barrado = await vencido();
+    const libera = {
+      porteiro: { enviar: true, motivo: "ok" },
+      redator: { texto: "Oi, tudo certo?" },
+    };
+    const { ia } = iaPorLead({
+      [hoje.nome]: libera,
+      [amanha.nome]: libera,
+      [barrado.nome]: { porteiro: { enviar: false, motivo: "já comprou" } },
+    });
+    const parciais: number[] = [];
+
+    expect(await redigir(db(), ia, [hoje.id], { diasValidade: 0 })).toEqual({
+      sugeridos: 1,
+      barrados: [],
+      reagendados: 0,
+      falhas: 0,
+    });
+    expect(
+      await redigir(db(), ia, [amanha.id, barrado.id], {
+        diasValidade: 1,
+        aoConcluirUm: async (p) => void parciais.push(p.sugeridos + p.barrados.length),
+      }),
+    ).toEqual({
+      sugeridos: 1,
+      barrados: [{ followupId: barrado.id, motivo: "já comprou" }],
+      reagendados: 0,
+      falhas: 0,
+    });
+    expect(parciais).toEqual([1, 2]);
+
+    expect((await followup(hoje.id)).expira).toBe(await fimDaJanela(0));
+    expect((await followup(amanha.id)).expira).toBe(await fimDaJanela(1));
+    expect(await followup(barrado.id)).toMatchObject({ status: "abortado", expira: null });
+  });
+
+  test("blocoRevisoes: só decisão revisada pelo admin entra", async () => {
+    const f = await vencido({ anos: 0 });
+    const g = await vencido({ anos: 0 });
+    const sem = "Sem revisão " + telefoneUnico();
+    const com = "Revisada " + telefoneUnico();
+    await db().query(
+      `insert into wakeclub.followup_avaliacoes (followup_id, usuario_id, decisao, motivos, texto_original)
+       values ($1::uuid, $2::uuid, 'recusar', '{Cedo demais}', $3::text)`,
+      [f.id, f.dono, sem],
+    );
+    await revisar(g.id, g.dono, await criarVendedor("Admin"), com);
+
+    const bloco = await blocoRevisoes(db());
+    expect(bloco).toStartWith("REVISOES DO ADMIN SOBRE DECISOES DA EQUIPE (calibre-se por elas)\n");
+    expect(bloco).toContain('"' + com + '" → atendente: recusar (Tom errado) → admin: Discordo');
+    expect(bloco).not.toContain(sem);
+  });
+
+  test("avaliarPorteiro reconsulta um aprovado sem mudar nada", async () => {
+    const f = await vencido();
+    await db().query(
+      `update wakeclub.followups set status = 'aprovado', texto_sugerido = 'Oi, tudo certo?',
+              sugerido_em = now() where id = $1::uuid`,
+      [f.id],
+    );
+    const quando = await carimbo("3 days");
+    const barra = iaPorLead({ [f.nome]: { porteiro: { enviar: false, motivo: "já comprou" } } });
+    const adia = iaPorLead({
+      [f.nome]: { porteiro: { enviar: false, motivo: "viajando", reagendar_para: quando } },
+    });
+    const libera = iaPorLead({ [f.nome]: { porteiro: { enviar: true, motivo: "ok" } } });
+
+    expect(await avaliarPorteiro(db(), barra.ia, f.id)).toEqual({
+      enviar: false,
+      motivo: "já comprou",
+    });
+    expect(await avaliarPorteiro(db(), adia.ia, f.id)).toEqual({
+      enviar: false,
+      motivo: "viajando",
+    });
+    expect(await avaliarPorteiro(db(), libera.ia, f.id)).toEqual({ enviar: true, motivo: "ok" });
+    expect(barra.chamadas[0].usuario).toContain("FOLLOW-UP EM QUESTAO");
+    expect(await followup(f.id)).toMatchObject({
+      status: "aprovado",
+      texto_sugerido: "Oi, tudo certo?",
+    });
+    expect(await eventos(f.id)).toEqual([]);
   });
 });

@@ -10,7 +10,7 @@ import { z } from "zod";
 import { exigirAdmin, exigirSessao, type Sessao } from "./auth";
 import { type Autoria, autoria, type Direcao } from "./conversas";
 import { type ClienteDb, comTransacao, getPoolMotor, type PoolClient } from "./db";
-import { expiradoPorHorario } from "./motor/ritmo";
+import { gravarRevisao } from "./revisao";
 import { valorEsperado } from "./motor/valor";
 
 export const MOTIVOS_RECUSA = [
@@ -169,14 +169,14 @@ export async function decidir(
   sessao: Sessao,
   entrada: EntradaDecisao,
   agora = new Date(),
-) {
+): Promise<{ avaliacaoId: string }> {
   const { rows } = await db.query<{
     lead_id: string;
     status: string;
     texto_sugerido: string | null;
-    sugerido_em: Date | null;
+    expira_em: Date | null;
   }>(
-    `select f.lead_id, f.status, f.texto_sugerido, f.sugerido_em
+    `select f.lead_id, f.status, f.texto_sugerido, f.expira_em
        from wakeclub.followups f
        join wakeclub.leads l on l.id = f.lead_id
       where f.id = $1::uuid and ($2::boolean or l.atendente_id = $3::uuid)
@@ -189,8 +189,8 @@ export async function decidir(
     throw new Error("Este follow-up não está mais aguardando aprovação.");
   }
   const enviar = entrada.decisao === "enviar";
-  // A expiração roda a cada 5 min: entre 20h e a rodada, o card ainda aparece na fila.
-  if (enviar && expiradoPorHorario(f.sugerido_em, agora)) {
+  // A expiração roda a cada 5 min: entre 19h59 e a rodada, o card ainda aparece na fila.
+  if (enviar && f.expira_em !== null && f.expira_em <= agora) {
     throw new Error("Follow-up expirou: a IA prepara um novo amanhã");
   }
   const textoEnviado = enviar ? (entrada.texto ?? f.texto_sugerido) : null;
@@ -211,10 +211,11 @@ export async function decidir(
       [entrada.followupId],
     );
   }
-  await db.query(
+  const avaliacao = await db.query<{ id: string }>(
     `insert into wakeclub.followup_avaliacoes
        (followup_id, usuario_id, decisao, motivos, texto_livre, texto_original, texto_enviado)
-     values ($1::uuid, $2::uuid, $3::text, $4::text[], nullif($5::text, ''), $6::text, $7::text)`,
+     values ($1::uuid, $2::uuid, $3::text, $4::text[], nullif($5::text, ''), $6::text, $7::text)
+     returning id`,
     [
       entrada.followupId,
       sessao.usuarioId,
@@ -248,6 +249,17 @@ export async function decidir(
       enviar && textoEnviado !== f.texto_sugerido,
     ],
   );
+  const avaliacaoId = avaliacao.rows[0].id;
+  // Admin decidindo direto já é decisão + revisão (spec §9): concorda consigo mesmo.
+  if (sessao.papel === "admin") {
+    await gravarRevisao(
+      db,
+      sessao.usuarioId,
+      { avaliacaoId, concorda: true, observacao: entrada.textoLivre },
+      true,
+    );
+  }
+  return { avaliacaoId };
 }
 
 export const listarFilaAprovacao = createServerFn({ method: "GET" })

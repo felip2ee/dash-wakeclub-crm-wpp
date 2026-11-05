@@ -2,8 +2,9 @@
  * Porteiro e redator: porta do WF-03 do n8n (docs/n8n-legado/wf-03-redator-de-followup.json)
  * para o motor (spec fases 2-3 §6). Pega follow-ups pendentes vencidos, o porteiro decide se
  * ainda faz sentido (libera, reagenda ou aborta), o redator escreve o texto e ele espera a
- * aprovação humana em `aguardando_aprovacao`. Respeita janela e cota do ritmo (§7) e põe as
- * avaliações humanas no fim dos prompts (§8). Montagem e validação são as do legado.
+ * aprovação humana em `aguardando_aprovacao`, com validade até 19h59 (spec pipeline §8). Respeita
+ * a janela; a cota do ritmo limita envios, não preparo. Põe as revisões do admin no fim dos
+ * prompts (spec pipeline §9). Montagem e validação são as do legado.
  */
 import { randomUUID } from "node:crypto";
 
@@ -14,61 +15,45 @@ import type { ClienteIa } from "../ia/tipos";
 import { logErro } from "../log";
 import {
   aplicar,
-  type Avaliacao,
   type Desfecho,
   type LinhaFollowup,
   MODELO_PORTEIRO,
   MODELO_REDATOR,
-  SQL_AVALIACOES,
+  type Revisao,
   SQL_BUSCAR,
+  SQL_FICHA,
   SQL_REAGENDAR_FALHA,
+  SQL_REVISOES,
   SQL_VENCIDOS,
   type Vencido,
 } from "./redator-sql";
 
-export type { Avaliacao, LinhaFollowup };
+export type { LinhaFollowup, Revisao };
 import { carimboValido } from "./qualificador";
-import { dentroDaJanela, lerRitmo, MODOS, preparadosHoje } from "./ritmo";
+import { dentroDaJanela } from "./ritmo";
 import { valorEsperado } from "./valor";
 
-const linhaAvaliacao = (a: Avaliacao) =>
+const linhaRevisao = (r: Revisao) =>
   '"' +
-  (a.texto_original ?? "") +
-  '" → ' +
-  a.decisao +
-  " → " +
-  ([a.motivos.join(", "), a.texto_livre ?? ""].filter(Boolean).join("; ") || "sem motivo");
+  (r.texto_original ?? "") +
+  '" → atendente: ' +
+  r.decisao +
+  " (" +
+  ([r.motivos.join(", "), r.texto_livre ?? ""].filter(Boolean).join("; ") || "sem motivo") +
+  ") → admin: " +
+  (r.concorda ? "Concordo" : "Discordo") +
+  ": " +
+  (r.observacao || "sem observação");
 
-/** Bloco que entra no lugar de `{{AVALIACOES}}`: decisões humanas recentes. */
-export function formatarAvaliacoes(doVendedor: Avaliacao[], recusasGerais: Avaliacao[]): string {
-  const titulo = "AVALIACOES HUMANAS DOS TEXTOS SUGERIDOS (calibre-se por elas)\n";
-  if (!doVendedor.length && !recusasGerais.length) return titulo + "(nenhuma avaliação ainda)";
-  const editados = doVendedor.filter(
-    (a) => a.texto_enviado !== null && a.texto_enviado !== a.texto_original,
-  );
-  const partes = [
-    titulo + "Deste vendedor:\n" + (doVendedor.map(linhaAvaliacao).join("\n") || "(nenhuma)"),
-  ];
-  if (recusasGerais.length) {
-    partes.push("Recusas recentes da equipe:\n" + recusasGerais.map(linhaAvaliacao).join("\n"));
-  }
-  if (editados.length) {
-    partes.push(
-      "Textos que o vendedor editou antes de enviar (original → editado):\n" +
-        editados
-          .map((a) => '"' + (a.texto_original ?? "") + '" → "' + a.texto_enviado + '"')
-          .join("\n"),
-    );
-  }
-  return partes.join("\n\n");
+/** Bloco que entra no lugar de `{{AVALIACOES}}`: só as decisões que o admin revisou. */
+export function formatarRevisoes(r: Revisao[]): string {
+  const titulo = "REVISOES DO ADMIN SOBRE DECISOES DA EQUIPE (calibre-se por elas)\n";
+  return titulo + (r.length ? r.map(linhaRevisao).join("\n") : "(nenhuma revisão ainda)");
 }
 
-export async function blocoAvaliacoes(db: ClienteDb, vendedorId: string): Promise<string> {
-  const { rows } = await db.query<Avaliacao & { fonte: string }>(SQL_AVALIACOES, [vendedorId]);
-  return formatarAvaliacoes(
-    rows.filter((r) => r.fonte === "vendedor"),
-    rows.filter((r) => r.fonte === "geral"),
-  );
+export async function blocoRevisoes(db: ClienteDb): Promise<string> {
+  const { rows } = await db.query<Revisao>(SQL_REVISOES);
+  return formatarRevisoes(rows);
 }
 
 // Função substituta: um `$&` no texto de uma avaliação não vira padrão do replace.
@@ -101,7 +86,7 @@ export function montarPromptPorteiro(d: LinhaFollowup, avaliacoes: string) {
     "",
     "FOLLOW-UP EM QUESTAO",
     "  tipo: " + d.tipo,
-    "  motivo de quem agendou: " + (d.motivo || "-"),
+    "OBJETIVO DESTE FOLLOW-UP: " + (d.motivo || "-"),
   ].join("\n");
   return {
     sistema: comAvaliacoes(porteiro.SISTEMA, avaliacoes),
@@ -136,7 +121,12 @@ export function validarPorteiro(
 // MODO: piso determinístico entre reabrir a conversa e retomar um assunto concreto
 // (comentário completo no nó "Montar prompt do redator" do legado). "Link enviado" fica
 // fora de propósito: registra o que a EQUIPE fez, não o que o lead pediu.
-const ETAPAS_CONCRETAS = ["aguardando pagamento", "agendado", "aula realizada"];
+const ETAPAS_CONCRETAS = [
+  "aguardando pagamento",
+  "cadastrado",
+  "aluno com horas",
+  "aluno sem horas",
+];
 const TIPOS_CONCRETOS = ["lembrete_d1", "lembrete_dia", "pos_aula"];
 
 /** Literal do cálculo do MODO em "Montar prompt do redator". */
@@ -208,7 +198,7 @@ export function montarPromptRedator(d: LinhaFollowup, avaliacoes: string) {
     "",
     "ESTE FOLLOW-UP",
     "  tipo: " + d.tipo,
-    "  por que foi agendado: " + (d.motivo || "-"),
+    "OBJETIVO DESTE FOLLOW-UP: " + (d.motivo || "-"),
   ].join("\n");
 
   const usuario =
@@ -276,9 +266,9 @@ export function validarTexto(cru: unknown): string {
   return texto;
 }
 
-async function decidir(ia: ClienteIa, d: LinhaFollowup, avaliacoes: string): Promise<Desfecho> {
+async function perguntarPorteiro(ia: ClienteIa, d: LinhaFollowup, avaliacoes: string) {
   const pp = montarPromptPorteiro(d, avaliacoes);
-  const decisao = validarPorteiro(
+  return validarPorteiro(
     await ia.chatJson<unknown>({
       modelo: MODELO_PORTEIRO,
       sistema: pp.sistema,
@@ -290,6 +280,10 @@ async function decidir(ia: ClienteIa, d: LinhaFollowup, avaliacoes: string): Pro
     }),
     d,
   );
+}
+
+async function decidir(ia: ClienteIa, d: LinhaFollowup, avaliacoes: string): Promise<Desfecho> {
+  const decisao = await perguntarPorteiro(ia, d, avaliacoes);
   if (!decisao.enviar) {
     return decisao.reagendarPara
       ? { tipo: "reagendar", quando: decisao.reagendarPara, motivo: decisao.motivo }
@@ -314,7 +308,7 @@ async function decidir(ia: ClienteIa, d: LinhaFollowup, avaliacoes: string): Pro
 const valorDe = (v: Vencido) =>
   valorEsperado(
     {
-      etiqueta: v.etiqueta ?? "Novo Lead",
+      etiqueta: v.etiqueta ?? "Novo lead",
       temperatura: v.temperatura,
       horasEstimadas: v.horas_estimadas,
       optOut: v.opt_out,
@@ -324,41 +318,85 @@ const valorDe = (v: Vencido) =>
     Number(v.preco_hora ?? 0),
   );
 
+export type ResultadoRedacao = {
+  sugeridos: number;
+  barrados: { followupId: string; motivo: string }[];
+  reagendados: number;
+  falhas: number;
+};
+
 /**
- * Uma rodada (15 min): só na janela e enquanto houver cota do dia. As vagas que restam
- * (até 10) vão aos vencidos de maior valor esperado (empate: o mais antigo); cada um grava
- * na própria transação. Falha da IA, da validação ou da gravação reagenda em +30 min.
- * Devolve quantos follow-ups mudaram (reagendado, abortado ou texto gravado).
+ * Porteiro e redator sobre os follow-ups `ids` (pendentes vencidos), na ordem dada; cada um
+ * grava na própria transação. Falha da IA, da validação ou da gravação reagenda em +30 min.
+ * `diasValidade` diz até quando a sugestão espera aprovação: 0 hoje, 1 amanhã (varredura).
  */
-export async function tarefaRedator(deps: { ia: ClienteIa; agora?: Date }): Promise<number> {
-  const db = getPoolMotor();
-  if (!dentroDaJanela(deps.agora ?? new Date())) return 0;
-  const { modo } = await lerRitmo(db);
-  const vagas = MODOS[modo].cotaDia - (await preparadosHoje(db));
-  if (vagas <= 0) return 0;
-
-  const { rows: vencidos } = await db.query<Vencido>(SQL_VENCIDOS);
-  const ids = vencidos
-    .map((v) => ({ id: v.id, valor: valorDe(v), em: v.agendado_para.getTime() }))
-    .sort((a, b) => b.valor - a.valor || a.em - b.em)
-    .slice(0, Math.min(10, vagas))
-    .map((v) => v.id);
-
+export async function redigir(
+  db: ClienteDb,
+  ia: ClienteIa,
+  ids: string[],
+  opcoes: { diasValidade: 0 | 1; aoConcluirUm?: (parcial: ResultadoRedacao) => Promise<void> },
+): Promise<ResultadoRedacao> {
+  const r: ResultadoRedacao = { sugeridos: 0, barrados: [], reagendados: 0, falhas: 0 };
   const rodada = randomUUID();
   const { rows } = await db.query<LinhaFollowup>(SQL_BUSCAR, [ids]);
   rows.sort((a, b) => ids.indexOf(a.followup_id) - ids.indexOf(b.followup_id));
+  const revisoes = rows.length ? await blocoRevisoes(db) : "";
 
-  let decididos = 0;
   for (const d of rows) {
     try {
-      const x = await decidir(deps.ia, d, await blocoAvaliacoes(db, d.atendente_id));
-      if (await comTransacao((c) => aplicar(c, d, x, rodada))) decididos++;
+      const x = await decidir(ia, d, revisoes);
+      if (
+        await comTransacao((c) => aplicar(c, d, x, { rodada, diasValidade: opcoes.diasValidade }))
+      ) {
+        if (x.tipo === "gravar") r.sugeridos++;
+        else if (x.tipo === "abortar")
+          r.barrados.push({ followupId: d.followup_id, motivo: x.motivo });
+        else r.reagendados++;
+      }
     } catch (erro) {
+      r.falhas++;
       logErro("redator.falha", erro, { followupId: d.followup_id });
       await db
         .query(SQL_REAGENDAR_FALHA, [d.followup_id])
         .catch((e: unknown) => logErro("redator.reagendar", e, { followupId: d.followup_id }));
     }
+    await opcoes.aoConcluirUm?.({ ...r, barrados: [...r.barrados] });
   }
-  return decididos;
+  return r;
+}
+
+/**
+ * Porteiro de novo sobre um follow-up em qualquer status (a fila de envio, sobre um aprovado
+ * antigo, spec §8). Não grava nada; reagendar conta como barrar.
+ */
+export async function avaliarPorteiro(
+  db: ClienteDb,
+  ia: ClienteIa,
+  followupId: string,
+): Promise<{ enviar: boolean; motivo: string }> {
+  const { rows } = await db.query<LinhaFollowup>(SQL_FICHA, [followupId]);
+  if (!rows[0]) throw new Error("follow-up não encontrado");
+  const { enviar, motivo } = await perguntarPorteiro(ia, rows[0], await blocoRevisoes(db));
+  return { enviar, motivo };
+}
+
+/**
+ * Uma rodada (15 min): só na janela. Até 10 vencidos de maior valor esperado (empate: o mais
+ * antigo); preparar não tem cota (ela limita envios). Devolve quantos follow-ups mudaram
+ * (reagendado, abortado ou texto gravado).
+ */
+export async function tarefaRedator(deps: { ia: ClienteIa; agora?: Date }): Promise<number> {
+  const db = getPoolMotor();
+  if (!dentroDaJanela(deps.agora ?? new Date())) return 0;
+
+  const { rows: vencidos } = await db.query<Vencido>(SQL_VENCIDOS);
+  const ids = vencidos
+    .map((v) => ({ id: v.id, valor: valorDe(v), em: v.agendado_para.getTime() }))
+    .sort((a, b) => b.valor - a.valor || a.em - b.em)
+    .slice(0, 10)
+    .map((v) => v.id);
+  if (!ids.length) return 0;
+
+  const r = await redigir(db, deps.ia, ids, { diasValidade: 0 });
+  return r.sugeridos + r.barrados.length + r.reagendados;
 }

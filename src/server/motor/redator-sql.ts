@@ -47,12 +47,14 @@ export type Vencido = {
   preco_hora: string | null;
 };
 
-export type Avaliacao = {
+export type Revisao = {
+  texto_original: string | null;
+  texto_enviado: string | null;
   decisao: string;
   motivos: string[];
   texto_livre: string | null;
-  texto_original: string | null;
-  texto_enviado: string | null;
+  concorda: boolean;
+  observacao: string | null;
 };
 
 // Todos os vencidos elegíveis (mesmas condições do "Buscar"), só com o que o valor esperado
@@ -71,9 +73,9 @@ select f.id, f.agendado_para, l.etiqueta, l.temperatura, l.horas_estimadas,
    and l.opt_out = false
    and l.sem_atendimento = false`;
 
-// "Buscar followups a redigir" para os ids escolhidos ($1), mais o dono. Sem o filtro de
-// hora do legado: a janela é conferida em código por `dentroDaJanela`, com o mesmo efeito.
-export const SQL_BUSCAR = `
+// Ficha do follow-up para os prompts (porteiro e redator). A aula marcada vem do app
+// (`proxima_aula_em`) e, sem ela, da data que o qualificador anotou.
+const SELECT_FICHA = `
 select
     f.id as followup_id,
     f.lead_id,
@@ -88,7 +90,7 @@ select
     l.n_toques,
     l.atendente_id,
     u.nome as atendente_nome,
-    to_char(l.data_agendada at time zone 'America/Sao_Paulo',
+    to_char(coalesce(l.proxima_aula_em, l.data_agendada) at time zone 'America/Sao_Paulo',
             'YYYY-MM-DD HH24:MI') as data_agendada_local,
     to_char(now() at time zone 'America/Sao_Paulo',
             'YYYY-MM-DD HH24:MI') as agora_local,
@@ -124,41 +126,48 @@ select
               limit 5) a) as textos_anteriores
   from wakeclub.followups f
   join wakeclub.leads l on l.id = f.lead_id
-  join wakeclub.usuarios u on u.id = l.atendente_id
+  join wakeclub.usuarios u on u.id = l.atendente_id`;
+
+// "Buscar followups a redigir" para os ids escolhidos ($1), mais o dono. Sem o filtro de
+// hora do legado: a janela é conferida em código por `dentroDaJanela`, com o mesmo efeito.
+// Sem limite: quem chama escolhe os ids (a rodada automática manda até 10, a varredura todos).
+export const SQL_BUSCAR =
+  SELECT_FICHA +
+  `
  where f.id = any($1::uuid[])
    and f.status = 'pendente'
    and f.texto_sugerido is null
    and f.agendado_para <= now()
    and l.opt_out = false
    and l.sem_atendimento = false
- order by f.agendado_para
- limit 10`;
+ order by f.agendado_para`;
 
-// Até 10 avaliações do vendedor e até 10 recusas recentes dos outros (spec §8).
-export const SQL_AVALIACOES = `
-(select 'vendedor' as fonte, a.decisao, a.motivos, a.texto_livre,
-        a.texto_original, a.texto_enviado
-   from wakeclub.followup_avaliacoes a
-  where a.usuario_id = $1::uuid
-  order by a.criado_em desc
-  limit 10)
-union all
-(select 'geral', a.decisao, a.motivos, a.texto_livre, a.texto_original, a.texto_enviado
-   from wakeclub.followup_avaliacoes a
-  where a.decisao = 'recusar'
-    and a.usuario_id <> $1::uuid
-  order by a.criado_em desc
-  limit 10)`;
+// Mesma ficha por um id só, em qualquer status: a fila de envio reconsulta o porteiro
+// sobre um aprovado antigo antes de ele sair (spec §8).
+export const SQL_FICHA = SELECT_FICHA + "\n where f.id = $1::uuid";
+
+// As 10 revisões do admin mais recentes (spec §9): só decisão revisada ensina o prompt.
+export const SQL_REVISOES = `
+select a.texto_original, a.texto_enviado, a.decisao, a.motivos, a.texto_livre,
+       r.concorda, r.observacao
+  from wakeclub.followup_revisoes r
+  join wakeclub.followup_avaliacoes a on a.id = r.avaliacao_id
+ order by r.criado_em desc, r.id
+ limit 10`;
 
 // "Gravar texto sugerido": agora também `aguardando_aprovacao`, push para '/aprovar' e
 // `metadados.modo` (a fila de aprovação lê). Só grava se ainda está pendente: a conversa
-// pode ter cancelado o follow-up enquanto a IA escrevia.
+// pode ter cancelado o follow-up enquanto a IA escrevia. `expira_em` ($7 dias à frente,
+// 19h59:59 de São Paulo): o automático vale até o fim da janela de hoje, a varredura até a
+// de amanhã (spec §8, §13).
 export const SQL_GRAVAR = `
 with gravado as (
   update wakeclub.followups f
      set texto_sugerido = nullif($2, ''),
          sugerido_em = now(),
-         status = 'aguardando_aprovacao'
+         status = 'aguardando_aprovacao',
+         expira_em = ((now() at time zone 'America/Sao_Paulo')::date + $7::int * interval '1 day'
+                      + interval '19 hours 59 minutes 59 seconds') at time zone 'America/Sao_Paulo'
    where f.id = $1::uuid
      and f.status = 'pendente'
      and f.texto_sugerido is null
@@ -314,7 +323,7 @@ export async function aplicar(
   db: PoolClient,
   d: LinhaFollowup,
   x: Desfecho,
-  rodada: string,
+  { rodada, diasValidade }: { rodada: string; diasValidade: 0 | 1 },
 ): Promise<boolean> {
   const ia = [MODELO_PORTEIRO, porteiro.VERSAO_PROMPT];
   if (x.tipo === "reagendar") {
@@ -332,6 +341,7 @@ export async function aplicar(
     rodada,
     MODELO_REDATOR,
     redator.VERSAO_PROMPT,
+    diasValidade,
   ]);
   if (rows[0].gravados === 0) return false;
   await db.query(SQL_LIBERACAO, [d.lead_id, d.followup_id, x.motivo, d.tipo, rodada, ...ia]);

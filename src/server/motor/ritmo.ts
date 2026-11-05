@@ -1,14 +1,14 @@
 /**
- * Ritmo do follow-up (spec fases 2-3 §7): quantos textos a IA prepara por dia e o
- * intervalo entre envios, conforme o modo em `configuracoes.ritmo`. Também as tarefas
- * que devolvem o modo aquecido ao conservador na meia-noite e que expiram o que ficou
- * sem decisão. Datas sempre em America/Sao_Paulo, no SQL ou por Intl, nunca no fuso
- * do processo.
+ * Ritmo do follow-up (spec fases 2-3 §7, pipeline §8): quantos follow-ups saem por dia e o
+ * intervalo entre envios, conforme o modo em `configuracoes.ritmo`. Também as tarefas que
+ * devolvem o modo aquecido ao conservador na meia-noite, expiram o que ficou sem decisão e
+ * cancelam lembrete de aula passada. Datas em America/Sao_Paulo, no SQL ou por Intl.
  */
 // crypto global (Web Crypto), não `node:crypto`: este módulo chega ao bundle do cliente via
 // aprovacao.ts e admin-ia.ts, e o import do Node quebra a hidratação.
 import type { ClienteDb } from "../db";
 
+// `cotaDia` limita envios por dia de São Paulo; preparar e decidir não têm limite (spec §8).
 export const MODOS = {
   conservador: { cotaDia: 20, intervaloSegundos: 120 },
   aquecido: { cotaDia: 60, intervaloSegundos: 45 },
@@ -19,7 +19,7 @@ export type Modo = keyof typeof MODOS;
 // Entidade fixa dos eventos de configuração (migração 0004).
 const CONFIG_ID = "00000000-0000-0000-0000-000000000001";
 
-const HORA_SP = new Intl.DateTimeFormat("pt-BR", {
+export const HORA_SP = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
   hour: "numeric",
   hourCycle: "h23",
@@ -29,17 +29,6 @@ const HORA_SP = new Intl.DateTimeFormat("pt-BR", {
 export function dentroDaJanela(agora: Date): boolean {
   const hora = Number(HORA_SP.format(agora));
   return hora >= 8 && hora <= 19;
-}
-
-const DIA_SP = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
-
-/**
- * Mesmo predicado de `tarefaExpirarFollowups`: o texto ficou pronto noutro dia de São Paulo
- * ou já passou das 19h59. `sugeridoEm` null só expira pelo horário, como no SQL.
- */
-export function expiradoPorHorario(sugeridoEm: Date | null, agora: Date): boolean {
-  const outroDia = sugeridoEm !== null && DIA_SP.format(sugeridoEm) < DIA_SP.format(agora);
-  return outroDia || Number(HORA_SP.format(agora)) >= 20;
 }
 
 export async function lerRitmo(db: ClienteDb): Promise<{ modo: Modo; ligadoEm: string | null }> {
@@ -79,12 +68,13 @@ export async function definirRitmo(db: ClienteDb, modo: Modo, usuarioId: string)
   );
 }
 
-/** Follow-ups preparados (com `sugerido_em`) hoje, no dia de São Paulo. */
-export async function preparadosHoje(db: ClienteDb): Promise<number> {
+/** Follow-ups enviados hoje, no dia de São Paulo: é o que a cota do modo limita. */
+export async function enviadosHoje(db: ClienteDb): Promise<number> {
   const { rows } = await db.query<{ n: number }>(
     `select count(*)::int as n
        from wakeclub.followups
-      where (sugerido_em at time zone 'America/Sao_Paulo')::date
+      where status = 'enviado'
+        and (enviado_em at time zone 'America/Sao_Paulo')::date
           = (now() at time zone 'America/Sao_Paulo')::date`,
   );
   return rows[0].n;
@@ -124,20 +114,20 @@ export async function tarefaRitmoMeiaNoite(db: ClienteDb): Promise<number> {
 }
 
 /**
- * Texto pronto sem decisão até 19h59 (SP) do dia em que ficou pronto vira `expirado`;
- * a notificação pendente dele é cancelada. Devolve quantos expiraram.
+ * Sugestão sem decisão com `expira_em` vencido vira `expirado` (o automático vale até 19h59
+ * do dia, a varredura até 19h59 do dia seguinte); `expira_em` null é legado e não expira,
+ * como em `aprovacao.decidir`. Lembrete de aula aberto cuja aula já passou vira `cancelado`.
+ * Em ambos a notificação pendente é cancelada. Devolve quantos mudaram.
  */
 export async function tarefaExpirarFollowups(db: ClienteDb, agora = new Date()): Promise<number> {
   const rodada = crypto.randomUUID();
-  const { rowCount } = await db.query(
+  const expirados = await db.query(
     `with expirados as (
        update wakeclub.followups f
           set status = 'expirado'
         where f.status = 'aguardando_aprovacao'
-          and ((f.sugerido_em at time zone 'America/Sao_Paulo')::date
-                 < ($2::timestamptz at time zone 'America/Sao_Paulo')::date
-               or extract(hour from $2::timestamptz at time zone 'America/Sao_Paulo') >= 20)
-       returning f.id, f.lead_id, f.tipo, f.sugerido_em
+          and f.expira_em <= $2::timestamptz
+       returning f.id, f.lead_id, f.tipo, f.sugerido_em, f.expira_em
      ),
      notificacoes as (
        update wakeclub.notificacoes n
@@ -152,9 +142,9 @@ export async function tarefaExpirarFollowups(db: ClienteDb, agora = new Date()):
         estado_anterior, estado_novo, metadados,
         entidade_tipo, entidade_id, origem_tipo, origem_id, correlacao_id)
      select e.lead_id, 'sistema', 'followup_expired', 'schedule', 'expirou sem decisão',
-            'sem decisão até 19h59 do dia em que o texto ficou pronto',
+            'sem decisão até a validade da sugestão',
             jsonb_build_object('status', 'aguardando_aprovacao', 'tipo', e.tipo,
-                               'sugerido_em', e.sugerido_em),
+                               'sugerido_em', e.sugerido_em, 'expira_em', e.expira_em),
             jsonb_build_object('status', 'expirado'),
             jsonb_build_object('notificacoes_canceladas', (select count(*) from notificacoes)),
             'followup', e.id, 'motor', $1::text, 'motor:exp:' || $1::text || ':' || e.id::text
@@ -162,5 +152,43 @@ export async function tarefaExpirarFollowups(db: ClienteDb, agora = new Date()):
      on conflict do nothing`,
     [rodada, agora],
   );
-  return rowCount ?? 0;
+  const cancelados = await db.query(
+    `with alvo as (
+       select f.id, f.status
+         from wakeclub.followups f
+        where f.status in ('pendente', 'aguardando_aprovacao', 'aprovado')
+          and f.tipo in ('lembrete_d1', 'lembrete_dia')
+          and f.aula_em < $2::timestamptz
+        for update
+     ),
+     cancelados as (
+       update wakeclub.followups f
+          set status = 'cancelado', motivo_cancelamento = 'aula já passou'
+         from alvo a
+        where f.id = a.id and f.status = a.status
+       returning f.id, f.lead_id, f.tipo, f.aula_em, a.status as status_antes
+     ),
+     notificacoes as (
+       update wakeclub.notificacoes n
+          set status = 'cancelada',
+              erro = 'aula já passou'
+        where n.status = 'pendente'
+          and n.followup_id in (select id from cancelados)
+       returning 1
+     )
+     insert into wakeclub.eventos_automacao
+       (lead_id, agente, tipo_evento, gatilho, decisao, motivo,
+        estado_anterior, estado_novo, metadados,
+        entidade_tipo, entidade_id, origem_tipo, origem_id, correlacao_id)
+     select c.lead_id, 'sistema', 'followup_cancelled', 'schedule', 'lembrete cancelado',
+            'aula já passou',
+            jsonb_build_object('status', c.status_antes, 'tipo', c.tipo, 'aula_em', c.aula_em),
+            jsonb_build_object('status', 'cancelado'),
+            jsonb_build_object('notificacoes_canceladas', (select count(*) from notificacoes)),
+            'followup', c.id, 'motor', $1::text, 'motor:aula:' || $1::text || ':' || c.id::text
+       from cancelados c
+     on conflict do nothing`,
+    [rodada, agora],
+  );
+  return (expirados.rowCount ?? 0) + (cancelados.rowCount ?? 0);
 }

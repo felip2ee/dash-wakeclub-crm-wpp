@@ -18,6 +18,7 @@ import { tarefaEnvioFollowups } from "./envio-followups";
 import { devolverOrfaos, type Processador, rodarFila } from "./fila";
 import { criarProcessadorEvolution } from "./ingestao";
 import { enviarPushPendentes } from "./notificacoes";
+import { tarefaPagamentoPendente, tarefaParados } from "./parado";
 import { tarefaQualificador } from "./qualificador";
 import { tarefaRedator } from "./redator";
 import { tarefaExpirarFollowups, tarefaRitmoMeiaNoite } from "./ritmo";
@@ -84,15 +85,22 @@ function agendarIaEFollowups(adaptador: AdaptadorEvolution | null) {
   agendar("expirar-followups", 5 * MINUTO, async () => {
     await tarefaExpirarFollowups(getPoolMotor());
   });
-  if (adaptador) {
-    agendar("envio-followups", MINUTO, async () => {
-      await tarefaEnvioFollowups({ adaptador });
-    });
-  }
+  // Não dependem de IA: só olham prazos e eventos.
+  agendar("parado", 15 * MINUTO, async () => void (await tarefaParados(getPoolMotor())));
+  agendar(
+    "pagamento-pendente",
+    5 * MINUTO,
+    async () => void (await tarefaPagamentoPendente(getPoolMotor())),
+  );
 
   // Sem chave da OpenAI as tarefas de IA ficam de fora; a transcrição precisa também do
-  // adaptador para baixar o áudio.
+  // adaptador para baixar o áudio. O envio usa `ia` na reconferência dos aprovados antigos.
   const ia = criarClienteOpenAi();
+  if (adaptador) {
+    agendar("envio-followups", MINUTO, async () => {
+      await tarefaEnvioFollowups({ adaptador, ia: ia ?? undefined });
+    });
+  }
   if (ia) {
     agendar("qualificador", MINUTO, async () => void (await tarefaQualificador({ ia })));
     agendar("redator", 15 * MINUTO, async () => void (await tarefaRedator({ ia })));

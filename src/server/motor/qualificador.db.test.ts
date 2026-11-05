@@ -73,7 +73,7 @@ async function followups(leadId: string) {
 }
 
 const resposta = (extra: Record<string, unknown> = {}) => ({
-  etiqueta: "Agendado",
+  etiqueta: "Em atendimento",
   temperatura: "quente",
   interesse: "aula 4h",
   objecao: null,
@@ -161,11 +161,15 @@ describe.skipIf(!bancoTesteAtivo)("qualificador", () => {
     expect(await minutosAte(id)).toBeLessThanOrEqual(2);
   });
 
-  test("qualifica e grava eventos", async () => {
+  test("qualifica e grava eventos, sem criar follow-up", async () => {
     const id = await leadVencido();
-    const quando = await carimbo("2 days");
+    // A IA ainda devolve followup: o campo é lido e descartado.
     const ia = clienteIaFalso({
-      chat: [resposta({ followup: { quando, tipo: "reengajar", motivo: "confirmar sábado" } })],
+      chat: [
+        resposta({
+          followup: { quando: await carimbo("2 days"), tipo: "reengajar", motivo: "confirmar" },
+        }),
+      ],
     });
 
     await tarefaQualificador({ ia });
@@ -177,9 +181,8 @@ describe.skipIf(!bancoTesteAtivo)("qualificador", () => {
     expect(p.timeoutMs).toBe(60000);
     expect(p.usuario).toContain("LEAD: quero uma aula de 4h no sábado");
 
-    const l = await lead(id);
-    expect(l).toMatchObject({
-      etiqueta: "Agendado",
+    expect(await lead(id)).toMatchObject({
+      etiqueta: "Em atendimento",
       temperatura: "quente",
       resumo: "Quer aula de 4h no sábado.",
       horas_estimadas: 4,
@@ -187,25 +190,45 @@ describe.skipIf(!bancoTesteAtivo)("qualificador", () => {
     });
 
     const evs = await eventos(id);
-    // A ordem entre CTEs da mesma instrução não é garantida; o followup vem na seguinte.
     expect(evs.map((e) => e.tipo_evento).sort()).toEqual([
-      "followup_created",
       "lead_qualified",
       "stage_changed",
       "temperature_changed",
     ]);
-    const criado = evs.find((e) => e.tipo_evento === "followup_created");
     for (const e of evs) {
       expect(e.origem_tipo).toBe("motor");
       expect(e.correlacao_id).toStartWith("motor:qual:");
       expect(e.modelo).toBe("gpt-5.4-mini");
       expect(e.versao_prompt).toBe(VERSAO_PROMPT);
     }
+    expect(await followups(id)).toEqual([]);
+  });
 
-    const fs = await followups(id);
-    expect(fs).toHaveLength(1);
-    expect(fs[0]).toMatchObject({ status: "pendente", tipo: "reengajar", quando });
-    expect(criado?.correlacao_id).toEndWith(":" + fs[0].id);
+  test("lead numa etapa do app não é movido pela IA", async () => {
+    const id = await leadVencido();
+    await db().query("update wakeclub.leads set etiqueta = 'Cadastrado' where id = $1::uuid", [id]);
+    await tarefaQualificador({ ia: clienteIaFalso({ chat: [resposta()] }) });
+    expect((await lead(id)).etiqueta).toBe("Cadastrado");
+    expect((await eventos(id)).map((e) => e.tipo_evento)).not.toContain("stage_changed");
+  });
+
+  test("requalificação cancela parado pendente, mas não lembrete de aula", async () => {
+    const id = await leadVencido();
+    const criar = (tipo: string) =>
+      db().query(
+        `insert into wakeclub.followups (lead_id, agendado_para, tipo, status)
+         values ($1::uuid, now(), $2::text, $3::text)`,
+        [id, tipo, tipo === "parado" ? "pendente" : "aprovado"],
+      );
+    await criar("parado");
+    await criar("lembrete_d1");
+
+    await tarefaQualificador({ ia: clienteIaFalso({ chat: [resposta()] }) });
+
+    expect((await followups(id)).map((x) => [x.tipo, x.status]).sort()).toEqual([
+      ["lembrete_d1", "aprovado"],
+      ["parado", "cancelado"],
+    ]);
   });
 
   test("falha reagenda +10 min", async () => {
@@ -235,61 +258,5 @@ describe.skipIf(!bancoTesteAtivo)("qualificador", () => {
 
     expect((await lead(id)).qualificar_apos).not.toBeNull();
     expect(await eventos(id)).toEqual([]);
-  });
-
-  test("segundo followup nao duplica pendente", async () => {
-    const id = await leadVencido();
-    const f = (motivo: string) => ({ quando: "2000-01-01 00:00", tipo: "reengajar", motivo });
-    const ia = clienteIaFalso({
-      chat: [resposta({ followup: f("primeiro") }), resposta({ followup: f("segundo") })],
-    });
-
-    await tarefaQualificador({ ia });
-    await db().query(
-      "update wakeclub.leads set qualificar_apos = now() - interval '1 day' where id = $1::uuid",
-      [id],
-    );
-    await tarefaQualificador({ ia });
-
-    const fs = await followups(id);
-    expect(fs.map((x) => [x.status, x.motivo])).toEqual([
-      ["cancelado", "primeiro"],
-      ["pendente", "segundo"],
-    ]);
-    // Data antes do mínimo vira o mínimo (now() + 30 min).
-    expect(fs[1].quando >= (await carimbo("29 minutes"))).toBe(true);
-    const tipos = (await eventos(id)).map((e) => e.tipo_evento);
-    expect(tipos.filter((t) => t === "followup_cancelled")).toHaveLength(1);
-    expect(tipos.filter((t) => t === "followup_created")).toHaveLength(2);
-  });
-
-  test("aguardando aprovação é cancelado na requalificação e enviando bloqueia novo", async () => {
-    const id = await leadVencido();
-    const f = { quando: "2000-01-01 00:00", tipo: "reengajar", motivo: "m" };
-    const ia = clienteIaFalso({
-      chat: [resposta({ followup: f }), resposta({ followup: f }), resposta({ followup: f })],
-    });
-    const vencer = () =>
-      db().query(
-        "update wakeclub.leads set qualificar_apos = now() - interval '1 day' where id = $1::uuid",
-        [id],
-      );
-    const status = (s: string) =>
-      db().query(
-        "update wakeclub.followups set status = $2::text where lead_id = $1::uuid and status = 'pendente'",
-        [id, s],
-      );
-
-    await tarefaQualificador({ ia });
-    await status("aguardando_aprovacao");
-    await vencer();
-    await tarefaQualificador({ ia });
-    expect((await followups(id)).map((x) => x.status)).toEqual(["cancelado", "pendente"]);
-
-    await status("enviando");
-    await vencer();
-    await tarefaQualificador({ ia });
-    expect((await followups(id)).map((x) => x.status)).toEqual(["cancelado", "enviando"]);
-    expect((await lead(id)).qualificar_apos).toBeNull();
   });
 });

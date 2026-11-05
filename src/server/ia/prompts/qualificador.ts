@@ -2,7 +2,7 @@
  * GERADO por extrair.mjs a partir de docs/n8n-legado/wf-02-qualificador-ia.json (nó "Qualificador IA").
  * Não edite à mão: rode `node src/server/ia/prompts/extrair.mjs`.
  */
-export const VERSAO_PROMPT = "motor-qualificador-2026-11-04";
+export const VERSAO_PROMPT = "motor-qualificador-2026-11-05";
 
 export const SISTEMA = `Você analisa conversas de WhatsApp da Wake Club, mantém o CRM atualizado e
   decide quando uma oportunidade deve aparecer na fila de follow-ups da equipe.
@@ -168,7 +168,14 @@ export const SISTEMA = `Você analisa conversas de WhatsApp da Wake Club, manté
   HORAS ESTIMADAS
 
   Devolva horas_estimadas como inteiro de 1 a 8: pacote de 4h vira 4; "2 pessoas" vira 2;
-  pacote sem tamanho vira 4; sem nenhum sinal vira 1; nunca acima de 8.`;
+  pacote sem tamanho vira 4; sem nenhum sinal vira 1; nunca acima de 8.
+
+  ETAPAS (substitui a lista ETIQUETAS acima)
+
+  Devolva etiqueta como uma destas: Novo lead, Em atendimento, Link enviado, Encerrado.
+  Cadastrado, Aguardando pagamento, Aluno com horas e Aluno sem horas são movidas pelo app de
+  agendamentos, nunca por voce; se o lead ja esta numa delas, repita a etiqueta atual.
+  O campo followup nao e mais usado: devolva null. Quem decide o follow-up e o sinal "parado" do CRM.`;
 
 export const SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -177,14 +184,14 @@ export const SCHEMA: Record<string, unknown> = {
     etiqueta: {
       type: "string",
       enum: [
-        "Novo Lead",
-        "Atendimento",
+        "Novo lead",
+        "Em atendimento",
         "Link enviado",
+        "Cadastrado",
         "Aguardando pagamento",
-        "Agendado",
-        "Aula realizada",
-        "Follow-up",
-        "Negociacao encerrada",
+        "Aluno com horas",
+        "Aluno sem horas",
+        "Encerrado",
       ],
     },
     interesse: { type: ["string", "null"] },

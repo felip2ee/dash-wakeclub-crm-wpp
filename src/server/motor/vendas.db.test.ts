@@ -133,7 +133,7 @@ describe.skipIf(!bancoTesteAtivo)("processador de vendas", () => {
       processador(c, {
         id: 3,
         origem: "vendas",
-        corpo: { event: "USER_HOUR_BOOKED", timestamp: "x", data: { booking_id: "1" } },
+        corpo: { event: "USER_LOGIN", timestamp: "x", data: { user_id: "1" } },
         tentativas: 0,
       }),
     );
@@ -208,6 +208,47 @@ describe.skipIf(!bancoTesteAtivo)("processador de vendas", () => {
     expect(lista.map((r) => [r.id, r.categoria, r.comissaoValor])).toEqual([
       [vendaId, "atendimento", 36],
     ]);
+  });
+
+  test("PAID do app sem casamento credita pelo user_id; vínculo do admin depois não credita de novo", async () => {
+    const b = await criarLead();
+    const userId = randomUUID();
+    await db().query("update wakeclub.leads set app_user_id = $2::text where id = $1::uuid", [
+      b.leadId,
+      userId,
+    ]);
+    const tx = randomUUID();
+    const processador = criarProcessadorVendas();
+    await comTransacao((c) =>
+      processador(c, {
+        id: 1,
+        origem: "vendas",
+        corpo: {
+          event: "USER_HOUR_PURCHASE_PAID",
+          timestamp: new Date().toISOString(),
+          data: {
+            transaction_id: tx,
+            price_paid: 360,
+            phone: telefoneUnico(),
+            user_id: userId,
+            hours: 4,
+          },
+        },
+        tentativas: 0,
+      }),
+    );
+    const { rows } = await db().query(
+      "select id, lead_id from wakeclub.vendas where id_externo = $1::text",
+      [tx],
+    );
+    expect(rows[0].lead_id).toBeNull();
+    const saldo = async () =>
+      (await db().query("select saldo_horas from wakeclub.leads where id = $1::uuid", [b.leadId]))
+        .rows[0].saldo_horas;
+    expect(await saldo()).toBe(4);
+    await comTransacao((c) => vincular(c, rows[0].id, b.leadId, randomUUID()));
+    expect((await lerVenda(rows[0].id)).lead_id).toBe(b.leadId);
+    expect(await saldo()).toBe(4);
   });
 
   test("categoria follow-up quando followup enviado nas 48h", async () => {

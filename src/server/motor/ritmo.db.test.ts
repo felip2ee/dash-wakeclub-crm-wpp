@@ -5,7 +5,7 @@ import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./banco-teste";
 import {
   definirRitmo,
   lerRitmo,
-  preparadosHoje,
+  enviadosHoje,
   tarefaExpirarFollowups,
   tarefaRitmoMeiaNoite,
 } from "./ritmo";
@@ -22,8 +22,11 @@ async function eventosConfig(tipo: string) {
   return rows;
 }
 
-/** Follow-up aguardando aprovação com `sugerido_em = now() + intervalo` e push pendente. */
-async function aguardando(intervalo: string) {
+/**
+ * Follow-up aguardando aprovação com `sugerido_em = now() + intervalo`, `expira_em` (null =
+ * legado sem validade) e push pendente.
+ */
+async function aguardando(intervalo: string, expiraEm: string | null = null) {
   const dono = await criarVendedor("Vendedora Ritmo");
   const { rows } = await db().query<{ id: string }>(
     `with l as (
@@ -31,12 +34,12 @@ async function aguardando(intervalo: string) {
        values ($1::text, 'Lead Ritmo', $2::uuid) returning id
      )
      insert into wakeclub.followups
-       (lead_id, agendado_para, tipo, status, texto_sugerido, sugerido_em)
+       (lead_id, agendado_para, tipo, status, texto_sugerido, sugerido_em, expira_em)
      select l.id, now(), 'reengajar', 'aguardando_aprovacao', 'Oi, tudo certo?',
-            now() + $3::interval
+            now() + $3::interval, $4::timestamptz
        from l
      returning id`,
-    [telefoneUnico(), dono, intervalo],
+    [telefoneUnico(), dono, intervalo, expiraEm],
   );
   const id = rows[0].id;
   await db().query(
@@ -106,15 +109,23 @@ describe.skipIf(!bancoTesteAtivo)("ritmo", () => {
     expect(await tarefaRitmoMeiaNoite(db())).toBe(0);
   });
 
-  test("preparadosHoje conta sugerido_em do dia de São Paulo", async () => {
-    const antes = await preparadosHoje(db());
+  test("enviadosHoje conta enviado_em do dia de São Paulo, não preparo", async () => {
+    const antes = await enviadosHoje(db());
     await aguardando("0 minutes");
-    await aguardando("-2 days");
-    expect(await preparadosHoje(db())).toBe(antes + 1);
+    const hoje = await aguardando("0 minutes");
+    const ontem = await aguardando("0 minutes");
+    await db().query(
+      `update wakeclub.followups
+          set status = 'enviado',
+              enviado_em = case when id = $1::uuid then now() else now() - interval '2 days' end
+        where id in ($1::uuid, $2::uuid)`,
+      [hoje, ontem],
+    );
+    expect(await enviadosHoje(db())).toBe(antes + 1);
   });
 
-  test("expira: sugerido ontem vira expirado e push é cancelado", async () => {
-    const ontem = await aguardando("-1 day");
+  test("expira pelo expira_em: ontem expira e push é cancelado", async () => {
+    const ontem = await aguardando("-1 day", new Date(Date.now() - 86_400_000).toISOString());
 
     await tarefaExpirarFollowups(db());
 
@@ -123,17 +134,62 @@ describe.skipIf(!bancoTesteAtivo)("ritmo", () => {
     expect((await estado(ontem)).eventos).toBe(1);
   });
 
-  test("expira as 19h59 do dia em que ficou pronto", async () => {
-    const f = await aguardando("0 minutes");
-    await db().query(
-      "update wakeclub.followups set sugerido_em = $2::timestamptz where id = $1::uuid",
-      [f, "2026-11-04T15:00:00-03:00"],
-    );
+  test("automático expira às 19h59; o da varredura (amanhã) fica às 20h de hoje", async () => {
+    const hoje = await aguardando("0 minutes", "2026-11-04T19:59:59-03:00");
+    const varredura = await aguardando("0 minutes", "2026-11-05T19:59:59-03:00");
 
     await tarefaExpirarFollowups(db(), new Date("2026-11-04T19:59:00-03:00"));
-    expect((await estado(f)).status).toBe("aguardando_aprovacao");
+    expect((await estado(hoje)).status).toBe("aguardando_aprovacao");
 
     await tarefaExpirarFollowups(db(), new Date("2026-11-04T20:00:00-03:00"));
-    expect(await estado(f)).toEqual({ status: "expirado", push: "cancelada", eventos: 1 });
+    expect(await estado(hoje)).toEqual({ status: "expirado", push: "cancelada", eventos: 1 });
+    expect(await estado(varredura)).toEqual({
+      status: "aguardando_aprovacao",
+      push: "pendente",
+      eventos: 0,
+    });
+  });
+
+  test("sem expira_em (legado) não expira, como na decisão em aprovacao.ts", async () => {
+    const legado = await aguardando("-3 days");
+    await tarefaExpirarFollowups(db(), new Date("2026-11-04T23:00:00-03:00"));
+    expect((await estado(legado)).status).toBe("aguardando_aprovacao");
+  });
+
+  test("lembrete aberto com aula já passada é cancelado; o de aula futura fica", async () => {
+    const dono = await criarVendedor("Vendedora Lembrete");
+    const { rows } = await db().query<{ id: string; tipo: string }>(
+      `with l as (
+         insert into wakeclub.leads (telefone, nome, atendente_id)
+         values ($1::text, 'Lead Lembrete', $2::uuid) returning id
+       )
+       insert into wakeclub.followups (lead_id, agendado_para, tipo, status, aula_em,
+                                       aprovado_em, aprovado_por)
+       select l.id, now(), v.tipo, v.status, now() + v.aula::interval, now(), $2::uuid
+         from l, (values ('lembrete_d1', 'aprovado', '-1 hour'),
+                         ('lembrete_dia', 'pendente', '2 hours')) v(tipo, status, aula)
+       returning id, tipo`,
+      [telefoneUnico(), dono],
+    );
+    const porTipo = Object.fromEntries(rows.map((r) => [r.tipo, r.id]));
+
+    await tarefaExpirarFollowups(db());
+
+    const lido = await db().query(
+      `select f.tipo, f.status, f.motivo_cancelamento,
+              (select array_agg(e.tipo_evento) from wakeclub.eventos_automacao e
+                where e.entidade_id = f.id) as eventos
+         from wakeclub.followups f where f.id = any($1::uuid[]) order by f.tipo`,
+      [Object.values(porTipo)],
+    );
+    expect(lido.rows).toEqual([
+      {
+        tipo: "lembrete_d1",
+        status: "cancelado",
+        motivo_cancelamento: "aula já passou",
+        eventos: ["followup_cancelled"],
+      },
+      { tipo: "lembrete_dia", status: "pendente", motivo_cancelamento: null, eventos: null },
+    ]);
   });
 });

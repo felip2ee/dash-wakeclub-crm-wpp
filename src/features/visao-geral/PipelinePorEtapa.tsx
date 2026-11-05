@@ -10,10 +10,10 @@ const SETA =
   "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)";
 const SETA_INICIAL = "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%)";
 
-// Funil horizontal da referência 03 nas etapas do CRM. "Negociação encerrada" fica de
+// Funil horizontal da referência 03 nas etapas do CRM. "Encerrado" fica de
 // fora: é saída do funil, não etapa (lista do docs/ref/README.md).
 export function PipelinePorEtapa({ colunas }: { colunas: Coluna[] }) {
-  const etapas = colunas.filter((c) => c.etapa !== "Negociação encerrada");
+  const etapas = colunas.filter((c) => c.etapa !== "Encerrado");
   const linhas = [
     { rotulo: "Leads", icone: Users, valor: (c: Coluna) => String(c.quantidade) },
     { rotulo: "Valor total (pipeline)", icone: Coins, valor: (c: Coluna) => moeda(c.valorCheio) },

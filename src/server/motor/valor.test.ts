@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import { valorCheio, valorEsperado } from "./valor";
 
-const AGORA = new Date("2026-11-04T15:00:00Z");
-
 const lead = (extra: Partial<Parameters<typeof valorEsperado>[0]> = {}) => ({
   etiqueta: "Link enviado",
   temperatura: "quente" as string | null,
@@ -16,30 +14,32 @@ const lead = (extra: Partial<Parameters<typeof valorEsperado>[0]> = {}) => ({
 
 describe("valor esperado", () => {
   test("Link enviado quente, 4h a R$ 360", () => {
-    expect(valorEsperado(lead(), 360, AGORA)).toBe(576);
+    expect(valorEsperado(lead(), 360)).toBe(576);
   });
 
-  test("Novo Lead sem temperatura vale 5%", () => {
-    expect(valorEsperado(lead({ etiqueta: "Novo Lead", temperatura: null }), 360, AGORA)).toBe(72);
+  test("Novo lead sem temperatura vale 5%", () => {
+    expect(valorEsperado(lead({ etiqueta: "Novo lead", temperatura: null }), 360)).toBe(72);
+  });
+
+  test("Aluno sem horas quente, 4h a R$ 360", () => {
+    expect(valorEsperado(lead({ etiqueta: "Aluno sem horas" }), 360)).toBe(432);
+  });
+
+  test("Cadastrado morno, 1h a R$ 360", () => {
+    expect(
+      valorEsperado(lead({ etiqueta: "Cadastrado", temperatura: "morno", horasEstimadas: 1 }), 360),
+    ).toBe(108);
   });
 
   test("etapa fora da tabela vale 5%; horas ausentes contam 1", () => {
-    const agendado = lead({ etiqueta: "Agendado", horasEstimadas: null });
-    expect(valorEsperado({ ...agendado, dataAgendada: "2026-11-05T15:00:00Z" }, 360, AGORA)).toBe(
-      18,
-    );
-  });
-
-  test("Agendado no passado vale 0", () => {
-    const l = lead({ etiqueta: "Agendado", dataAgendada: "2026-11-03T15:00:00Z" });
-    expect(valorEsperado(l, 360, AGORA)).toBe(0);
+    expect(valorEsperado(lead({ etiqueta: "Outra", horasEstimadas: null }), 360)).toBe(18);
   });
 
   test("fora do pipeline vale 0", () => {
-    expect(valorEsperado(lead({ optOut: true }), 360, AGORA)).toBe(0);
-    expect(valorEsperado(lead({ semAtendimento: true }), 360, AGORA)).toBe(0);
-    expect(valorEsperado(lead({ etiqueta: "Negociação encerrada" }), 360, AGORA)).toBe(0);
-    expect(valorEsperado(lead({ etiqueta: "Aula realizada" }), 360, AGORA)).toBe(0);
+    expect(valorEsperado(lead({ optOut: true }), 360)).toBe(0);
+    expect(valorEsperado(lead({ semAtendimento: true }), 360)).toBe(0);
+    expect(valorEsperado(lead({ etiqueta: "Encerrado" }), 360)).toBe(0);
+    expect(valorEsperado(lead({ etiqueta: "Aluno com horas" }), 360)).toBe(0);
   });
 
   test("valor cheio", () => {

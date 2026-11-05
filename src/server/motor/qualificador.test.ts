@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { type LinhaLead, montarPromptLead, validarQualificacao } from "./qualificador";
 
 const ctx = {
-  etiquetaAtual: "Atendimento",
+  etiquetaAtual: "Novo lead",
   minimoLocal: "2026-11-04 10:30",
   limiteLocal: "2026-12-04 10:00",
 };
@@ -24,11 +24,25 @@ function ok(cru: unknown) {
 
 describe("validação tolerante", () => {
   test("etiqueta inválida vira a atual", () => {
-    expect(ok({ ...base, etiqueta: "Inventada" }).etiqueta).toBe("Atendimento");
+    expect(ok({ ...base, etiqueta: "Inventada" }).etiqueta).toBe("Novo lead");
   });
 
-  test("Negociacao encerrada ganha cedilha", () => {
-    expect(ok({ ...base, etiqueta: "Negociacao encerrada" }).etiqueta).toBe("Negociação encerrada");
+  test("etiqueta legada vira a etapa nova", () => {
+    expect(ok({ ...base, etiqueta: "Atendimento" }).etiqueta).toBe("Em atendimento");
+    expect(ok({ ...base, etiqueta: "Negociacao encerrada" }).etiqueta).toBe("Encerrado");
+  });
+
+  test("etapa do app não é movida pela IA", () => {
+    const r = validarQualificacao(
+      { ...base, etiqueta: "Novo lead" },
+      { ...ctx, etiquetaAtual: "Cadastrado" },
+    );
+    expect(r).toMatchObject({ etiqueta: "Cadastrado" });
+  });
+
+  test("followup devolvido pela IA é descartado", () => {
+    const f = { quando: "2026-11-10 09:00", tipo: "reengajar", motivo: "x" };
+    expect(ok({ ...base, followup: f }).followup).toBeNull();
   });
 
   test("temperatura inválida vira vazio", () => {
@@ -43,30 +57,13 @@ describe("validação tolerante", () => {
     expect(validarQualificacao("texto", ctx)).toEqual({ erro: "a IA nao devolveu objeto" });
   });
 
-  test("followup com data fora do CARIMBO fica sem followup", () => {
-    const f = { quando: "amanhã às 10h", tipo: "reengajar", motivo: "x" };
-    expect(ok({ ...base, followup: f }).followup).toBeNull();
-  });
-
-  test("data impossível no CARIMBO é descartada (followup e data_agendada)", () => {
+  test("data impossível no CARIMBO é descartada", () => {
     for (const quando of ["2026-02-30 10:00", "2026-11-10 25:61"]) {
-      const r = ok({ ...base, data_agendada: quando, followup: { quando, tipo: "reengajar" } });
-      expect(r.followup).toBeNull();
-      expect(r.dataAgendada).toBe("");
+      expect(ok({ ...base, data_agendada: quando }).dataAgendada).toBe("");
     }
     expect(ok({ ...base, data_agendada: "2026-11-10 09:00" }).dataAgendada).toBe(
       "2026-11-10 09:00",
     );
-  });
-
-  test("quando abaixo do mínimo vira o mínimo; acima do limite, o limite; tipo inválido, reengajar", () => {
-    const cedo = ok({ ...base, followup: { quando: "2026-11-04 09:00", tipo: "x", motivo: "m" } });
-    expect(cedo.followup).toEqual({ quando: "2026-11-04 10:30", tipo: "reengajar", motivo: "m" });
-    const tarde = ok({
-      ...base,
-      followup: { quando: "2027-01-01 09:00", tipo: "pos_aula", motivo: "" },
-    });
-    expect(tarde.followup).toEqual({ quando: "2026-12-04 10:00", tipo: "pos_aula", motivo: "" });
   });
 
   test("horas_estimadas: inteiro com clamp 1..8, default 1", () => {
@@ -109,7 +106,7 @@ describe("prompt do lead", () => {
   test("histórico vazio diz que não há mensagem", () => {
     const p = montarPromptLead(linha);
     expect(p).toStartWith("AGORA: 2026-11-04 10:00 (America/Sao_Paulo)\n");
-    expect(p).toContain("etiqueta: Novo Lead\n");
+    expect(p).toContain("etiqueta: Novo lead\n");
     expect(p).toContain("followups enviados sem resposta: 0\n");
     expect(p).toContain("minutos desde a ultima mensagem do lead: (nunca falou)\n");
     expect(p).toEndWith("CONVERSA (mais antiga primeiro)\n(nenhuma mensagem registrada)\n");

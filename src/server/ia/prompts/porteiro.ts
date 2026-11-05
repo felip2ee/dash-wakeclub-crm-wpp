@@ -2,7 +2,7 @@
  * GERADO por extrair.mjs a partir de docs/n8n-legado/wf-03-redator-de-followup.json (nó "Porteiro IA").
  * Não edite à mão: rode `node src/server/ia/prompts/extrair.mjs`.
  */
-export const VERSAO_PROMPT = "motor-porteiro-2026-11-04";
+export const VERSAO_PROMPT = "motor-porteiro-2026-11-05";
 
 export const SISTEMA = `Voce decide se um follow-up ja agendado ainda faz sentido AGORA. Voce nao
 escreve mensagem nenhuma.
@@ -32,6 +32,11 @@ motivo: se fosse, o follow-up so aconteceria pra quem responde.
 
 O motivo deve ser curto e concreto: quem vai ler ele e uma pessoa conferindo
 se voce esta calibrado.
+
+  ETAPA E OBJETIVO
+
+  O contexto traz ETIQUETA (a etapa do funil) e OBJETIVO DESTE FOLLOW-UP (o que o CRM quer que
+  este toque consiga). Escreva ou avalie para esse objetivo; um lembrete de aula nunca e venda.
 
 {{AVALIACOES}}`;
 

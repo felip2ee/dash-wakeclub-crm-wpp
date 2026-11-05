@@ -12,6 +12,8 @@ const db = () => getPoolMotor();
 // Meio-dia de São Paulo do dia em que o texto do cenário ficou pronto (10h).
 const SUGERIDO = new Date("2026-11-04T10:00:00-03:00");
 const AGORA = new Date("2026-11-04T12:00:00-03:00");
+// Validade do card automático: 19h59 de SP do mesmo dia (spec §8).
+const EXPIRA = new Date("2026-11-04T19:59:00-03:00");
 
 const sessao = (usuarioId: string, papel: Sessao["papel"] = "atendente"): Sessao => ({
   usuarioId,
@@ -40,16 +42,17 @@ async function cenario(texto = "Oi, ainda quer agendar a aula?") {
   await db().query(
     `update wakeclub.leads
         set atendente_id = $2::uuid, n_toques = 2, temperatura = 'quente',
-            etiqueta = 'Atendimento', horas_estimadas = 4
+            etiqueta = 'Em atendimento', horas_estimadas = 4
       where id = $1::uuid`,
     [leadId, dono],
   );
   const { rows } = await db().query<{ id: string }>(
     `insert into wakeclub.followups
-       (lead_id, agendado_para, tipo, status, texto_sugerido, sugerido_em)
-     values ($1::uuid, now(), 'reengajar', 'aguardando_aprovacao', $2::text, $3::timestamptz)
+       (lead_id, agendado_para, tipo, status, texto_sugerido, sugerido_em, expira_em)
+     values ($1::uuid, now(), 'reengajar', 'aguardando_aprovacao', $2::text, $3::timestamptz,
+             $4::timestamptz)
      returning id`,
-    [leadId, texto, SUGERIDO],
+    [leadId, texto, SUGERIDO, EXPIRA],
   );
   return { dono, leadId, telefone, followupId: rows[0].id };
 }
@@ -67,6 +70,17 @@ async function avaliacoes(followupId: string) {
   const { rows } = await db().query(
     `select usuario_id, decisao, motivos, texto_livre, texto_original, texto_enviado
        from wakeclub.followup_avaliacoes where followup_id = $1::uuid`,
+    [followupId],
+  );
+  return rows;
+}
+
+async function revisoes(followupId: string) {
+  const { rows } = await db().query(
+    `select r.admin_id, r.concorda, r.observacao
+       from wakeclub.followup_revisoes r
+       join wakeclub.followup_avaliacoes a on a.id = r.avaliacao_id
+      where a.followup_id = $1::uuid`,
     [followupId],
   );
   return rows;
@@ -140,7 +154,7 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
       nome: "Lead Aprovar",
       telefone,
       temperatura: "quente",
-      etiqueta: "Atendimento",
+      etiqueta: "Em atendimento",
       horasEstimadas: 4,
       numeroToque: 3,
       textoSugerido: "Oi, ainda quer agendar a aula?",
@@ -299,5 +313,51 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
       decidir(c, sessao(dono), { followupId, decisao: "recusar", motivos: [] }, noite),
     );
     expect((await followup(followupId)).status).toBe("abortado");
+  });
+
+  test("sem expira_em o card não expira pelo horário", async () => {
+    const { dono, followupId } = await cenario();
+    await db().query("update wakeclub.followups set expira_em = null where id = $1::uuid", [
+      followupId,
+    ]);
+    const noite = new Date("2026-11-04T21:00:00-03:00");
+    await comTransacao((c) =>
+      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, noite),
+    );
+    expect((await followup(followupId)).status).toBe("aprovado");
+  });
+
+  test("decisão da atendente não gera revisão; devolve a avaliação", async () => {
+    const { dono, followupId } = await cenario();
+    const { avaliacaoId } = await comTransacao((c) =>
+      decidir(c, sessao(dono), { followupId, decisao: "recusar", motivos: ["Tom errado"] }),
+    );
+    expect(avaliacaoId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await revisoes(followupId)).toEqual([]);
+    expect(await eventos(followupId)).toEqual(["followup_human_rejected"]);
+  });
+
+  test("admin decidindo direto conta como decisão e revisão (concorda)", async () => {
+    const { followupId } = await cenario();
+    const admin = await criarVendedor("Admin Revisa");
+    await comTransacao((c) =>
+      decidir(
+        c,
+        sessao(admin, "admin"),
+        { followupId, decisao: "enviar", motivos: ["Texto certo"], textoLivre: "bom gancho" },
+        AGORA,
+      ),
+    );
+    expect(await revisoes(followupId)).toEqual([
+      { admin_id: admin, concorda: true, observacao: "bom gancho" },
+    ]);
+    const { rows } = await db().query(
+      `select agente, metadados->>'automatica' as automatica
+         from wakeclub.eventos_automacao
+        where entidade_tipo = 'followup' and entidade_id = $1::uuid
+          and tipo_evento = 'review_recorded'`,
+      [followupId],
+    );
+    expect(rows).toEqual([{ agente: "humano", automatica: "true" }]);
   });
 });

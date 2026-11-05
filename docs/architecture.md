@@ -207,6 +207,8 @@ Rotas novas (WakeCRM):
 | `/pipeline`                    | admin                                            | `getPipeline` somente leitura: valor cheio e esperado, com os gráficos por etapa          |
 | `/configuracoes`               | admin                                            | tamanho/tema, usuários, modo de follow-up, preço da hora, meta de vendas por dia, status do WhatsApp, fila de eventos, painel de IA, vendas sem dono |
 | `/equipe`                      | admin                                            | cartões da equipe: peso de distribuição e comissão                                        |
+| `/revisar-decisoes`            | admin                                            | revisão das decisões humanas sobre os textos (`followup_revisoes`); única fonte de aprendizado dos prompts; o botão de varredura dos parados fica em `/aprovar` |
+| `/fila-envio`                  | admin                                            | fila entre dias dos aprovados: cota de envios, previsão de saída e lembretes             |
 | `/vendas`                      | admin                                            | resumo do período (vendido, comissão dia 10, por categoria), vendas do período, vendas sem dono (vincular), fechamento do mês, estorno manual          |
 
 Rotas anteriores, ainda acessíveis por URL:
@@ -351,14 +353,17 @@ banco), registradas em `iniciar.ts`. Toda tarefa grava a última execução em
 | `push`              | 1 min     | sempre                      | `enviarPushPendentes` (fila `notificacoes`, sem n8n)                 |
 | `heartbeat`         | 5 min     | adaptador                   | `gravarHeartbeat` da instância                                       |
 | `ritmo-meia-noite`  | 5 min     | sempre                      | aquecido ligado antes da meia-noite de São Paulo volta a conservador |
-| `expirar-followups` | 5 min     | sempre                      | `aguardando_aprovacao` sem decisão até 19h59 vira `expirado`         |
-| `envio-followups`   | 1 min     | adaptador                   | envia um follow-up aprovado por rodada                               |
+| `expirar-followups` | 5 min     | sempre                      | `aguardando_aprovacao` com `expira_em` vencido vira `expirado`; lembrete aberto de aula que já passou vira `cancelado` |
+| `parado`            | 15 min    | sempre                      | `tarefaParados`: lead sem avanço além do prazo da etapa ganha follow-up `parado` (prazos em `configuracoes.prazos_parado`; alunos: silêncio de 48 h) |
+| `pagamento-pendente` | 5 min    | sempre                      | `tarefaPagamentoPendente`: pagamento pendente há 24 h gera o sinal de cobrança |
+| `envio-followups`   | 1 min     | adaptador                   | envia um follow-up aprovado por rodada; com `OPENAI_API_KEY`, reconfere pelo porteiro o aprovado com mais de 3 dias |
 | `qualificador`      | 1 min     | `OPENAI_API_KEY`            | qualifica até 8 leads vencidos                                       |
 | `redator`           | 15 min    | `OPENAI_API_KEY`            | porteiro + redator dos follow-ups vencidos                           |
 | `transcricao`       | 1 min     | `OPENAI_API_KEY` e adaptador | transcreve até 5 áudios por rodada                                  |
 
-Sem a chave, `iniciar.ts` loga `ia.sem_chave` uma vez e segue; sem adaptador, as tarefas
-que precisam dele ficam de fora.
+`parado` e `pagamento-pendente` não dependem de IA nem de adaptador. Sem a chave, `iniciar.ts` loga
+`ia.sem_chave` uma vez e segue (o envio roda sem reconferência: item que precisaria dela é pulado,
+não enviado); sem adaptador, as tarefas que precisam dele ficam de fora.
 
 **Distribuição.** Por peso entre vendedores ativos, com atribuição pegajosa (o lead que já
 teve dono fica com ele enquanto estiver ativo) e menção na conversa. Toda mudança de dono
@@ -412,6 +417,30 @@ aborta o follow-up como "envio sem confirmação" e avisa o vendedor, nunca reen
 `enviando` há mais de 15 min é órfão e recebe o mesmo tratamento; por isso o timeout do
 adaptador precisa ser muito menor que 15 min.
 
+**Etapas do pipeline.** `leads.etiqueta` tem oito valores (migração 0008): `Novo lead`, `Em atendimento`,
+`Link enviado`, `Cadastrado`, `Aguardando pagamento`, `Aluno com horas`, `Aluno sem horas`, `Encerrado`.
+Antigas migradas: `Novo Lead` para `Novo lead`; `Atendimento` e `Follow-up` (pela etapa anterior) para
+`Em atendimento`; `Agendado` e `Aula realizada` para `Aluno com horas` se há venda paga, senão
+`Em atendimento`; `Negociação encerrada` para `Encerrado`. A IA só move entre `Novo lead`,
+`Em atendimento`, `Link enviado` e `Encerrado`; o motor e os eventos do app movem as demais (ver abaixo).
+
+**Eventos do app** (`motor/app-eventos.ts`, pela fila `vendas`). Os eventos `USER_*` do app Wake Club
+(cadastro, agendamento, aula, compra pendente, compra paga) atualizam etapa e saldo: `saldo_horas`
+(nulo = desconhecido), `proxima_aula_em`, `ultima_aula_em`, `pagamento_pendente_desde` e
+`app_user_id`. Cada evento fica em `app_eventos` com `unique (tipo, chave)` (idempotência) e
+`resultado` (`aplicado`, `hora_sem_saldo`, `saldo_desconhecido`, `sem_lead`). Cada aula consome 1 h.
+Compra paga leva o lead de qualquer etapa, inclusive `Encerrado`, a `Aluno com horas`; opt-out
+bloqueia follow-up, não a etapa. Evento de teste nunca move etapa. Agendamento cria os lembretes
+`lembrete_d1` (10h da véspera, até 20h) e `lembrete_dia` (8h do dia, até 2 h antes da aula); só nasce
+o que ainda cabe na própria janela. Têm prioridade máxima na fila e o evento do app não os cancela;
+lembrete aberto de aula que já passou é cancelado por `expirar-followups`.
+
+**Parados** (`parado.ts`). Prazos por etapa em `configuracoes.prazos_parado` (editáveis em
+`/configuracoes`). `parado` substitui o antigo tipo `reengajar` nos novos follow-ups. Alunos não exigem
+última mensagem da equipe; valem silêncio de 48 h e o saldo. A varredura sob demanda
+(`varredura.ts`, tabela `varreduras`, uma rodando por vez) faz o mesmo para todos os leads parados,
+com contagem, aviso de custo e progresso; botão em `/revisar-decisoes`.
+
 **Vendas** (`motor/vendas.ts`, origem `vendas` da fila). Ver "Vendas e dinheiro".
 
 ## Ciclo de vida do follow-up
@@ -424,8 +453,16 @@ pendente ──(redator)──▶ aguardando_aprovacao ──(humano: Enviar)─
    └─(porteiro: aborta)────────────────────────────────▶ abortado     └─(conversa andou)─▶ cancelado
 ```
 
+`aguardando_aprovacao` tem `expira_em` (19h59 de São Paulo do dia do texto) e `expirar-followups`
+expira só quem não foi decidido. `aprovado` não expira: fica na fila entre dias e, com mais de 3 dias
+(`reconferido_em` nulo ou antigo), passa de novo pelo porteiro antes de sair; sem IA o item é pulado.
+Aprovado barrado na reconferência avisa o vendedor por notificação. Lembretes de aula
+(`lembrete_d1`, `lembrete_dia`, com `aula_em`) convivem com o follow-up aberto do lead (um por tipo)
+e viram `cancelado` ("aula já passou") se a aula passa antes do envio.
+
 Status: `pendente`, `aguardando_aprovacao`, `aprovado`, `enviando`, `enviado`, `cancelado`,
-`abortado`, `expirado` (constraint da 0004). Existe no máximo um follow-up em aberto
+`abortado`, `expirado` (constraint da 0004). Tipos (0008): `reengajar` (legado), `lembrete_d1`,
+`lembrete_dia`, `pos_aula`, `reativacao`, `parado`. Existe no máximo um follow-up em aberto
 (`pendente`, `aguardando_aprovacao`, `aprovado` ou `enviando`) por lead.
 
 Quem muda o quê:
@@ -436,11 +473,11 @@ Quem muda o quê:
 | ingestão                  | mensagem nova do lead ou opt-out cancela `pendente`/`aguardando_aprovacao`/`aprovado` (`cancelado`, "conversa viva" ou "opt-out") e cancela a notificação pendente. `enviando` e `enviado` ficam como estão |
 | redator (porteiro)        | `pendente` → `aguardando_aprovacao` (texto), reagenda ou `abortado` (o lead não precisa mais)      |
 | vendedor (`decidir`)      | `aguardando_aprovacao` → `aprovado` ("Enviar", com ou sem edição) ou `abortado` ("recusado pelo vendedor"). Recusa após 19h59 do dia do texto é rejeitada com "expirou" |
-| `expirar-followups`       | `aguardando_aprovacao` do dia anterior, ou a partir das 20h, vira `expirado`; cancela a notificação pendente |
+| `expirar-followups`       | `aguardando_aprovacao` com `expira_em` vencido vira `expirado`; cancela a notificação pendente |
 | `envio-followups`         | `aprovado` → `enviando` → `enviado` (grava mensagem com `followup_id`); falhas: `aprovado` de novo (`nao_saiu`) ou `abortado` (`incerto`/órfão/sem texto) |
 
-`aprovado` sem envio (por exemplo, sem adaptador ou fora da janela) acumula: expirar
-`aprovado` com mais de 24 h está parqueado para decisão do dono.
+`aprovado` sem envio (por exemplo, sem adaptador, fora da janela ou além da cota) espera na
+`/fila-envio`, ordenado por lembretes, valor esperado e idade.
 
 ## Fila de aprovação e avaliações
 
@@ -456,18 +493,25 @@ quer, Outro. Motivos de envio: Texto certo, Lead quente, Ajustei o texto, Outro.
 avaliações recentes (do vendedor, as recusas gerais da equipe e os textos que o vendedor
 editou) voltam ao prompt do porteiro e do redator no bloco `{{AVALIACOES}}`.
 
+### Revisão das decisões
+
+Dois níveis: a decisão do vendedor (`followup_avaliacoes`) e a revisão do admin em
+`/revisar-decisoes` (`followup_revisoes`: `concorda`, `observacao`, uma por avaliação). Só a
+revisão alimenta os prompts do porteiro e do redator (as 10 mais recentes da equipe); a decisão do
+atendente sozinha não. Decisão do admin direto em `/aprovar` grava a avaliação e a revisão.
+
 ## Ritmo, cota, janela e intervalo
 
 Modo em `configuracoes.ritmo`; muda só o admin (`definirRitmoAdmin`, que registra
 `rhythm_changed`; aquecido exige `confirmar: true`).
 
-| Modo         | Cota de textos preparados por dia | Intervalo mínimo entre envios |
+| Modo         | Cota de envios por dia            | Intervalo mínimo entre envios |
 | ------------ | --------------------------------- | ----------------------------- |
 | conservador  | 20                                | 120 s                         |
 | aquecido     | 60                                | 45 s                          |
 
-- **Cota:** conta os follow-ups com `sugerido_em` no dia de São Paulo; o redator só prepara
-  enquanto houver vaga.
+- **Cota:** conta os follow-ups `enviado` no dia de São Paulo (`enviadosHoje`). Preparar e
+  decidir não têm limite; o que passa da cota espera na fila para o dia seguinte.
 - **Janela:** preparo e envio só das 8h às 19h59 de São Paulo (`dentroDaJanela`).
 - **Intervalo:** o envio espera o intervalo do modo desde o último `enviado_em`.
 - **Aquecido** dura até a meia-noite de São Paulo; `ritmo-meia-noite` registra `rhythm_reset`
@@ -553,7 +597,10 @@ zero) é a única visão de outro vendedor; o resto do dinheiro é só do dono.
 | `mensagens`            | histórico bruto da conversa                                   | N:1 com lead; direção `lead/equipe/ia`; idempotência por `evolution_msg_id`; ack; estado de transcrição; `followup_id` (0004)            |
 | `followups`            | agenda e sugestão produzida pela IA                           | N:1 com lead; um em aberto por lead; motivo, `texto_sugerido`, `sugerido_em`, `texto_enviado`, `enviado_em`; 0004: `aprovado_em`, `aprovado_por`, `erro_envio`, `tentativas_envio` |
 | `followup_avaliacoes`  | decisão humana sobre cada texto (0004)                        | N:1 com follow-up e usuário; `decisao`, `motivos[]`, `texto_livre`, `texto_original`, `texto_enviado`; alimenta os prompts; só INSERT   |
-| `configuracoes`        | chave/valor do motor (0004)                                   | `ritmo`, `preco_hora`, `tarefas_execucao`; trigger de `atualizado_em`                                                                    |
+| `app_eventos`          | eventos `USER_*` do app já processados (0008)                 | `unique (tipo, chave)`; `resultado`; N:1 opcional com lead                                                                               |
+| `followup_revisoes`    | revisão do admin sobre uma avaliação (0008)                   | 1:1 com `followup_avaliacoes`; `concorda`, `observacao`; só INSERT; única fonte de aprendizado dos prompts                              |
+| `varreduras`           | progresso da varredura sob demanda (0008)                     | total, analisados, sugeridos, barrados, `status`; índice único garante uma `rodando`                                                     |
+| `configuracoes`        | chave/valor do motor (0004)                                   | `ritmo`, `preco_hora`, `prazos_parado`, `tarefas_execucao`; trigger de `atualizado_em`                                                                    |
 | `vendas`               | venda recebida por webhook (0005)                             | única por `(origem_externa, id_externo)`; `lead_id`/`vendedor_id` nulos = sem dono; categoria, comissão congelada, estorno, `corpo_bruto` |
 | `fechamentos`          | fechamento mensal por vendedor (0005)                         | único por `(vendedor_id, mes)`; `total_vendas` em reais, `quantidade_vendas`, `total_comissao`, `ajustes`, `a_pagar`, `pago_em/por`     |
 | `lancamentos_comissao` | ajustes entre meses (0005)                                    | estorno pós-fechamento, venda atrasada, saldo negativo (`venda_id` nulo); consumido por um `fechamento_id`                              |
@@ -809,7 +856,7 @@ Regras invioláveis:
 - Followup cancelado não é automaticamente erro; mostre o motivo disponível.
 - Recusar uma sugestão não é `sem_atendimento`, não é opt-out e não remove o lead da
   distribuição.
-- A etapa do lead só a IA move (Pipeline é somente leitura).
+- A etapa é movida pelo motor, pela IA (até Link enviado/Encerrado) e pelo app; o Pipeline é somente leitura.
 - As labels do WhatsApp não são fonte de dado.
 
 ### Estado das fases
@@ -823,6 +870,8 @@ Prontas localmente, **não publicadas**:
   expiração, fila de aprovação com avaliações e envio dos aprovados.
 - **Interface:** tokens, temas, densidade, shell novo e as telas de referência.
 - **Fase 4:** vendas, categorias, comissão, fechamento do dia 10 e painéis em dinheiro.
+- **Pipeline e follow-up (0008):** oito etapas, eventos do app, saldo de horas, lembretes de aula,
+  tarefas `parado` e `pagamento-pendente`, varredura, fila de envio e revisão das decisões.
 
 Bloqueios: o fim da Task 13 da fase 1 (adaptador da Evolution API escrito; falta provar com
 envio real, mídia, tamanho dos corpos, limite de 25 MB e de 16 MB nas server functions) e

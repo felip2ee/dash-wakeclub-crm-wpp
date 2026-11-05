@@ -136,7 +136,7 @@ export const listarFilaOperacional = createServerFn({ method: "GET" }).handler(
         where l.atendente_id = $1::uuid
           and not l.opt_out
           and not l.sem_atendimento
-          and l.etiqueta <> 'Negociação encerrada'
+          and l.etiqueta <> 'Encerrado'
         order by l.aguardando_equipe desc, l.ultima_msg_em desc nulls last`,
       [sessao.usuarioId],
     );

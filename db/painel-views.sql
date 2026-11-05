@@ -43,7 +43,7 @@ create or replace view wakeclub.v_conversas_painel as
     f.tipo AS followup_tipo,
     l.criado_em
    FROM wakeclub.leads l
-     LEFT JOIN ( VALUES ('Novo Lead'::text,1), ('Atendimento'::text,2), ('Link enviado'::text,3), ('Aguardando pagamento'::text,4), ('Agendado'::text,5), ('Aula realizada'::text,6), ('Follow-up'::text,7), ('Negociação encerrada'::text,8)) o(etiqueta, ordem) ON o.etiqueta = l.etiqueta
+     LEFT JOIN ( VALUES ('Novo lead'::text,1), ('Em atendimento'::text,2), ('Link enviado'::text,3), ('Cadastrado'::text,4), ('Aguardando pagamento'::text,5), ('Aluno com horas'::text,6), ('Aluno sem horas'::text,7), ('Encerrado'::text,8)) o(etiqueta, ordem) ON o.etiqueta = l.etiqueta
      LEFT JOIN LATERAL ( SELECT m.texto,
             m.direcao,
             m.enviada_em
@@ -172,7 +172,7 @@ create or replace view wakeclub.v_leads_painel as
     l.criado_em
    FROM wakeclub.leads l
      LEFT JOIN wakeclub.usuarios a ON a.id = l.atendente_id
-     LEFT JOIN ( VALUES ('Novo Lead'::text,1), ('Atendimento'::text,2), ('Link enviado'::text,3), ('Aguardando pagamento'::text,4), ('Agendado'::text,5), ('Aula realizada'::text,6), ('Follow-up'::text,7), ('Negociação encerrada'::text,8)) o(etiqueta, ordem) ON o.etiqueta = l.etiqueta
+     LEFT JOIN ( VALUES ('Novo lead'::text,1), ('Em atendimento'::text,2), ('Link enviado'::text,3), ('Cadastrado'::text,4), ('Aguardando pagamento'::text,5), ('Aluno com horas'::text,6), ('Aluno sem horas'::text,7), ('Encerrado'::text,8)) o(etiqueta, ordem) ON o.etiqueta = l.etiqueta
      LEFT JOIN LATERAL ( SELECT followups.agendado_para,
             followups.tipo
            FROM wakeclub.followups
@@ -201,7 +201,7 @@ create or replace view wakeclub.v_relatorio_funil as
     count(l.id) FILTER (WHERE l.temperatura = 'frio'::text)::integer AS frio,
     count(l.id) FILTER (WHERE l.temperatura IS NULL)::integer AS sem_temperatura,
     count(l.id) FILTER (WHERE l.ultima_msg_lead_em IS NOT NULL AND (l.ultima_msg_equipe_em IS NULL OR l.ultima_msg_lead_em > l.ultima_msg_equipe_em))::integer AS aguardando_equipe
-   FROM ( VALUES ('Novo Lead'::text,1), ('Atendimento'::text,2), ('Link enviado'::text,3), ('Aguardando pagamento'::text,4), ('Agendado'::text,5), ('Aula realizada'::text,6), ('Follow-up'::text,7), ('Negociação encerrada'::text,8)) e(etiqueta, ordem)
+   FROM ( VALUES ('Novo lead'::text,1), ('Em atendimento'::text,2), ('Link enviado'::text,3), ('Cadastrado'::text,4), ('Aguardando pagamento'::text,5), ('Aluno com horas'::text,6), ('Aluno sem horas'::text,7), ('Encerrado'::text,8)) e(etiqueta, ordem)
      LEFT JOIN wakeclub.leads l ON l.etiqueta = e.etiqueta
   GROUP BY e.etiqueta, e.ordem;
 
@@ -478,7 +478,7 @@ create or replace view wakeclub.v_admin_atendentes as
           WHERE q.atendente_id = u.id) fila ON true
      LEFT JOIN LATERAL ( SELECT count(*)::integer AS ativos
            FROM wakeclub.leads l
-          WHERE l.atendente_id = u.id AND l.opt_out = false AND l.etiqueta <> 'Negociação encerrada'::text) leads ON true
+          WHERE l.atendente_id = u.id AND l.opt_out = false AND l.etiqueta <> 'Encerrado'::text) leads ON true
      LEFT JOIN LATERAL ( SELECT count(*)::integer AS sugeridos,
             count(*) FILTER (WHERE t.aberto_em IS NOT NULL)::integer AS tocados,
             percentile_cont(0.5::double precision) WITHIN GROUP (ORDER BY ((EXTRACT(epoch FROM t.aberto_em - f.sugerido_em) / 60::numeric)::double precision)) FILTER (WHERE t.aberto_em IS NOT NULL) AS mediana_min_ate_toque
