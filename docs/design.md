@@ -127,6 +127,11 @@ Regras deste projeto:
 
 ## Layout e revisão
 
+- Celular (abaixo de `md`), no jeito do WhatsApp iOS: com uma conversa aberta (`?lead=` em `/`
+  e `/meus-leads`, `conversaAberta` em `navegacao.ts`) somem o cabeçalho e a barra inferior, e
+  a conversa ocupa `100dvh`. O viewport usa `viewport-fit=cover`; cabeçalhos, Composer,
+  sheets e drawer descontam `env(safe-area-inset-*)`.
+
 - Estados que cada tela operacional precisa ter: carregando, vazio, erro e sem permissão.
 - Pendências conhecidas: altura das telas antigas no celular (`h-[calc(100dvh-...)]`) e área
   útil no iPhone instalado (rodapé sob a barra inferior com safe-area) precisam de conferência

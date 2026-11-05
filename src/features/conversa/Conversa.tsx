@@ -102,7 +102,8 @@ export function Conversa({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex min-h-14 items-center gap-2 border-b border-border bg-background/90 px-2 py-1.5 backdrop-blur">
+      {/* No celular a conversa é tela cheia: o cabeçalho desce abaixo da barra de status. */}
+      <header className="flex min-h-14 items-center gap-2 border-b border-border bg-background/90 px-2 py-1.5 backdrop-blur max-md:pt-[calc(0.375rem+env(safe-area-inset-top))]">
         <button
           type="button"
           onClick={onVoltar}
@@ -201,7 +202,7 @@ export function Conversa({
         <Composer leadId={lead.id} queryKey={queryKey} />
       ) : (
         // Sem adaptador da Evolution não há envio por aqui.
-        <p className="flex items-center justify-center gap-2 border-t border-border px-3 py-2.5 text-xs text-muted-foreground">
+        <p className="flex items-center justify-center gap-2 border-t border-border px-3 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground">
           <Eye aria-hidden className="h-3.5 w-3.5 shrink-0" />
           Somente leitura. Responda pelo WhatsApp da equipe.
         </p>

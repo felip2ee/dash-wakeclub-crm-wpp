@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   abasCelularAdmin,
   abasCelularAtendente,
+  conversaAberta,
   itensDesktopAdmin,
   rotaInicial,
 } from "./navegacao";
@@ -62,5 +63,15 @@ describe("rotaInicial", () => {
   test("admin vai para a visão geral, atendente para o início", () => {
     expect(rotaInicial("admin")).toBe("/visao-geral");
     expect(rotaInicial("atendente")).toBe("/inicio");
+  });
+});
+
+describe("conversaAberta", () => {
+  test("só com ?lead= nas listas de conversa", () => {
+    expect(conversaAberta("/", { lead: "a" })).toBe(true);
+    expect(conversaAberta("/meus-leads", { lead: "a" })).toBe(true);
+    expect(conversaAberta("/", {})).toBe(false);
+    expect(conversaAberta("/meus-leads", { lead: undefined })).toBe(false);
+    expect(conversaAberta("/aprovar", { lead: "a" })).toBe(false);
   });
 });

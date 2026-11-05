@@ -62,7 +62,13 @@ function InboxPage() {
   if (conversas.length === 0) return <SemConversas />;
 
   return (
-    <div className="grid altura-tela-com-barra grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[340px_1fr] xl:grid-cols-[360px_1fr_320px]">
+    <div
+      className={cn(
+        "grid grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[340px_1fr] xl:grid-cols-[360px_1fr_320px]",
+        // Conversa aberta no celular ocupa a tela inteira (o AppShell esconde cabeçalho e barra).
+        leadSelecionado ? "h-dvh" : "altura-tela-com-barra",
+      )}
+    >
       <aside
         className={cn(
           "min-h-0 flex-col border-r border-border md:flex",

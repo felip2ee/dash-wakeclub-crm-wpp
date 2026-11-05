@@ -60,6 +60,8 @@
   --radius: 0.75rem;
   /* Escala de espaçamento da densidade (multiplicador); ver html[data-densidade]. */
   --espaco: 1;
+  /* Cabeçalho do AppShell: 3.5rem mais a barra de status do iPhone (viewport-fit=cover). */
+  --cabecalho: calc(3.5rem + env(safe-area-inset-top));
 
   /* Warm off-white canvas, near-black ink, emerald WABA accent */
   --background: oklch(0.985 0.005 95);
@@ -234,10 +236,10 @@ html[data-densidade="pequeno"] {
   background-image: var(--gradiente-primario-suave);
 }
 
-/* Altura útil no celular: tela menos cabeçalho (3.5rem) e barra inferior
+/* Altura útil no celular: tela menos cabeçalho e barra inferior
    (3.5rem + borda de 1px + área segura do iPhone). No desktop cada tela usa md:h-[…]. */
 @utility altura-tela-com-barra {
-  height: calc(100dvh - 7rem - 1px - env(safe-area-inset-bottom));
+  height: calc(100dvh - var(--cabecalho) - 3.5rem - 1px - env(safe-area-inset-bottom));
 }
 
 @utility scrollbar-thin {
