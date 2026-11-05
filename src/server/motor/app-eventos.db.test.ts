@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 
 import { comTransacao, getPoolMotor } from "../db";
 import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./banco-teste";
+import { normalizarEventoApp } from "../vendas/eventos-app";
+import { processarEventoApp } from "./app-eventos";
 import { registrarMensagem } from "./ingestao";
 import { criarProcessadorVendas, processarVenda, vincular } from "./vendas";
 
@@ -86,13 +88,29 @@ async function eventosLead(id: string, tipo: string) {
   return rows;
 }
 
-async function lembretes(id: string) {
+/** Agendamento processado com o relógio dos lembretes fixo em `agora` (SP é UTC-3 o ano todo). */
+async function agendarEm(
+  l: { leadId: string; telefone: string },
+  quando: { agora: string; date: string; time_slot: string },
+  booking_id = randomUUID(),
+) {
+  const { agora, date, time_slot } = quando;
+  const ev = normalizarEventoApp({
+    event: "USER_HOUR_BOOKED",
+    timestamp: agora,
+    data: { booking_id, phone: l.telefone, modality: "wake", date, time_slot },
+  });
+  if (!("tipo" in ev)) throw new Error(JSON.stringify(ev));
+  return comTransacao((c) => processarEventoApp(c, ev, { booking_id }, { agora: new Date(agora) }));
+}
+
+async function followupsLembrete(id: string) {
   const { rows } = await db().query(
-    `select tipo from wakeclub.followups
+    `select tipo, status, aula_em, agendado_para, motivo from wakeclub.followups
       where lead_id = $1::uuid and tipo like 'lembrete%' order by tipo`,
     [id],
   );
-  return rows.map((r) => r.tipo);
+  return rows;
 }
 
 async function appEvento(tipo: string, chave: string) {
@@ -237,24 +255,18 @@ describe.skipIf(!bancoTesteAtivo)("eventos do app", () => {
       [l.leadId],
     );
     const booking_id = randomUUID();
-    const corpo = {
-      booking_id,
-      phone: l.telefone,
-      modality: "wake",
-      date: quando(3 * 24 * HORA).date,
-      time_slot: "15:00",
-    };
-    expect(await enviar("USER_HOUR_BOOKED", corpo)).toBe("processado");
-    expect(await enviar("USER_HOUR_BOOKED", corpo)).toBe("ignorado");
+    const agora = "2031-03-10T12:00:00-03:00";
+    expect(await agendarEm(l, { agora, date: "2031-03-13", time_slot: "15:00" }, booking_id)).toBe(
+      "processado",
+    );
+    expect(await agendarEm(l, { agora, date: "2031-03-13", time_slot: "15:00" }, booking_id)).toBe(
+      "ignorado",
+    );
 
     const lido = await lead(l.leadId);
     expect(lido.etiqueta).toBe("Novo lead");
     expect(lido.proxima_aula_em).not.toBeNull();
-    const { rows } = await db().query(
-      `select tipo, status, aula_em, agendado_para, motivo from wakeclub.followups
-        where lead_id = $1::uuid and tipo like 'lembrete%' order by tipo`,
-      [l.leadId],
-    );
+    const rows = await followupsLembrete(l.leadId);
     expect(rows.map((r) => [r.tipo, r.status])).toEqual([
       ["lembrete_d1", "pendente"],
       ["lembrete_dia", "pendente"],
@@ -262,8 +274,11 @@ describe.skipIf(!bancoTesteAtivo)("eventos do app", () => {
     for (const r of rows) {
       expect(new Date(r.aula_em).getTime()).toBe(new Date(lido.proxima_aula_em).getTime());
       expect(r.motivo).toMatch(/^aula em \d{4}-\d{2}-\d{2} \d{2}:\d{2} \(wake\)$/);
-      expect(new Date(r.agendado_para).getTime()).toBeLessThan(new Date(r.aula_em).getTime());
     }
+    expect(rows.map((r) => new Date(r.agendado_para).toISOString())).toEqual([
+      "2031-03-12T13:00:00.000Z", // véspera 10:00 SP
+      "2031-03-13T11:00:00.000Z", // dia 08:00 SP
+    ]);
     const p = await db().query(
       "select status, motivo_cancelamento from wakeclub.followups where id = $1::uuid",
       [parado.rows[0].id],
@@ -278,48 +293,33 @@ describe.skipIf(!bancoTesteAtivo)("eventos do app", () => {
     expect(await eventosLead(l.leadId, "stage_changed")).toHaveLength(0);
   });
 
-  test("agendamento para daqui a 1h não cria lembrete", async () => {
+  const lembretesEm = async (agora: string, date: string, time_slot: string) => {
     const l = await criarLead();
-    await enviar("USER_HOUR_BOOKED", {
-      booking_id: randomUUID(),
-      phone: l.telefone,
-      ...quando(HORA),
-    });
-    const { rows } = await db().query(
-      "select count(*)::int as n from wakeclub.followups where lead_id = $1::uuid",
-      [l.leadId],
-    );
-    expect(rows[0].n).toBe(0);
+    await agendarEm(l, { agora, date, time_slot });
+    return (await followupsLembrete(l.leadId)).map((r) => [
+      r.tipo,
+      new Date(r.agendado_para).toISOString(),
+    ]);
+  };
+
+  test("agendamento daqui a 1h não cria lembrete", async () => {
+    expect(await lembretesEm("2031-03-10T12:00:00-03:00", "2031-03-10", "13:00")).toEqual([]);
   });
 
-  test("aula amanhã 07:00 ou 09:00 → só lembrete_d1, e só se ainda dá para mandar na véspera (antes das 20h SP)", async () => {
-    // Relógio real: depois das 20h SP o lembrete_d1 já perdeu a janela da véspera.
-    const antesDas20 = Number(quando(0).time_slot.slice(0, 2)) < 20;
-    for (const time_slot of ["07:00", "09:00"]) {
-      const l = await criarLead();
-      await enviar("USER_HOUR_BOOKED", {
-        booking_id: randomUUID(),
-        phone: l.telefone,
-        date: quando(24 * HORA).date,
-        time_slot,
-      });
-      expect(await lembretes(l.leadId)).toEqual(antesDas20 ? ["lembrete_d1"] : []);
-    }
+  test("aula amanhã 07:00 agendada às 14:00 → só lembrete_d1, na hora do agendamento", async () => {
+    expect(await lembretesEm("2031-03-10T14:00:00-03:00", "2031-03-11", "07:00")).toEqual([
+      ["lembrete_d1", "2031-03-10T17:00:00.000Z"],
+    ]);
   });
 
-  test("aula hoje com 3h ou mais de antecedência → só lembrete_dia", async () => {
-    // Aula às 10h ou mais (08:00 + 2h) e no mesmo dia SP; sem horário possível, não há caso.
-    const agora = quando(0);
-    const hora = Math.max(10, Number(agora.time_slot.slice(0, 2)) + 4);
-    if (hora > 23) return;
-    const l = await criarLead();
-    await enviar("USER_HOUR_BOOKED", {
-      booking_id: randomUUID(),
-      phone: l.telefone,
-      date: agora.date,
-      time_slot: `${String(hora).padStart(2, "0")}:00`,
-    });
-    expect(await lembretes(l.leadId)).toEqual(["lembrete_dia"]);
+  test("aula hoje 18:00 agendada às 12:00 → só lembrete_dia, na hora do agendamento", async () => {
+    expect(await lembretesEm("2031-03-10T12:00:00-03:00", "2031-03-10", "18:00")).toEqual([
+      ["lembrete_dia", "2031-03-10T15:00:00.000Z"],
+    ]);
+  });
+
+  test("agendado às 23:00 para amanhã 09:00 → nenhum (véspera passou das 20h, dia limita em 07:00)", async () => {
+    expect(await lembretesEm("2031-03-10T23:00:00-03:00", "2031-03-11", "09:00")).toEqual([]);
   });
 
   test("PAID com user_id de outro lead: venda, horas e etapa vão para o lead do cpf/telefone; conflito marcado", async () => {

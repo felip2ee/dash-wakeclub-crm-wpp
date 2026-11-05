@@ -187,7 +187,7 @@ async function aplicar(db: PoolClient, leadId: string, m: Mudanca, o: Origem): P
 
 const SQL_LEMBRETES = `
 with alvo as (
-  select tipo, greatest(nominal, now()) as agendado_para
+  select tipo, greatest(nominal, $5::timestamptz) as agendado_para
     from (values
       -- d1 sai na véspera, até 20h SP (janela 8h–19h59); dia sai até 2h antes da aula.
       ('lembrete_d1',
@@ -200,8 +200,8 @@ with alvo as (
          at time zone 'America/Sao_Paulo'),
        $2::timestamptz - interval '2 hours')
     ) v (tipo, nominal, limite)
-   where $2::timestamptz - now() >= interval '2 hours'
-     and greatest(nominal, now()) <= limite
+   where $2::timestamptz - $5::timestamptz >= interval '2 hours'
+     and greatest(nominal, $5::timestamptz) <= limite
 ),
 criado as (
   insert into wakeclub.followups (lead_id, tipo, agendado_para, motivo, aula_em, status)
@@ -237,16 +237,26 @@ async function criarLembretes(
   db: PoolClient,
   leadId: string,
   ev: Extract<EventoApp, { tipo: "agendamento" }>,
-  appEventoId: string,
+  origem: { appEventoId: string; agora: Date },
 ): Promise<void> {
-  await db.query(SQL_LEMBRETES, [leadId, ev.aulaEm, ev.modalidade, appEventoId]);
+  await db.query(SQL_LEMBRETES, [
+    leadId,
+    ev.aulaEm,
+    ev.modalidade,
+    origem.appEventoId,
+    origem.agora,
+  ]);
 }
 
 export async function processarEventoApp(
   db: PoolClient,
   ev: EventoApp,
   corpoBruto: unknown,
-  leadIdConhecido: string | null = null,
+  // leadIdConhecido: lead da venda já cruzada; agora: relógio dos lembretes (injetável em teste).
+  {
+    leadIdConhecido = null,
+    agora = new Date(),
+  }: { leadIdConhecido?: string | null; agora?: Date } = {},
 ): Promise<"processado" | "ignorado"> {
   const { rows } = await db.query<{ id: string }>(
     `insert into wakeclub.app_eventos (tipo, chave, ocorrido_em, dados)
@@ -277,8 +287,8 @@ export async function processarEventoApp(
     },
     { appEventoId, correlacao: `motor:app:${appEventoId}`, gatilho: "webhook" },
   );
-  if (ev.tipo === "agendamento" && Date.parse(ev.aulaEm) > Date.now())
-    await criarLembretes(db, leadId, ev, appEventoId);
+  if (ev.tipo === "agendamento" && Date.parse(ev.aulaEm) > agora.getTime())
+    await criarLembretes(db, leadId, ev, { appEventoId, agora });
   return "processado";
 }
 

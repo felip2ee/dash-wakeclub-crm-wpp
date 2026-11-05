@@ -275,7 +275,9 @@ export function criarProcessadorVendas(): Processador {
           "select lead_id from wakeclub.vendas where id = $1::uuid",
           [vendaId],
         );
-        return processarEventoApp(db, ev, evento.corpo, rows[0]?.lead_id ?? null);
+        return processarEventoApp(db, ev, evento.corpo, {
+          leadIdConhecido: rows[0]?.lead_id ?? null,
+        });
       }
       return processarEventoApp(db, ev, evento.corpo);
     }
