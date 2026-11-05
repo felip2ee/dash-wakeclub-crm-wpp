@@ -211,9 +211,10 @@ servicos_por() {
   printf '%s' "$achados"
 }
 
-# padrao_postgres HOST_ORION SALVO CANDIDATO...: sugestão do menu de Postgres. Vence o serviço
-# do Host do Orion (nome igual, HOST_HOST ou terminado em _HOST, nessa ordem); depois o salvo,
-# se for candidato; senão o primeiro. Sem candidatos: o salvo, senão o Host do Orion.
+# padrao_postgres HOST_ORION SALVO CANDIDATO...: sugestão do menu de Postgres. Vence o salvo,
+# se for candidato (escolha confirmada antes não muda pela dica do Orion, como a REDE); depois
+# o serviço do Host do Orion (nome igual, HOST_HOST ou terminado em _HOST, nessa ordem, por
+# comparação literal); senão o primeiro. Sem candidatos: o salvo, senão o Host do Orion.
 padrao_postgres() {
   local h="$1" s="$2" c
   shift 2
@@ -221,13 +222,13 @@ padrao_postgres() {
     printf '%s\n' "${s:-$h}"
     return 0
   fi
+  if [ -n "$s" ]; then
+    for c in "$@"; do if [ "$c" = "$s" ]; then printf '%s\n' "$c"; return 0; fi; done
+  fi
   if [ -n "$h" ]; then
     for c in "$@"; do if [ "$c" = "$h" ]; then printf '%s\n' "$c"; return 0; fi; done
     for c in "$@"; do if [ "$c" = "${h}_$h" ]; then printf '%s\n' "$c"; return 0; fi; done
     for c in "$@"; do case "$c" in *"_$h") printf '%s\n' "$c"; return 0 ;; esac; done
-  fi
-  if [ -n "$s" ]; then
-    for c in "$@"; do if [ "$c" = "$s" ]; then printf '%s\n' "$c"; return 0; fi; done
   fi
   printf '%s\n' "$1"
 }
@@ -394,6 +395,9 @@ arquivo_env() {
 PG_HOST_JOB=127.0.0.1
 
 # container_pg: id do contêiner running da tarefa do Postgres neste nó; vazio se não houver.
+# Erro do daemon => código != 0 (pipefail).
+# shortcut: com mais de uma tarefa running neste nó (atualização em curso), pega qualquer uma;
+# basta no Orion de nó único. Se o Postgres tiver réplicas no mesmo nó, escolher pela mais nova.
 container_pg() {
   docker ps -q -f "label=com.docker.swarm.service.name=$PG_SERVICO" -f status=running | head -n1
 }
@@ -459,7 +463,7 @@ sql_pg() {
 checar_banco() {
   local existe
   existe="$(rodar_no_pg "$(env_pg postgres)" psql -X -At -c "select 1 from pg_database where datname = 'wakeclub'")" ||
-    morrer "Não consegui conectar ao Postgres em $PG_HOST com o usuário $PG_USUARIO. Nada foi alterado."
+    morrer "Não consegui conectar ao Postgres em 127.0.0.1 (rede do contêiner $PG_SERVICO) com o usuário $PG_USUARIO. Confira se o Postgres escuta em localhost (listen_addresses) e se o pg_hba.conf aceita 127.0.0.1. Nada foi alterado."
   [ "$existe" = 1 ] ||
     morrer "O banco wakeclub não existe em $PG_SERVICO. O instalador não cria o banco do CRM: crie-o (ou restaure um dump) e rode de novo. Nada foi alterado."
 }
@@ -866,7 +870,7 @@ detectar() {
   SERVICOS="$(docker service ls --format '{{.Name}} {{.Image}}')"
 
   # Postgres. O serviço manda; o Orion (dados_postgres) só cobre o que ele não diz. Com mais
-  # de um serviço, a sugestão é o do Host do Orion, depois o salvo (padrao_postgres); a porta
+  # de um serviço, a sugestão é o salvo, depois o do Host do Orion (padrao_postgres); a porta
   # fica 5432 (a do contêiner, que é por onde o instalador e o CRM falam).
   local pg_salvo pg_orion pg_img='^(postgres(:|$)|pgvector/)' pg_nome='postgres|pgvector' pg_c
   local -a pg_cand=()
@@ -983,7 +987,9 @@ detectar() {
   REDE_ATTACHABLE=""
   if rede_attachable "$(docker network inspect --format '{{.Attachable}}' "$REDE")"; then REDE_ATTACHABLE=1; fi
   ok "rede: $REDE ($(if [ -n "$REDE_ATTACHABLE" ]; then echo attachable; else echo "não attachable"; fi))"
-  [ -n "$(container_pg)" ] ||
+  local pg_cont
+  pg_cont="$(container_pg)" || morrer "docker ps falhou ao procurar o contêiner do Postgres (erro do Docker acima). Nada foi alterado."
+  [ -n "$pg_cont" ] ||
     morrer "Nenhum contêiner do Postgres ($PG_SERVICO) rodando neste nó. Rode o instalador no nó onde o Postgres roda. Nada foi alterado."
   ok "jobs temporários: rede do contêiner do Postgres (127.0.0.1)"
 

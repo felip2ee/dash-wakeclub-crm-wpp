@@ -316,7 +316,7 @@ docker() {
     *TaskTemplate.Networks*) case "$a" in *pg_pg) [ "$REDES_PG" != FALHA ] || { echo "Error: erro real do docker" >&2; return 1; }; echo "$REDES_PG" ;; *tr_tr) echo "$REDES_TR" ;; *) echo n1 ;; esac ;;
     "network inspect --format {{.Name}} "*) echo "${a##* }" ;;
     "network inspect --format {{.Attachable}} "*) echo "${ATTACH:-true}" ;;
-    "ps "*) printf '%s\n' ${PG_CONT:+"$PG_CONT"} ;;
+    "ps "*) [ "$PG_CONT" != FALHA ] || return 1; printf '%s\n' ${PG_CONT:+"$PG_CONT"} ;;
     "network inspect "*) case "${a##* }" in n1 | n2 | n3) ;; *) return 1 ;; esac ;;
     *) return 1 ;;
   esac
@@ -398,6 +398,9 @@ assert_eq ok "$r" "rede não attachable: diz como os jobs chegam ao Postgres"
 assert_eq 1 "$(PG_CONT="" ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "Postgres em outro nó: para"
 case "$(cat "$TMP/detectar.log")" in *"Rode o instalador no nó onde o Postgres roda. Nada foi alterado."*) r=ok ;; *) r=nao ;; esac
 assert_eq ok "$r" "Postgres em outro nó: diz por quê"
+assert_eq 1 "$(PG_CONT=FALHA ENV_PG='POSTGRES_PASSWORD=x' REDES_PG='n1' REDES_TR='n1' rodar_detectar >/dev/null; echo $?)" "docker ps falhou: para"
+case "$(cat "$TMP/detectar.log")" in *"docker ps falhou ao procurar o contêiner do Postgres"*) r=ok ;; *) r=nao ;; esac
+assert_eq ok "$r" "docker ps falhou: não confunde com Postgres em outro nó"
 unset -f docker
 
 # perguntas: sem domínio do Portainer e com REDE não attachable, a API fica de fora.
@@ -416,9 +419,12 @@ case "$(cat "$TMP/perguntas.log")" in *"A rede n1 não é attachable"*"docker st
 assert_eq ok "$r" "rede não attachable sem domínio: avisa"
 assert_eq "dono|API do Portainer (usuário dono)" "$(REDE_ATTACHABLE=1 rodar_perguntas)" "rede attachable: API do Portainer pela overlay"
 
-# padrao_postgres: com mais de um Postgres, sugere o do Host do Orion, depois o salvo.
+# padrao_postgres: com mais de um Postgres, sugere o salvo, depois o do Host do Orion.
 assert_eq postgres_postgres "$(padrao_postgres postgres "" pgvector_pgvector postgres_postgres)" "Orion postgres: postgres_postgres"
-assert_eq postgres_postgres "$(padrao_postgres postgres pgvector_pgvector pgvector_pgvector postgres_postgres)" "Orion vence o salvo"
+assert_eq pgvector_pgvector "$(padrao_postgres postgres pgvector_pgvector postgres_postgres pgvector_pgvector)" "salvo vence o Orion"
+assert_eq postgres_postgres "$(padrao_postgres postgres "" x_postgres postgres_postgres)" "Host_Host vence um _Host anterior"
+assert_eq x "$(padrao_postgres 'pg.*' "" x pg_pg y_pgz)" "Host com curinga casa só literal"
+assert_eq 'y_pg.*' "$(padrao_postgres 'pg.*' "" x 'y_pg.*')" "Host com curinga: sufixo literal casa"
 assert_eq postgres "$(padrao_postgres postgres "" postgres_postgres postgres)" "nome igual ao Host vem primeiro"
 assert_eq banco_postgres "$(padrao_postgres postgres "" pgvector_pgvector banco_postgres)" "serviço terminado em _Host"
 assert_eq x "$(padrao_postgres postgres "" x meupostgres)" "sem _ antes do Host não casa: o primeiro"
