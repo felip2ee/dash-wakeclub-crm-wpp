@@ -66,13 +66,17 @@ export const definirPrecoHora = createServerFn({ method: "POST" })
     // Centavos: o campo aceita vírgula, mas o banco guarda no máximo duas casas.
     const valor = Math.round(data.valor * 100) / 100;
     await gravarPrecoHora(getPoolRw(), valor);
-    return { ...(await lerConfiguracoes(getPoolRw())), precoHora: valor };
+    return lerConfiguracoes(getPoolRw());
   });
 
 export const definirMetaVendasDia = createServerFn({ method: "POST" })
   .validator(
     z.object({
-      valor: z.number().int().min(1, "A meta precisa ser de pelo menos 1 venda por dia.").max(1000),
+      valor: z
+        .number()
+        .int()
+        .min(1, "A meta precisa ser de pelo menos 1 venda por dia.")
+        .max(1000, "Meta acima do esperado."),
     }),
   )
   .handler(async ({ data }): Promise<Configuracoes> => {
