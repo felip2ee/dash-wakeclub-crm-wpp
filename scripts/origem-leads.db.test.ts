@@ -24,6 +24,7 @@ function sql(url: string, comando: string, params: unknown[] = []): void {
     { encoding: "utf8" },
   );
   expect(r.stderr).toBe("");
+  expect(r.status).toBe(0);
 }
 
 const COLUNAS = `origem_canal, origem_app, origem_anuncio_id, origem_anuncio_titulo,
@@ -66,7 +67,9 @@ describe.skipIf(process.env.TESTE_BANCO !== "1")("db:origem", () => {
     ];
   };
 
-  const p = Array.from({ length: 7 }, () => telefoneUnico());
+  const p = Array.from({ length: 10 }, () => telefoneUnico());
+  // paraE164 só devolve o 9 ao número de 12 dígitos cujo miolo começa em 6-9: fixa o p5.
+  p[5] = p[5].replace(/^\+55639\d/, "+55639" + "8");
   const ids: string[] = [];
 
   async function foto() {
@@ -127,6 +130,26 @@ describe.skipIf(process.env.TESTE_BANCO !== "1")("db:origem", () => {
       "update wakeclub.leads set origem_canal = 'busca' where telefone = $1::text",
       [p[3]],
     );
+    // p7: 'direto' sem detectada_em = o motor gravou sem evidência; p8: 'direto' com evidência.
+    await getPoolMotor().query(
+      "update wakeclub.leads set origem_canal = 'direto' where telefone = $1::text",
+      [p[7]],
+    );
+    await getPoolMotor().query(
+      "update wakeclub.leads set origem_canal = 'direto', origem_detectada_em = now() where telefone = $1::text",
+      [p[8]],
+    );
+    // p2 e p6 têm mensagem do lead (viram direto); p9 só da equipe (fica NULL).
+    for (const [i, direcao] of [
+      [2, "lead"],
+      [6, "lead"],
+      [9, "equipe"],
+    ] as const)
+      await getPoolMotor().query(
+        `insert into wakeclub.mensagens (lead_id, direcao, texto, enviada_em)
+         values ($1::uuid, $2::text, 'oi', now())`,
+        [ids[i], direcao],
+      );
 
     const lid = `${digitos(p[4])}`;
     const linhas = [
@@ -138,6 +161,8 @@ describe.skipIf(process.env.TESTE_BANCO !== "1")("db:origem", () => {
       linha("999999999@lid", 500, { alt: `${lid}@s.whatsapp.net` }),
       // 12 dígitos: sem o 9 do celular
       linha(`${digitos(p[5]).replace(/^(5563)9/, "$1")}@s.whatsapp.net`, 600, {}),
+      linha(`${digitos(p[7])}@s.whatsapp.net`, 700, {}),
+      linha(`${digitos(p[8])}@s.whatsapp.net`, 800, {}),
     ];
     for (const [id, key, message, contexto, t] of linhas) {
       sql(
@@ -151,9 +176,9 @@ describe.skipIf(process.env.TESTE_BANCO !== "1")("db:origem", () => {
     const r = rodar();
     expect(r.stderr).toBe("");
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("anuncio\t3");
+    expect(r.stdout).toMatch(/^anuncio\t4$/m);
     expect(r.stdout).toMatch(/^sem lead no CRM\t\d+$/m);
-    expect(r.stdout).toContain("link\t1");
+    expect(r.stdout).toMatch(/^link\t1$/m);
     expect(Number(r.stdout.match(/^direto\t(\d+)$/m)?.[1])).toBeGreaterThanOrEqual(2);
     expect(Number(r.stdout.match(/^já tinham origem\t(\d+)$/m)?.[1])).toBeGreaterThanOrEqual(1);
 
@@ -173,15 +198,22 @@ describe.skipIf(process.env.TESTE_BANCO !== "1")("db:origem", () => {
     const sem = await doLead(6);
     expect(sem.origem_canal).toBe("direto");
     expect(sem.detectada_em).toBeNull();
+    const reescrito = await doLead(7);
+    expect(reescrito.origem_canal).toBe("anuncio");
+    expect(new Date(reescrito.detectada_em).getTime()).toBe(700 * 1000);
+    const mantido = await doLead(8);
+    expect(mantido.origem_canal).toBe("direto");
+    expect(mantido.origem_app).toBeNull();
+    expect((await doLead(9)).origem_canal).toBeNull();
   });
 
   test("idempotente: segunda rodada não muda nada e reporta já tinham origem", async () => {
     const antes = await foto();
     const r = rodar();
     expect(r.status).toBe(0);
-    expect(Number(r.stdout.match(/^já tinham origem\t(\d+)$/m)?.[1])).toBeGreaterThanOrEqual(7);
-    expect(r.stdout).toContain("anuncio\t0");
-    expect(r.stdout).toContain("direto\t0");
+    expect(Number(r.stdout.match(/^já tinham origem\t(\d+)$/m)?.[1])).toBeGreaterThanOrEqual(9);
+    expect(r.stdout).toMatch(/^anuncio\t0$/m);
+    expect(r.stdout).toMatch(/^direto\t0$/m);
     expect(await foto()).toEqual(antes);
   });
 });

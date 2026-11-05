@@ -7,8 +7,13 @@
  * Por que existe: a ingestão grava a origem só de mensagens novas. Para o passado, lê o
  * banco `evolution` (a Evolution guarda o `contextInfo` de cada mensagem) e aplica a mesma
  * classificação do webhook (`normalizarEvolution`), então script e ingestão não divergem.
- * Manual e idempotente: nunca sobrescreve `origem_*` já preenchida; lead sem marca vira
- * `direto`. Só leitura na Evolution; escreve só as colunas `origem_*` de wakeclub.leads.
+ * Manual e idempotente. Regras:
+ *   1. Nunca sobrescreve `origem_*` já preenchida, exceto `direto` com `origem_detectada_em`
+ *      nula: é "sem evidência ainda" (o motor gravou antes deste script) e, se a Evolution
+ *      tem marca para o telefone, é sobrescrito (as cinco colunas `origem_*`).
+ *   2. A varredura final marca `direto` só o lead com pelo menos uma mensagem dele; lead só
+ *      com mensagem da equipe, ou sem mensagem, continua NULL.
+ * Só leitura na Evolution; escreve só as colunas `origem_*` de wakeclub.leads.
  *
  * Lê do ambiente (ou do .env, o ambiente ganha):
  *   ADMIN_DATABASE_URL    dono do banco wakeclub (o caminho é trocado para /evolution na leitura).
@@ -87,7 +92,7 @@ async function main() {
         instance: instancia,
         data: dados,
       })) {
-        if (e.tipo !== "mensagem" || !e.origem || origens.has(e.telefone)) continue;
+        if (e.tipo !== "mensagem" || e.daEquipe || !e.origem || origens.has(e.telefone)) continue;
         origens.set(e.telefone, { origem: e.origem, em: e.enviadaEm });
       }
     }
@@ -103,9 +108,17 @@ async function main() {
   let jaTinham = 0;
   try {
     await crm.query("begin");
-    const { rows: leads } = await crm.query("select telefone, origem_canal from wakeclub.leads");
-    const estado = new Map(leads.map((l) => [l.telefone, l.origem_canal]));
-    jaTinham = leads.filter((l) => l.origem_canal !== null).length;
+    const { rows: leads } = await crm.query(
+      "select telefone, origem_canal, origem_detectada_em from wakeclub.leads",
+    );
+    // null = sem origem; "direto" sem detectada_em também conta como sem evidência.
+    const estado = new Map(
+      leads.map((l) => [
+        l.telefone,
+        l.origem_canal === "direto" && l.origem_detectada_em === null ? null : l.origem_canal,
+      ]),
+    );
+    jaTinham = [...estado.values()].filter((c) => c !== null).length;
     for (const [telefone, { origem, em }] of origens) {
       if (!estado.has(telefone)) {
         semLead++;
@@ -116,18 +129,23 @@ async function main() {
         `update wakeclub.leads
             set origem_canal = $2::text, origem_app = $3::text, origem_anuncio_id = $4::text,
                 origem_anuncio_titulo = $5::text, origem_detectada_em = $6::timestamptz
-          where telefone = $1::text and origem_canal is null`,
+          where telefone = $1::text
+            and (origem_canal is null
+                 or (origem_canal = 'direto' and origem_detectada_em is null))`,
         [telefone, origem.canal, origem.app, origem.anuncioId, origem.anuncioTitulo, em],
       );
       contagem[origem.canal] += r.rowCount ?? 0;
     }
     const direto = await crm.query(
-      "update wakeclub.leads set origem_canal = 'direto' where origem_canal is null",
+      `update wakeclub.leads set origem_canal = 'direto'
+        where origem_canal is null
+          and exists (select 1 from wakeclub.mensagens m
+                       where m.lead_id = leads.id and m.direcao = 'lead')`,
     );
     contagem.direto = direto.rowCount ?? 0;
     await crm.query("commit");
   } catch (erro) {
-    await crm.query("rollback");
+    await crm.query("rollback").catch(() => {});
     throw erro;
   } finally {
     await crm.end();
