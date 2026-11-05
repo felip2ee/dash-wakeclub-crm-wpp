@@ -177,4 +177,32 @@ describe("envelope do app", () => {
       erro: "formato desconhecido: sem valor",
     });
   });
+
+  test("envelope fora do namespace USER_ não é ignorado", () => {
+    const r = normalizarVenda({ event: "order.paid", data: { id: 1, amount: 10 } });
+    expect(r).not.toHaveProperty("ignorar");
+    expect(r).toHaveProperty("erro");
+  });
+
+  test("price_paid em texto", () => {
+    expect(ok(pago({ price_paid: "500.00" })).valor).toBe(500);
+    expect(ok(pago({ price_paid: "1.500" })).valor).toBe(1500);
+  });
+
+  test('test "true" em texto também é teste', () => {
+    expect(normalizarVenda(pago({ test: "true" }))).toEqual({ ignorar: "evento de teste do app" });
+  });
+
+  test("aula assistida e compra criada são ignoradas", () => {
+    for (const event of ["USER_LESSON_ATTENDED", "USER_HOUR_PURCHASE_CREATED"]) {
+      expect(normalizarVenda({ event, timestamp: "x", data: { status: "pending" } })).toEqual({
+        ignorar: `evento ${event} sem venda`,
+      });
+    }
+  });
+
+  test("timestamp ilegível usa o horário de recebimento", () => {
+    const r = ok({ ...pago(), timestamp: "ontem" });
+    expect(r.decisoes).toContain("data ausente ou ilegível: usado o horário de recebimento");
+  });
 });
