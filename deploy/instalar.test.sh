@@ -320,9 +320,15 @@ assert_eq "docker stack deploy" "$(texto_publicacao)" "resumo: sem Portainer"
 
 # checar_dependentes: lista os objetos e para; vazio segue; erro na consulta para.
 # shellcheck disable=SC2329 # sql_pg chamada por checar_dependentes
-saida="$( (sql_pg() { printf 'public.v_leads\noutro.pedidos\n'; }; checar_dependentes) 2>&1)"
-case "$saida" in *"✗ Objetos fora do schema wakeclub dependem dele: public.v_leads, outro.pedidos."*"drop schema wakeclub cascade"*"Nada foi alterado."*) r=ok ;; *) r="$saida" ;; esac
-assert_eq ok "$r" "dependentes listados e parada"
+saida="$( (sql_pg() { printf 'rule _RETURN on view public.v_leads\nconstraint p_fk on table outro.pedidos\n'; }; checar_dependentes) 2>&1)"
+case "$saida" in *"✗ Objetos fora do schema wakeclub dependem dele:"*"    - rule _RETURN on view public.v_leads"*"    - constraint p_fk on table outro.pedidos"*"drop schema wakeclub cascade"*"Nada foi alterado."*) r=ok ;; *) r="$saida" ;; esac
+assert_eq ok "$r" "dependentes listados, um por linha, e parada"
+# shellcheck disable=SC2329
+assert_eq 1 "$( (sql_pg() { printf 'x\n'; }; checar_dependentes) >/dev/null 2>&1; echo $?)" "com dependente: sai 1"
+# shellcheck disable=SC2329
+r="$( (sql_pg() { printf '%s' "$1"; }; checar_dependentes) 2>&1)"
+case "$r" in *pg_identify_object*"deptype in ('n', 'a')"*"is distinct from 'wakeclub'"*) r=ok ;; esac
+assert_eq ok "$r" "consulta genérica por pg_depend"
 # shellcheck disable=SC2329
 assert_eq 0 "$( (sql_pg() { :; }; checar_dependentes) >/dev/null 2>&1; echo $?)" "sem dependentes: segue"
 # shellcheck disable=SC2329

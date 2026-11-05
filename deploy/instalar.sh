@@ -1043,11 +1043,33 @@ gerar() {
   fi
 }
 
-# Views e FKs fora do schema wakeclub que dependem dele. A volta automática faz
-# `drop schema wakeclub cascade`: apagaria esses objetos e o dump do schema não os traz.
+# Tudo fora do schema wakeclub que `drop schema wakeclub cascade` (a volta automática) apagaria:
+# o dump do schema não traz esses objetos de volta. Em pg_depend, cada dependência normal ou
+# automática ('n', 'a') cujo objeto referido está no wakeclub (ou é o próprio schema) e cujo
+# dependente está fora dele: views, FKs, funções com tipo do wakeclub, triggers que chamam
+# função dele, defaults com sequência dele, casts e o que mais o Postgres registrar.
+# Regra, trigger, default e policy não têm schema próprio em pg_identify_object: valem o da
+# tabela ou view dona (dependência 'a' ou 'i'); sem dono (cast, event trigger), contam como fora.
+# Default privileges do schema wakeclub dependem do schema e são dele (o dump as traz).
+# Corpo de função (plpgsql, ou SQL entre aspas) não entra em pg_depend: o cascade não apaga a
+# função por citar uma tabela do wakeclub, e ela volta a funcionar depois da restauração.
+# search_path só pg_catalog: pg_describe_object qualifica o schema de tudo (inclusive public).
 # to_regnamespace: banco sem o schema não tem dependentes (e não dá erro).
-SQL_DEPENDENTES="select distinct c2.oid::regclass::text from pg_depend d join pg_rewrite r on d.objid = r.oid join pg_class c2 on r.ev_class = c2.oid join pg_class c on d.refobjid = c.oid where c.relnamespace = to_regnamespace('wakeclub') and c2.relnamespace <> to_regnamespace('wakeclub')
-union select conrelid::regclass::text from pg_constraint where confrelid in (select oid from pg_class where relnamespace = to_regnamespace('wakeclub')) and connamespace <> to_regnamespace('wakeclub')"
+SQL_DEPENDENTES="set search_path to pg_catalog;
+select distinct pg_describe_object(d.classid, d.objid, d.objsubid)
+  from pg_depend d
+  cross join lateral pg_identify_object(d.refclassid, d.refobjid, d.refobjsubid) r
+  cross join lateral pg_identify_object(d.classid, d.objid, d.objsubid) o
+ where d.deptype in ('n', 'a')
+   and (r.schema = 'wakeclub' or (d.refclassid = 'pg_namespace'::regclass and d.refobjid = to_regnamespace('wakeclub')))
+   and coalesce(o.schema, (
+         select case when dp.refclassid = 'pg_namespace'::regclass then p.identity else p.schema end
+           from pg_depend dp
+          cross join lateral pg_identify_object(dp.refclassid, dp.refobjid, dp.refobjsubid) p
+          where dp.classid = d.classid and dp.objid = d.objid and dp.objsubid = d.objsubid
+            and dp.deptype in ('a', 'i') and dp.refclassid in ('pg_class'::regclass, 'pg_namespace'::regclass)
+          limit 1)) is distinct from 'wakeclub'
+ order by 1"
 
 # checar_dependentes: só leitura, antes do backup. Qualquer dependente ou erro para.
 checar_dependentes() {
@@ -1055,7 +1077,9 @@ checar_dependentes() {
   fora="$(sql_pg "$SQL_DEPENDENTES")" ||
     morrer "Não consegui conferir dependências de fora do schema wakeclub. Nada foi alterado."
   [ -z "$fora" ] && return 0
-  morrer "Objetos fora do schema wakeclub dependem dele: $(printf '%s' "$fora" | tr '\n' ' ' | sed 's/ $//; s/ /, /g'). A volta automática (drop schema wakeclub cascade) os apagaria sem trazer de volta. Remova ou mova esses objetos e rode de novo. Nada foi alterado."
+  falha "Objetos fora do schema wakeclub dependem dele:"
+  printf '%s\n' "$fora" | sed 's/^/    - /'
+  morrer "A volta automática (drop schema wakeclub cascade) os apagaria sem trazer de volta. Remova ou mova esses objetos e rode de novo. Nada foi alterado."
 }
 
 # Migrações pendentes, só leitura. Saída vazia = nada pendente; erro = para.

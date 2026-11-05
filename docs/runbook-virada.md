@@ -47,10 +47,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
 
 **Se o instalador falhar:**
 
-- Antes de mexer em qualquer coisa (só com migração pendente): se houver view ou FK fora do
-  schema `wakeclub` que dependa dele, o instalador para e lista esses objetos. A volta
-  automática faz `drop schema wakeclub cascade` e os apagaria sem trazer de volta. Nada foi
-  alterado: remova ou mova esses objetos e rode de novo. Se a consulta falhar, ele também para.
+- Antes de mexer em qualquer coisa (só com migração pendente): se houver objeto fora do
+  schema `wakeclub` que dependa dele (view, FK, função com tipo dele, trigger que chama função
+  dele, default com sequência dele ou qualquer outro que o Postgres registre em `pg_depend`), o
+  instalador para e lista esses objetos. A volta automática faz `drop schema wakeclub cascade`
+  e os apagaria sem trazer de volta. Nada foi alterado: remova ou mova esses objetos e rode de
+  novo. Se a consulta falhar, ele também para. Função que só cita o `wakeclub` no corpo não
+  conta: o cascade não a apaga.
 - Também antes da confirmação: chave ou URL da Evolution, instância, certresolver ou entrypoint
   com `"`, `\` ou quebra de linha são recusados (quebrariam o arquivo da stack). Interativo,
   ele pergunta de novo; com `WAKECRM_SIM=1`, para.
