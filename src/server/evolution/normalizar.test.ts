@@ -26,6 +26,7 @@ describe("normalizarEvolution: mensagens", () => {
       tipoMidia: "texto",
       enviadaEm: EM,
       evolutionMsgId: "3EB0A0000000000000001",
+      origem: null,
     });
   });
 
@@ -232,4 +233,37 @@ test("paraIso: segundos, ms, Long, ISO e lixo", () => {
   expect(paraIso(EM)).toBe(EM);
   expect(paraIso("lixo", agora)).toBe(EM);
   expect(paraIso(undefined, agora)).toBe(EM);
+});
+
+describe("normalizarEvolution: origem", () => {
+  test("texto-recebido sem marca → origem null", () => {
+    expect(mensagem("texto-recebido")).toMatchObject({ origem: null });
+  });
+
+  const sem = { app: null, anuncioId: null, anuncioTitulo: null };
+  test.each([
+    [
+      "origem-anuncio-instagram",
+      {
+        canal: "anuncio",
+        app: "instagram",
+        anuncioId: "120210000000000001",
+        anuncioTitulo: "Aula experimental de wake",
+      },
+    ],
+    [
+      "origem-anuncio-so-external",
+      {
+        canal: "anuncio",
+        app: null,
+        anuncioId: "120210000000000002",
+        anuncioTitulo: "Aula experimental de wake",
+      },
+    ],
+    ["origem-link", { canal: "link", ...sem }],
+    ["origem-busca", { canal: "busca", app: "whatsapp", anuncioId: null, anuncioTitulo: null }],
+    ["origem-grupo", { canal: "outro", ...sem }],
+  ])("%s", (nome, origem) => {
+    expect(mensagem(nome)).toMatchObject({ origem });
+  });
 });

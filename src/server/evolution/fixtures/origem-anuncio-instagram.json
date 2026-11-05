@@ -1,0 +1,44 @@
+{
+  "event": "messages.upsert",
+  "instance": "wakeclub",
+  "data": {
+    "key": {
+      "remoteJid": "5563900000001@s.whatsapp.net",
+      "fromMe": false,
+      "id": "3EB0A0000000000000010"
+    },
+    "pushName": "Maria Teste",
+    "messageType": "extendedTextMessage",
+    "messageTimestamp": 1793787300,
+    "source": "android",
+    "message": {
+      "extendedTextMessage": {
+        "text": "Oi, quero saber mais",
+        "contextInfo": {
+          "entryPointConversionSource": "ctwa_ad",
+          "entryPointConversionApp": "instagram",
+          "externalAdReply": {
+            "title": "Aula experimental de wake",
+            "sourceId": "120210000000000001",
+            "sourceType": "ad",
+            "sourceUrl": "https://fb.me/exemplo",
+            "ctwaClid": "CLID-FICTICIO"
+          }
+        }
+      }
+    },
+    "contextInfo": {
+      "entryPointConversionSource": "ctwa_ad",
+      "entryPointConversionApp": "instagram",
+      "externalAdReply": {
+        "title": "Aula experimental de wake",
+        "sourceId": "120210000000000001",
+        "sourceType": "ad",
+        "sourceUrl": "https://fb.me/exemplo",
+        "ctwaClid": "CLID-FICTICIO"
+      }
+    }
+  },
+  "date_time": "2026-11-04T10:15:00.000Z",
+  "apikey": "chave-ficticia-nao-usar"
+}

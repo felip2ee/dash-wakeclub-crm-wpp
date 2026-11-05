@@ -16,6 +16,15 @@ export type TipoMidia =
   | "contato"
   | "localizacao";
 
+export type OrigemCanal = "anuncio" | "link" | "busca" | "outro";
+export type OrigemApp = "instagram" | "facebook" | "whatsapp";
+export type OrigemLead = {
+  canal: OrigemCanal;
+  app: OrigemApp | null;
+  anuncioId: string | null;
+  anuncioTitulo: string | null;
+};
+
 export type EventoMensagem = {
   tipo: "mensagem";
   /** E.164 com o 9º dígito; o adaptador já resolveu `@lid` pelo número real. */
@@ -26,6 +35,8 @@ export type EventoMensagem = {
   tipoMidia: TipoMidia;
   enviadaEm: string;
   evolutionMsgId: string;
+  /** De onde veio a conversa; `null` sem marca no `contextInfo`. */
+  origem?: OrigemLead | null;
 };
 
 export type EventoAck = { tipo: "ack"; evolutionMsgId: string; nivel: 0 | 1 | 2 | 3 | 4 | 5 };
