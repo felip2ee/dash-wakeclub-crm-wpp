@@ -88,8 +88,8 @@ describe.skipIf(!bancoTesteAtivo)("dinheiro", () => {
     const etapas: [string, string, number | null, boolean][] = [
       ["Aguardando pagamento", "quente", 2, false], // 2 × preço × 70%
       ["Link enviado", "morno", null, false], // 1 × preço × 20%
-      ["Negociação encerrada", "quente", 3, false], // fora do pipeline
-      ["Atendimento", "quente", 1, true], // opt-out
+      ["Encerrado", "quente", 3, false], // fora do pipeline
+      ["Em atendimento", "quente", 1, true], // opt-out
     ];
     for (const [etiqueta, temperatura, horas, optOut] of etapas) {
       const { leadId } = await lead(vid, new Date(), false);
