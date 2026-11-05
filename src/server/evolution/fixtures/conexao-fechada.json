@@ -1,0 +1,14 @@
+{
+  "event": "connection.update",
+  "instance": "wakeclub",
+  "data": {
+    "instance": "wakeclub",
+    "state": "close",
+    "statusReason": "401"
+  },
+  "destination": "https://crm.exemplo.test/api/webhooks/evolution",
+  "date_time": "2026-11-04T10:15:00.000Z",
+  "sender": "5563900000099@s.whatsapp.net",
+  "server_url": "http://evolution-api.exemplo.test:8080",
+  "apikey": "chave-ficticia-nao-usar"
+}
