@@ -24,6 +24,13 @@ vendedor, ranking semanal).
   estornada/refunded/chargeback). Campo não encontrado → `null`; sem id ou sem valor → o
   evento fica `falhou` com erro "formato desconhecido" (visível no monitor) para a
   calibração com o payload real.
+- O app de agendamento envia o próprio envelope `{ event, timestamp, data }`. Só
+  `USER_HOUR_PURCHASE_PAID` cria venda: id = `data.transaction_id` (senão `payment_id`), valor =
+  `data.price_paid` **em reais** (sem heurística de centavos), data = `timestamp`, produto =
+  `package_label` (senão `<hours>h <hour_type>`). `data.test === true` e os demais eventos
+  (`USER_CREATE_ACCOUNT`, `USER_HOUR_BOOKED`, `USER_LESSON_ATTENDED`,
+  `USER_HOUR_PURCHASE_CREATED`, `USER_CONTRACT_SIGNED`) terminam `ignorado`, não `falhou`. Ainda
+  não há evento de estorno nem movimentação de etapa do lead por esses eventos.
 - Idempotência por `(origem_externa, id_externo)` único em `vendas`.
 
 ## 3. Tabela `vendas` (migração `0005_vendas.sql`) **[construtor]**

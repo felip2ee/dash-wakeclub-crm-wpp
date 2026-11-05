@@ -36,8 +36,74 @@ function numero(v: unknown): number | null {
   return s && Number.isFinite(n) ? n : null;
 }
 
-export function normalizarVenda(corpo: unknown): VendaNormalizada | { erro: string } {
+/**
+ * Envelope real do app de agendamento: `{ event, timestamp, data }`. Só
+ * USER_HOUR_PURCHASE_PAID vira venda; `data.price_paid` já vem em reais (sem a heurística de
+ * centavos). Os demais eventos e os de teste (`data.test`) são ignorados, não erro.
+ * Estorno: nenhum evento de estorno conhecido ainda; incluir aqui quando o app definir um.
+ */
+function normalizarEnvelopeApp(
+  evento: string,
+  corpo: Obj,
+  data: Obj,
+): VendaNormalizada | { erro: string } | { ignorar: string } {
+  if (data.test === true) return { ignorar: "evento de teste do app" };
+  if (evento !== "USER_HOUR_PURCHASE_PAID") return { ignorar: `evento ${evento} sem venda` };
+
+  const id = achar(data, ["transaction_id", "payment_id"]);
+  if (typeof id !== "string" && typeof id !== "number")
+    return { erro: "formato desconhecido: sem id da venda" };
+  const valor = numero(data.price_paid);
+  if (valor === null || valor <= 0) return { erro: "formato desconhecido: sem valor" };
+
+  const decisoes = ["envelope do app (USER_HOUR_PURCHASE_PAID): price_paid em reais"];
+  const quando = achar(corpo, ["timestamp"]) ?? achar(data, ["paid_at", "date"]);
+  const ms = quando === null ? NaN : Date.parse(String(quando));
+  let compradaEm: string;
+  if (Number.isNaN(ms)) {
+    compradaEm = new Date().toISOString();
+    decisoes.push("data ausente ou ilegível: usado o horário de recebimento");
+  } else compradaEm = new Date(ms).toISOString();
+
+  const cpfDigitos = String(data.cpf ?? "").replace(/\D/g, "");
+  const cpf = cpfDigitos.length === 11 ? cpfDigitos : null;
+  if (data.cpf && !cpf) decisoes.push("cpf descartado: não tem 11 dígitos");
+
+  let telDigitos = String(data.phone ?? "").replace(/\D/g, "");
+  if (telDigitos.length === 10 || telDigitos.length === 11) {
+    telDigitos = "55" + telDigitos;
+    decisoes.push("telefone sem código do país: assumido +55");
+  }
+
+  const horasN = numero(data.hours);
+  const horas = horasN !== null && Number.isInteger(horasN) ? horasN : null;
+  const rotulo = achar(data, ["package_label"]);
+  const produto =
+    rotulo !== null
+      ? String(rotulo)
+      : horas !== null
+        ? `${horas}h ${String(data.hour_type ?? "")}`.trim()
+        : null;
+
+  return {
+    idExterno: String(id),
+    compradaEm,
+    valor,
+    cpf,
+    telefone: telDigitos ? paraE164(telDigitos) : null,
+    produto,
+    horas,
+    status: "paga",
+    decisoes,
+  };
+}
+
+export function normalizarVenda(
+  corpo: unknown,
+): VendaNormalizada | { erro: string } | { ignorar: string } {
   if (!ehObj(corpo)) return { erro: "formato desconhecido: corpo não é objeto" };
+  if (typeof corpo.event === "string" && ehObj(corpo.data))
+    return normalizarEnvelopeApp(corpo.event, corpo, corpo.data);
   const decisoes: string[] = [];
 
   const id = achar(corpo, ["id", "order_id", "transaction", "transaction_id"]);

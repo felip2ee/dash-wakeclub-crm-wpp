@@ -129,6 +129,16 @@ describe.skipIf(!bancoTesteAtivo)("processador de vendas", () => {
     expect(rows[0].vinculada_por).toBe("telefone");
     expect(rows[0].corpo_bruto).toEqual(corpo);
 
+    const ign = await comTransacao((c) =>
+      processador(c, {
+        id: 3,
+        origem: "vendas",
+        corpo: { event: "USER_HOUR_BOOKED", timestamp: "x", data: { booking_id: "1" } },
+        tentativas: 0,
+      }),
+    );
+    expect(ign).toBe("ignorado");
+
     const erro = await comTransacao((c) =>
       processador(c, { id: 2, origem: "vendas", corpo: { amount: 10 }, tentativas: 0 }),
     ).catch((e: Error) => e);

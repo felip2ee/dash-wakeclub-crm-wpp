@@ -5,6 +5,7 @@ import { normalizarVenda } from "./normalizar";
 function ok(corpo: unknown) {
   const r = normalizarVenda(corpo);
   if ("erro" in r) throw new Error(r.erro);
+  if ("ignorar" in r) throw new Error(`ignorado: ${r.ignorar}`);
   return r;
 }
 
@@ -115,5 +116,65 @@ describe("normalizarVenda", () => {
   test("valor <= 0 é erro", () => {
     expect("erro" in normalizarVenda({ id: 1, amount: 0 })).toBe(true);
     expect("erro" in normalizarVenda({ id: 1, amount: -5 })).toBe(true);
+  });
+});
+
+describe("envelope do app", () => {
+  const pago = (data: Record<string, unknown> = {}) => ({
+    event: "USER_HOUR_PURCHASE_PAID",
+    timestamp: "2026-11-05T04:39:57.985Z",
+    data: {
+      transaction_id: "AB12CD3",
+      payment_id: "pay_1",
+      cpf: "123.456.789-09",
+      phone: "11988887777",
+      hours: 5,
+      price_paid: 500,
+      hour_type: "normal",
+      ...data,
+    },
+  });
+
+  test("PAID vira venda, valor em reais", () => {
+    expect(ok(pago())).toEqual({
+      idExterno: "AB12CD3",
+      compradaEm: "2026-11-05T04:39:57.985Z",
+      valor: 500,
+      cpf: "12345678909",
+      telefone: "+5511988887777",
+      produto: "5h normal",
+      horas: 5,
+      status: "paga",
+      decisoes: [
+        "envelope do app (USER_HOUR_PURCHASE_PAID): price_paid em reais",
+        "telefone sem código do país: assumido +55",
+      ],
+    });
+  });
+
+  test("package_label vence e payment_id substitui transaction_id", () => {
+    const r = ok(pago({ transaction_id: undefined, package_label: "Pacote 5h" }));
+    expect(r).toMatchObject({ idExterno: "pay_1", produto: "Pacote 5h" });
+  });
+
+  test("teste do app é ignorado", () => {
+    expect(normalizarVenda(pago({ test: true }))).toEqual({ ignorar: "evento de teste do app" });
+  });
+
+  test("outros eventos são ignorados", () => {
+    for (const event of ["USER_CREATE_ACCOUNT", "USER_HOUR_BOOKED", "USER_CONTRACT_SIGNED"]) {
+      expect(normalizarVenda({ event, timestamp: "x", data: { booking_id: "1" } })).toEqual({
+        ignorar: `evento ${event} sem venda`,
+      });
+    }
+  });
+
+  test("PAID sem id ou sem valor é erro", () => {
+    expect(normalizarVenda(pago({ transaction_id: undefined, payment_id: undefined }))).toEqual({
+      erro: "formato desconhecido: sem id da venda",
+    });
+    expect(normalizarVenda(pago({ price_paid: undefined }))).toEqual({
+      erro: "formato desconhecido: sem valor",
+    });
   });
 });
