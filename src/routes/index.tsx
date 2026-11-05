@@ -9,6 +9,7 @@ import { useEffect } from "react";
 
 import { Conversa } from "@/features/conversa/Conversa";
 import { DetalhesDoLead } from "@/features/conversa/DetalhesDoLead";
+import { leadSemConversa } from "@/components/shell/navegacao";
 import { ListaConversas } from "@/features/conversas-lista/ListaConversas";
 import { cn } from "@/lib/utils";
 import { getConversas, getMensagens, type Conversa as LinhaConversa } from "@/server/conversas";
@@ -58,11 +59,21 @@ function InboxPage() {
   }, [router]);
 
   const ativa = conversas.find((c) => c.id === leadSelecionado) ?? null;
+  const semConversa = leadSemConversa(leadSelecionado, ativa !== null);
+  useEffect(() => {
+    if (semConversa) void navigate({ search: {}, replace: true });
+  }, [semConversa, navigate]);
 
   if (conversas.length === 0) return <SemConversas />;
 
   return (
-    <div className="grid altura-tela-com-barra grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[340px_1fr] xl:grid-cols-[360px_1fr_320px]">
+    <div
+      className={cn(
+        "grid grid-cols-1 md:h-[calc(100dvh-var(--cabecalho))] md:grid-cols-[340px_1fr] xl:grid-cols-[360px_1fr_320px]",
+        // Conversa aberta no celular ocupa a tela inteira (o AppShell esconde cabeçalho e barra).
+        leadSelecionado ? "h-dvh" : "altura-tela-sob-barra",
+      )}
+    >
       <aside
         className={cn(
           "min-h-0 flex-col border-r border-border md:flex",
@@ -116,7 +127,7 @@ function InboxPage() {
 
 function SemConversas() {
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center p-6">
+    <div className="flex altura-tela-com-barra md:h-[calc(100dvh-var(--cabecalho))] items-center justify-center p-6">
       <div className="max-w-md text-center">
         <MessageSquareText className="mx-auto h-10 w-10 text-muted-foreground/40" />
         <h2 className="mt-3 font-display text-base font-semibold">Nenhuma conversa no banco</h2>
@@ -135,7 +146,7 @@ function SemConversas() {
 
 function ErroDeConexao({ error }: ErrorComponentProps) {
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center p-6">
+    <div className="flex altura-tela-com-barra md:h-[calc(100dvh-var(--cabecalho))] items-center justify-center p-6">
       <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
         <TriangleAlert className="mx-auto h-8 w-8 text-destructive" />
         <h2 className="mt-3 font-display text-base font-semibold">Não deu para ler as conversas</h2>

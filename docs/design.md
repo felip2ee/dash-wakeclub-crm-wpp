@@ -127,9 +127,22 @@ Regras deste projeto:
 
 ## Layout e revisão
 
+- Celular (abaixo de `md`), no jeito do WhatsApp iOS: com uma conversa aberta (`?lead=` em `/`
+  e `/meus-leads`, `conversaAberta` em `navegacao.ts`) somem o cabeçalho e a barra inferior, e
+  a conversa ocupa `100dvh`. O viewport usa `viewport-fit=cover`; cabeçalhos, Composer,
+  sheets e drawer descontam `env(safe-area-inset-*)`.
+- Campos (`input`, `textarea`, `select`) ficam com no mínimo 16px no celular, em qualquer
+  densidade, para o iOS não dar zoom ao focar (`src/styles.css`). Nunca desligar o zoom com
+  `maximum-scale` ou `user-scalable=no`.
+- A barra inferior flutua como no WhatsApp iOS: pílula translúcida (`bg-card/70` com blur;
+  sólida com `prefers-reduced-transparency`), aba ativa em `accent` com ícone na primária.
+  O espaço dela é `--barra-inferior`: o `<main>` reserva esse padding; telas de altura fixa
+  usam `altura-tela-com-barra` (termina acima da barra, como `/aprovar`) ou
+  `altura-tela-sob-barra` (a lista rola por baixo e reserva o espaço no scroll interno).
+
 - Estados que cada tela operacional precisa ter: carregando, vazio, erro e sem permissão.
 - Pendências conhecidas: altura das telas antigas no celular (`h-[calc(100dvh-...)]`) e área
-  útil no iPhone instalado (rodapé sob a barra inferior com safe-area) precisam de conferência
+  útil no iPhone instalado (safe-area, teclado sobre o Composer) precisam de conferência
   em aparelho; PWA, push e retorno do WhatsApp dependem de teste em iPhone na Tela de Início.
 - Nenhuma revisão formal de interface com login real foi feita até 05/11/2026.
 

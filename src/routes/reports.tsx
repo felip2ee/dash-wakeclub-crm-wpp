@@ -561,7 +561,7 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: number }) {
 
 function ErroDeConexao({ error }: ErrorComponentProps) {
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center p-6">
+    <div className="flex altura-tela-com-barra md:h-[calc(100dvh-var(--cabecalho))] items-center justify-center p-6">
       <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
         <MessageCircle className="mx-auto h-8 w-8 text-destructive" />
         <h2 className="mt-3 font-display text-base font-semibold">

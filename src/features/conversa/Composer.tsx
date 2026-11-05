@@ -110,7 +110,8 @@ export function Composer({ leadId, queryKey }: { leadId: string; queryKey: Query
   }
 
   return (
-    <div className="border-t border-border bg-card/70 px-3 py-2.5 backdrop-blur sm:px-4">
+    // Área segura do iPhone embaixo: a conversa no celular vai até a borda da tela.
+    <div className="border-t border-border bg-card/70 px-3 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-4">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
         {sugestoes.length > 0 && (
           <ul className="max-h-40 overflow-auto rounded-md border bg-popover text-sm shadow-sm">
