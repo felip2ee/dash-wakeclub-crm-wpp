@@ -6,7 +6,7 @@ import { responderMidia } from "@/server/midia";
 export const Route = createFileRoute("/api/midia/$mensagemId")({
   server: {
     handlers: {
-      GET: ({ params }) => responderMidia(params.mensagemId),
+      GET: ({ request, params }) => responderMidia(params.mensagemId, request.headers.get("range")),
     },
   },
 });

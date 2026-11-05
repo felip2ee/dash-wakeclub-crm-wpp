@@ -62,7 +62,7 @@ export function Bolha({
             <Mic aria-hidden className="h-3.5 w-3.5" /> Áudio{rotulo ? "" : " · transcrição"}
           </p>
         )}
-        {ehAudio && <AudioDaBolha mensagemId={m.id} daEquipe={daEquipe} />}
+        {ehAudio && audio !== "sem_midia" && <AudioDaBolha mensagemId={m.id} daEquipe={daEquipe} />}
         {midia && (
           <MidiaDaBolha mensagemId={m.id} daEquipe={daEquipe} tipo={midia} texto={m.texto} />
         )}

@@ -78,6 +78,7 @@ export function cabecalhosMidia(
   return new Headers({
     "Content-Type": inline || tipo === "documento" ? mime : "application/octet-stream",
     "Content-Length": String(tamanho),
+    "Accept-Ranges": "bytes",
     "Content-Disposition": disposicao,
     "Cache-Control": "private, max-age=300",
     "X-Content-Type-Options": "nosniff",
@@ -88,13 +89,53 @@ export function cabecalhosMidia(
 const erro = (status: number, mensagem: string) => Response.json({ erro: mensagem }, { status });
 const naoEncontrado = () => erro(404, "Mídia indisponível");
 
-export async function responderMidia(mensagemIdBruto: string): Promise<Response> {
+export type Intervalo = { inicio: number; fim: number };
+
+/**
+ * Cabeçalho `Range` de um pedaço só (o iOS exige isso para tocar áudio e vídeo).
+ * `null` = sem Range ou vários pedaços (resposta inteira, o que a RFC 9110 permite);
+ * `"invalido"` = 416. `fim` é inclusivo.
+ */
+export function intervaloPedido(
+  range: string | null,
+  total: number,
+): Intervalo | null | "invalido" {
+  if (!range?.startsWith("bytes=") || range.includes(",")) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+  if (!m || (m[1] === "" && m[2] === "")) return "invalido";
+  if (m[1] === "") {
+    const n = Number(m[2]);
+    return n > 0 && total > 0 ? { inicio: Math.max(0, total - n), fim: total - 1 } : "invalido";
+  }
+  const inicio = Number(m[1]);
+  const fim = m[2] === "" ? total - 1 : Math.min(Number(m[2]), total - 1);
+  return inicio < total && inicio <= fim ? { inicio, fim } : "invalido";
+}
+
+export async function responderMidia(
+  mensagemIdBruto: string,
+  range: string | null,
+  obterSessao: () => Promise<Pick<Sessao, "papel" | "usuarioId"> | null> = getSessao,
+): Promise<Response> {
   const id = z.string().uuid().safeParse(mensagemIdBruto);
   if (!id.success) return naoEncontrado();
-  const sessao = await getSessao();
+  try {
+    return await servir(id.data, range, obterSessao);
+  } catch (e) {
+    logErro("midia.responder", e, { mensagemId: id.data });
+    return erro(500, "Erro ao buscar a mídia");
+  }
+}
+
+async function servir(
+  mensagemId: string,
+  range: string | null,
+  obterSessao: () => Promise<Pick<Sessao, "papel" | "usuarioId"> | null>,
+): Promise<Response> {
+  const sessao = await obterSessao();
   if (!sessao) return erro(401, "Sessão expirada");
 
-  const msg = await lerMensagemMidia(getPoolMotor(), id.data, sessao);
+  const msg = await lerMensagemMidia(getPoolMotor(), mensagemId, sessao);
   if (!msg?.evolution_msg_id) return naoEncontrado();
   const adaptador = obterAdaptador();
   if (!adaptador) return erro(503, "Mídia indisponível no momento");
@@ -103,16 +144,22 @@ export async function responderMidia(mensagemIdBruto: string): Promise<Response>
   try {
     midia = await adaptador.baixarMidia(msg.evolution_msg_id);
   } catch (e) {
-    logErro("midia.baixar", e, { mensagemId: id.data });
+    logErro("midia.baixar", e, { mensagemId });
     return erro(502, "Não foi possível buscar a mídia");
   }
   if (!midia) return naoEncontrado();
-  if (midia.dados.byteLength > LIMITE_MIDIA_BYTES) return erro(413, "Mídia acima de 25 MB");
+  const total = midia.dados.byteLength;
+  if (total > LIMITE_MIDIA_BYTES) return erro(413, "Mídia acima de 25 MB");
 
-  const nome = msg.tipo === "documento" ? nomeArquivoSeguro(msg.texto) : null;
+  const pedaco = intervaloPedido(range, total);
+  if (pedaco === "invalido") {
+    return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${total}` } });
+  }
   // O adaptador cria os bytes de um Buffer, sempre sobre ArrayBuffer.
-  return new Response(midia.dados as Uint8Array<ArrayBuffer>, {
-    status: 200,
-    headers: cabecalhosMidia(msg.tipo, midia.mime, midia.dados.byteLength, nome),
-  });
+  const dados = midia.dados as Uint8Array<ArrayBuffer>;
+  const corpo = pedaco ? dados.subarray(pedaco.inicio, pedaco.fim + 1) : dados;
+  const nome = msg.tipo === "documento" ? nomeArquivoSeguro(msg.texto) : null;
+  const headers = cabecalhosMidia(msg.tipo, midia.mime, corpo.byteLength, nome);
+  if (pedaco) headers.set("Content-Range", `bytes ${pedaco.inicio}-${pedaco.fim}/${total}`);
+  return new Response(corpo, { status: pedaco ? 206 : 200, headers });
 }

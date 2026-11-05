@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { cabecalhosMidia, nomeArquivoSeguro, responderMidia } from "./midia";
+import { randomUUID } from "node:crypto";
+
+import { cabecalhosMidia, intervaloPedido, nomeArquivoSeguro, responderMidia } from "./midia";
 
 describe("nomeArquivoSeguro", () => {
   test("extrai o nome do marcador do documento", () => {
@@ -60,6 +62,39 @@ describe("cabecalhosMidia", () => {
 
 describe("responderMidia sem tocar no banco", () => {
   test("id inválido responde 404", async () => {
-    expect((await responderMidia("nao-e-uuid")).status).toBe(404);
+    expect((await responderMidia("nao-e-uuid", null)).status).toBe(404);
+  });
+
+  test("sem sessão responde 401", async () => {
+    const r = await responderMidia(randomUUID(), null, () => Promise.resolve(null));
+    expect(r.status).toBe(401);
+  });
+
+  test("falha inesperada responde 500 genérico", async () => {
+    const r = await responderMidia(randomUUID(), null, () => Promise.reject(new Error("x")));
+    expect(r.status).toBe(500);
+  });
+});
+
+describe("intervaloPedido", () => {
+  test("sem Range ou com vários pedaços serve inteiro", () => {
+    expect(intervaloPedido(null, 10)).toBeNull();
+    expect(intervaloPedido("bytes=0-1,4-5", 10)).toBeNull();
+    expect(intervaloPedido("itens=0-1", 10)).toBeNull();
+  });
+
+  test("a-b, a- e sufixo -n", () => {
+    expect(intervaloPedido("bytes=0-1", 10)).toEqual({ inicio: 0, fim: 1 });
+    expect(intervaloPedido("bytes=2-", 10)).toEqual({ inicio: 2, fim: 9 });
+    expect(intervaloPedido("bytes=-3", 10)).toEqual({ inicio: 7, fim: 9 });
+    expect(intervaloPedido("bytes=-30", 10)).toEqual({ inicio: 0, fim: 9 });
+    expect(intervaloPedido("bytes=5-99", 10)).toEqual({ inicio: 5, fim: 9 });
+  });
+
+  test("fora do arquivo ou malformado é 416", () => {
+    for (const r of ["bytes=10-", "bytes=10-12", "bytes=5-2", "bytes=-0", "bytes=-", "bytes=a-b"]) {
+      expect(intervaloPedido(r, 10)).toBe("invalido");
+    }
+    expect(intervaloPedido("bytes=0-", 0)).toBe("invalido");
   });
 });

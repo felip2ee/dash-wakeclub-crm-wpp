@@ -228,7 +228,8 @@ Rotas anteriores, ainda acessíveis por URL:
 
 A rota de mídia responde 401 sem sessão, 404 para id inválido, mensagem sem mídia, lead de
 outra atendente ou mídia expirada, 503 sem adaptador, 502 se a Evolution falha e 413 acima
-de 25 MB. Cache só `private, max-age=300`; documento e mime fora do tipo baixam como anexo,
+de 25 MB, e aceita `Range` de um pedaço (206, ou 416 fora do arquivo), que o iOS exige para
+áudio e vídeo. Cache só `private, max-age=300`; documento e mime fora do tipo baixam como anexo,
 com `nosniff` e CSP `sandbox`. O service worker não intercepta `fetch`, então nada é guardado.
 
 O corpo da Evolution é gravado sem o `apikey` de nível superior (chave global da API); a migração `0006` limpa linhas antigas. Os webhooks respondem 404 com segredo inválido ou ausente, 400 para JSON inválido e 413

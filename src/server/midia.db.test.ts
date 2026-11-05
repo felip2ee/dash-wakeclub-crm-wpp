@@ -51,6 +51,20 @@ describe.skipIf(!bancoTesteAtivo)("lerMensagemMidia", () => {
     ).toBeNull();
   });
 
+  test("lead sem dona: atendente não lê, admin lê", async () => {
+    const { mensagemId, dono } = await mensagem("imagem", "[imagem]");
+    await db().query(
+      "update wakeclub.leads set atendente_id = null where id = (select lead_id from wakeclub.mensagens where id = $1::uuid)",
+      [mensagemId],
+    );
+    expect(
+      await lerMensagemMidia(db(), mensagemId, { papel: "atendente", usuarioId: dono }),
+    ).toBeNull();
+    expect(
+      await lerMensagemMidia(db(), mensagemId, { papel: "admin", usuarioId: randomUUID() }),
+    ).not.toBeNull();
+  });
+
   test("mensagem de texto não é mídia", async () => {
     const { mensagemId } = await mensagem("texto", "oi");
     expect(
