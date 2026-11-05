@@ -245,7 +245,7 @@ export async function lerComercial(
     periodo: { ...periodo, dias: diasDoPeriodo(periodo), anterior },
     meta: resumoMeta({
       periodo,
-      metaDia: Number(meta.rows[0]?.meta ?? 0),
+      metaDia: Number(meta.rows[0]?.meta ?? 2),
       vendas: quantidade.atual,
       agora,
     }),
