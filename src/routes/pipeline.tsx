@@ -15,6 +15,7 @@ import { mesCorrente } from "@/features/dinheiro/periodo";
 import { ColunaEtapa } from "@/features/pipeline/ColunaEtapa";
 import { FaixaSomenteLeitura } from "@/features/pipeline/FaixaSomenteLeitura";
 import { Kpis } from "@/features/visao-geral/Kpis";
+import { PipelinePorEtapa } from "@/features/visao-geral/PipelinePorEtapa";
 import { listarVendedoresAprovacao } from "@/server/aprovacao";
 import { exigirAdmin } from "@/server/auth";
 import { getResumoDinheiro } from "@/server/dinheiro";
@@ -98,6 +99,12 @@ function PipelinePage() {
         <p role="alert" className="text-sm text-destructive">
           Não deu para carregar as vendas do mês.
         </p>
+      )}
+
+      {pipeline.data ? (
+        <PipelinePorEtapa colunas={pipeline.data.colunas} />
+      ) : (
+        <Skeleton className="h-48 rounded-xl" />
       )}
 
       <FaixaSomenteLeitura />
