@@ -10,16 +10,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { FiltroPeriodo } from "@/features/dinheiro/FiltroPeriodo";
 import { mesCorrente } from "@/features/dinheiro/periodo";
 import { SeletorDensidade } from "@/features/preferencias/SeletorDensidade";
 import { AlertasOperacao } from "@/features/visao-geral/AlertasOperacao";
+import { Atendimento } from "@/features/visao-geral/Atendimento";
 import { DesempenhoVendedores } from "@/features/visao-geral/DesempenhoVendedores";
-import { Kpis } from "@/features/visao-geral/Kpis";
-import { PipelinePorEtapa } from "@/features/visao-geral/PipelinePorEtapa";
-import { VendasPorCategoria } from "@/features/visao-geral/VendasPorCategoria";
-import { VendasRecentes } from "@/features/visao-geral/VendasRecentes";
+import { KpisComerciais } from "@/features/visao-geral/KpisComerciais";
+import { PorOrigem } from "@/features/visao-geral/PorOrigem";
 import { listarVendedoresAprovacao } from "@/server/aprovacao";
 import { exigirAdmin } from "@/server/auth";
 import { getVisaoGeral } from "@/server/visao-geral";
@@ -37,7 +35,7 @@ const TODOS = "todos";
 const BOTAO_ICONE =
   "inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-not-allowed aria-disabled:opacity-60";
 
-// Visão geral (referência 03): filtros, KPIs, vendas, pipeline por etapa, time e alertas.
+// Visão geral comercial: filtros, vendas × meta, origem, atendimento, time e alertas.
 function VisaoGeralPage() {
   const [vendedor, setVendedor] = useState(TODOS);
   const [periodo, setPeriodo] = useState(mesCorrente);
@@ -57,7 +55,9 @@ function VisaoGeralPage() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-bold">Visão geral</h1>
-          <p className="text-muted-foreground">Panorama do seu CRM, vendas e equipe</p>
+          <p className="text-muted-foreground">
+            O comercial está indo bem? Vendas contra a meta, leads novos, origem e conversão
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="hidden text-sm font-medium lg:inline">Densidade da interface</span>
@@ -85,7 +85,6 @@ function VisaoGeralPage() {
       </header>
 
       <div className="flex flex-wrap gap-3">
-        {/* Período só recorta as vendas; o pipeline é sempre o estado atual. */}
         <FiltroPeriodo periodo={periodo} onChange={setPeriodo} />
         <Select value={vendedor} onValueChange={setVendedor}>
           <SelectTrigger
@@ -125,23 +124,18 @@ function VisaoGeralPage() {
         </div>
       ) : (
         <>
-          <Kpis totais={visao.data?.pipeline.totais} vendas={visao.data?.vendas} />
+          <KpisComerciais comercial={visao.data?.comercial} />
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div className="min-w-0 space-y-4 xl:col-span-2">
-              <VendasPorCategoria categorias={visao.data?.vendas.porCategoria} />
-              {visao.data ? (
-                <PipelinePorEtapa colunas={visao.data.pipeline.colunas} />
-              ) : (
-                <Skeleton className="h-48 rounded-xl" />
-              )}
+            <div className="min-w-0 xl:col-span-2">
+              <PorOrigem comercial={visao.data?.comercial} />
             </div>
             <div className="min-w-0">
-              <DesempenhoVendedores ranking={visao.data?.vendas.rankingPeriodo} />
+              <Atendimento comercial={visao.data?.comercial} />
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <div className="min-w-0">
-              <VendasRecentes vendas={visao.data?.vendas.vendasRecentes} />
+              <DesempenhoVendedores ranking={visao.data?.vendas.rankingPeriodo} />
             </div>
             <div className="min-w-0">
               <AlertasOperacao

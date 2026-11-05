@@ -6,6 +6,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       className="toaster group"
+      // No celular os toasts ficam acima da barra inferior flutuante.
+      mobileOffset={{ bottom: "calc(var(--barra-inferior) + 0.5rem)" }}
       toastOptions={{
         classNames: {
           toast:

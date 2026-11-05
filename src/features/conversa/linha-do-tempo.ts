@@ -79,7 +79,7 @@ export function dataDoChip(iso: string): string {
 const ROTULO_AUDIO: Record<string, string> = {
   pendente: "Transcrevendo…",
   transcrevendo: "Transcrevendo…",
-  falhou: "Transcrição falhou",
+  falhou: "Não foi possível transcrever",
   sem_midia: "Áudio indisponível",
 };
 
@@ -90,4 +90,17 @@ const ROTULO_AUDIO: Record<string, string> = {
 export function rotuloAudio(status: string | null): string | null {
   if (status === "ok") return null;
   return ROTULO_AUDIO[status ?? ""] ?? "Áudio";
+}
+
+/** Texto que o WhatsApp grava no lugar da legenda (ver `normalizar.ts`); não é legenda. */
+const MARCADOR = /^\[(imagem|video|figurinha|audio|documento)( .*)?\]$/s;
+
+/** Legenda de verdade da mensagem de mídia, sem os marcadores `[imagem]`, `[documento x]`. */
+export function legendaDaMidia(texto: string | null): string | null {
+  return texto && !MARCADOR.test(texto) ? texto : null;
+}
+
+/** Nome do documento quando o texto é o marcador `[documento nome.pdf]`. */
+export function nomeDoDocumento(texto: string | null): string | null {
+  return /^\[documento (.+)\]$/s.exec(texto ?? "")?.[1] ?? null;
 }

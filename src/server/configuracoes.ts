@@ -1,6 +1,6 @@
 /**
  * Configurações gerais que o admin vê em /configuracoes: o preço da hora
- * (`configuracoes.preco_hora`, jsonb numérico), base do valor esperado dos leads, e os
+ * (`configuracoes.preco_hora`, jsonb numérico), a meta de vendas por dia (`meta_vendas_dia`), base do valor esperado dos leads, e os
  * endereços dos webhooks com os segredos, para colar na Evolution e no sistema de vendas.
  * O preço grava pela painel_rw (grant select/update da migração 0004); a linha já
  * nasce na migração, então aqui não há insert. O SQL fica em helpers que recebem o
@@ -13,14 +13,15 @@ import { z } from "zod";
 import { exigirAdmin } from "./auth";
 import { type ClienteDb, getPoolRw } from "./db";
 
-export type Configuracoes = { precoHora: number };
+export type Configuracoes = { precoHora: number; metaVendasDia: number };
 
 export async function lerConfiguracoes(db: ClienteDb): Promise<Configuracoes> {
-  const { rows } = await db.query<{ preco_hora: string | null }>(
-    `select valor #>> '{}' as preco_hora
-       from wakeclub.configuracoes where chave = 'preco_hora'`,
+  const { rows } = await db.query<{ chave: string; valor: string | null }>(
+    `select chave, valor #>> '{}' as valor
+       from wakeclub.configuracoes where chave in ('preco_hora', 'meta_vendas_dia')`,
   );
-  return { precoHora: Number(rows[0]?.preco_hora ?? 0) };
+  const valor = (chave: string) => Number(rows.find((r) => r.chave === chave)?.valor ?? 0);
+  return { precoHora: valor("preco_hora"), metaVendasDia: valor("meta_vendas_dia") };
 }
 
 export async function gravarPrecoHora(db: ClienteDb, valor: number): Promise<void> {
@@ -31,6 +32,16 @@ export async function gravarPrecoHora(db: ClienteDb, valor: number): Promise<voi
     [valor],
   );
   if (rowCount !== 1) throw new Error("Configuração do preço da hora não encontrada.");
+}
+
+export async function gravarMetaVendasDia(db: ClienteDb, valor: number): Promise<void> {
+  const { rowCount } = await db.query(
+    `update wakeclub.configuracoes
+        set valor = to_jsonb($1::int)
+      where chave = 'meta_vendas_dia'`,
+    [valor],
+  );
+  if (rowCount !== 1) throw new Error("Configuração da meta de vendas não encontrada.");
 }
 
 export const getConfiguracoes = createServerFn({ method: "GET" }).handler(
@@ -55,7 +66,23 @@ export const definirPrecoHora = createServerFn({ method: "POST" })
     // Centavos: o campo aceita vírgula, mas o banco guarda no máximo duas casas.
     const valor = Math.round(data.valor * 100) / 100;
     await gravarPrecoHora(getPoolRw(), valor);
-    return { precoHora: valor };
+    return lerConfiguracoes(getPoolRw());
+  });
+
+export const definirMetaVendasDia = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      valor: z
+        .number()
+        .int()
+        .min(1, "A meta precisa ser de pelo menos 1 venda por dia.")
+        .max(1000, "Meta acima do esperado."),
+    }),
+  )
+  .handler(async ({ data }): Promise<Configuracoes> => {
+    await exigirAdmin();
+    await gravarMetaVendasDia(getPoolRw(), data.valor);
+    return lerConfiguracoes(getPoolRw());
   });
 
 export type WebhookDestino = {

@@ -1,0 +1,24 @@
+{
+  "event": "messages.upsert",
+  "instance": "wakeclub",
+  "data": {
+    "key": {
+      "remoteJid": "5563900000001@s.whatsapp.net",
+      "fromMe": false,
+      "id": "3EB0A0000000000000010"
+    },
+    "pushName": "Maria Teste",
+    "messageType": "extendedTextMessage",
+    "messageTimestamp": 1793787300,
+    "source": "android",
+    "message": {
+      "conversation": "Oi",
+      "messageContextInfo": {
+        "entryPointConversionSource": "global_search_new_chat",
+        "entryPointConversionApp": "whatsapp"
+      }
+    }
+  },
+  "date_time": "2026-11-04T10:15:00.000Z",
+  "apikey": "chave-ficticia-nao-usar"
+}

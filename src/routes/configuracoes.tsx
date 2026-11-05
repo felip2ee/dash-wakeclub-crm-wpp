@@ -10,6 +10,7 @@ import {
   MessageSquareText,
   Monitor,
   Tag,
+  Target,
   Users,
   Webhook,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import { PainelIa } from "@/features/admin/PainelIa";
 import { CHAVE_RITMO } from "@/features/admin/Ritmo";
 import { FilaEventos, useMonitorFila } from "@/features/configuracoes/FilaEventos";
 import { ListaCelular, type SecaoCelular } from "@/features/configuracoes/ListaCelular";
+import { MetaVendas } from "@/features/configuracoes/MetaVendas";
 import { ModoFollowup } from "@/features/configuracoes/ModoFollowup";
 import { CHAVE_CONFIGURACOES, PrecoHora } from "@/features/configuracoes/PrecoHora";
 import { RespostasRapidasCartao } from "@/features/configuracoes/RespostasRapidasCartao";
@@ -85,9 +87,10 @@ function ConfiguracoesPage() {
           <Usuarios />
           <ModoFollowup />
         </div>
-        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-5">
           <DistribuicaoLeads />
           <PrecoHora />
+          <MetaVendas />
           <StatusWhatsapp />
           <FilaEventos />
         </div>
@@ -149,6 +152,15 @@ function useSecoesCelular(): SecaoCelular[] {
       icone: Tag,
       resumo: config.data ? moeda(config.data.precoHora) : "…",
       conteudo: <PrecoHora />,
+    },
+    {
+      id: "meta-vendas",
+      titulo: "Meta de vendas",
+      icone: Target,
+      resumo: config.data
+        ? plural(config.data.metaVendasDia, "venda por dia", "vendas por dia")
+        : "…",
+      conteudo: <MetaVendas />,
     },
     {
       id: "whatsapp",

@@ -21,3 +21,29 @@ export function mesAnterior(mes: string): string {
 export function rotuloMes(mes: string): string {
   return `${mes.slice(5, 7)}/${mes.slice(0, 4)}`;
 }
+
+export type Periodo = { de: string; ate: string };
+export type Atalho = "hoje" | "7dias" | "mes" | "personalizado";
+
+/** Só o dia de hoje em São Paulo. */
+export function hoje(agora = new Date()): Periodo {
+  const d = diaSP(agora);
+  return { de: d, ate: d };
+}
+
+/** Hoje e os 6 dias anteriores, em São Paulo. */
+export function ultimos7Dias(agora = new Date()): Periodo {
+  const ate = diaSP(agora);
+  const de = new Date(`${ate}T00:00:00Z`);
+  de.setUTCDate(de.getUTCDate() - 6);
+  return { de: de.toISOString().slice(0, 10), ate };
+}
+
+/** Atalho cujo período bate exatamente com `p`; senão "personalizado". */
+export function atalhoDe(p: Periodo, agora = new Date()): Atalho {
+  const igual = (o: Periodo) => o.de === p.de && o.ate === p.ate;
+  if (igual(hoje(agora))) return "hoje";
+  if (igual(ultimos7Dias(agora))) return "7dias";
+  if (igual(mesCorrente(agora))) return "mes";
+  return "personalizado";
+}

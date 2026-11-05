@@ -77,7 +77,14 @@ export const Route = createRootRouteWithContext<{
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      // viewport-fit=cover libera env(safe-area-inset-*) para o cabeçalho e o Composer no iPhone;
+      // interactive-widget faz o teclado encolher o layout (100dvh) onde o navegador suporta.
+      // Sem maximum-scale/user-scalable: o zoom do usuário fica livre (acessibilidade).
+      {
+        name: "viewport",
+        content:
+          "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content",
+      },
       { title: "Wake Club — CRM" },
       {
         name: "description",

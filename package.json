@@ -19,6 +19,7 @@
     "db:check": "node scripts/painel-db.mjs check",
     "db:apply": "node scripts/painel-db.mjs apply",
     "db:migrate": "node scripts/migrar.mjs",
+    "db:origem": "bun scripts/origem-leads.mjs",
     "db:admin": "node scripts/admin-crm.mjs",
     "test:db": "bash scripts/test-db.sh"
   },

@@ -99,7 +99,7 @@ function KanbanPage() {
   const aguardando = filtrados.filter((l) => l.aguardandoEquipe).length;
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col">
+    <div className="flex altura-tela-com-barra md:h-[calc(100dvh-var(--cabecalho))] flex-col">
       <header className="flex flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-lg font-semibold tracking-tight sm:text-xl">
@@ -253,7 +253,7 @@ function CardDoLead({ lead }: { lead: LeadCard }) {
 
 function ErroDeConexao({ error }: ErrorComponentProps) {
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] items-center justify-center p-6">
+    <div className="flex altura-tela-com-barra md:h-[calc(100dvh-var(--cabecalho))] items-center justify-center p-6">
       <div className="max-w-md rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
         <TriangleAlert className="mx-auto h-8 w-8 text-destructive" />
         <h2 className="mt-3 font-display text-base font-semibold">Não deu para ler o CRM</h2>

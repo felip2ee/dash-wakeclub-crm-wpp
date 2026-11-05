@@ -7,7 +7,14 @@
  * `detalhe`, log nem erro.
  */
 import { paraE164 } from "../motor/telefone";
-import type { EventoConexao, EventoMensagem, EventoNormalizado, TipoMidia } from "./tipos";
+import { origemDoContexto } from "./origem";
+import type {
+  EventoConexao,
+  EventoMensagem,
+  EventoNormalizado,
+  OrigemLead,
+  TipoMidia,
+} from "./tipos";
 
 export type Obj = Record<string, unknown>;
 
@@ -124,6 +131,23 @@ function resolverJid(jidBruto: string, chave: Obj, d: Obj): Jid {
   return telefone ? { telefone } : { motivo: "telefone invalido", jid: jidBruto };
 }
 
+/** Primeira origem em `data.contextInfo`, no `contextInfo` do conteúdo ou em `messageContextInfo`. */
+function origemDaMensagem(d: Obj): OrigemLead | null {
+  const msg = obj(d.message);
+  const interna = desembrulhar(msg);
+  const contextos = [
+    d.contextInfo,
+    ...Object.values(interna).map((v) => obj(v).contextInfo),
+    msg.messageContextInfo,
+    interna.messageContextInfo,
+  ];
+  for (const c of contextos) {
+    const o = origemDoContexto(obj(c));
+    if (o) return o;
+  }
+  return null;
+}
+
 function normalizarMensagem(d: Obj): EventoNormalizado {
   const chave = obj(d.key);
   const jid = resolverJid(str(chave.remoteJid), chave, d);
@@ -140,6 +164,7 @@ function normalizarMensagem(d: Obj): EventoNormalizado {
     tipoMidia: conteudo.tipo,
     enviadaEm: paraIso(d.messageTimestamp),
     evolutionMsgId: str(chave.id),
+    origem: origemDaMensagem(d),
   };
   return evento;
 }

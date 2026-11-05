@@ -40,7 +40,7 @@ PostgreSQL 14 via `pg` (sem ORM), Zod, Bun (`bun.lock`). Container `oven/bun:1.3
 - Build: `bun run build`
 - Verificação combinada (sem rede, banco ou build): `bun run check`
 - Banco (exige `.env` e autorização para o ambiente alvo): `bun run db:check`, `bun run db:apply`,
-  `bun run db:migrate`
+  `bun run db:migrate`, `bun run db:origem` (manual, exige autorização do dono; só leitura na Evolution)
 - Testes de banco (Docker local): `bash scripts/banco-teste.sh && bun run test:db`
 - Mudança só documental: `git diff --check` e revisão do diff.
 

@@ -79,7 +79,9 @@ export function OpportunityWorkspace({ lead }: { lead: LeadCard }) {
       : "Aguardar nova mensagem ou decisão do WF-02";
 
   return (
-    <DialogContent className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[92dvh] sm:w-[82vw] sm:max-w-[82vw] sm:rounded-xl sm:border">
+    // Tela cheia no celular: desconta o entalhe e a área segura (viewport-fit=cover) e
+    // desce o X do Dialog (último botão) junto.
+    <DialogContent className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-[env(safe-area-inset-bottom)] max-sm:[&>button:last-child]:top-[calc(1rem+env(safe-area-inset-top))] sm:h-[92dvh] sm:w-[82vw] sm:max-w-[82vw] sm:rounded-xl sm:border">
       <header className="border-b border-border bg-card px-4 py-4 pr-12 sm:px-6 sm:py-5 sm:pr-14">
         <DialogHeader>
           <div className="flex flex-wrap items-center gap-2">
