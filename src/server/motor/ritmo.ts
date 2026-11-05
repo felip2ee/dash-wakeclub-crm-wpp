@@ -1,9 +1,8 @@
 /**
  * Ritmo do follow-up (spec fases 2-3 §7, pipeline §8): quantos follow-ups saem por dia e o
- * intervalo entre envios, conforme o modo em `configuracoes.ritmo`. Também as tarefas
- * que devolvem o modo aquecido ao conservador na meia-noite, que expiram o que ficou
- * sem decisão e que cancelam lembrete de aula que já passou. Datas sempre em America/Sao_Paulo, no SQL ou por Intl, nunca no fuso
- * do processo.
+ * intervalo entre envios, conforme o modo em `configuracoes.ritmo`. Também as tarefas que
+ * devolvem o modo aquecido ao conservador na meia-noite, expiram o que ficou sem decisão e
+ * cancelam lembrete de aula passada. Datas em America/Sao_Paulo, no SQL ou por Intl.
  */
 // crypto global (Web Crypto), não `node:crypto`: este módulo chega ao bundle do cliente via
 // aprovacao.ts e admin-ia.ts, e o import do Node quebra a hidratação.

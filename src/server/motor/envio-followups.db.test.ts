@@ -466,22 +466,42 @@ describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
     expect(f.reconferido_em).not.toBeNull();
   });
 
-  test("erro do porteiro conta como barrado", async () => {
+  test("erro do porteiro não barra: segue aprovado e o próximo sai", async () => {
     const velho = await cenario({ aprovadoHa: "4 days" });
+    const novo = await cenario({ aprovadoHa: "1 minute" });
+    const { chamadas, adaptador } = adaptadorFalso();
+    const ia: ClienteIa = {
+      async chatJson() {
+        throw new Error("IA fora");
+      },
+      async transcrever() {
+        throw new Error("não usado");
+      },
+    };
+
+    expect(await tarefaEnvioFollowups({ adaptador, ia, agora: MEIO_DIA })).toBe(1);
+
+    expect(chamadas).toHaveLength(1);
+    expect(await followup(velho.followupId)).toMatchObject({
+      status: "aprovado",
+      reconferido_em: null,
+      motivo_cancelamento: null,
+    });
+    expect(await eventos(velho.followupId)).toEqual([]);
+    expect((await followup(novo.followupId)).status).toBe("enviado");
+  });
+
+  test("lembrete cuja aula já passou não sai", async () => {
+    const { followupId } = await cenario({ tipo: "lembrete_dia" });
     await db().query(
-      `update wakeclub.leads set atendente_id = null
-        where id = (select lead_id from wakeclub.followups where id = $1::uuid)`,
-      [velho.followupId],
+      "update wakeclub.followups set aula_em = now() - interval '1 hour' where id = $1::uuid",
+      [followupId],
     );
     const { chamadas, adaptador } = adaptadorFalso();
-    const porteiro = porteiroFalso({ enviar: true, motivo: "ok" });
 
-    expect(await tarefaEnvioFollowups({ adaptador, ia: porteiro.ia, agora: MEIO_DIA })).toBe(0);
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
 
     expect(chamadas).toHaveLength(0);
-    expect(await followup(velho.followupId)).toMatchObject({
-      status: "abortado",
-      motivo_cancelamento: "porteiro na fila de envio: follow-up não encontrado",
-    });
+    expect((await followup(followupId)).status).toBe("aprovado");
   });
 });

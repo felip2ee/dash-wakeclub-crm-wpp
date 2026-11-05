@@ -123,7 +123,8 @@ export async function listarCandidatos(
        from wakeclub.followups f
        join wakeclub.leads l on l.id = f.lead_id
       where f.status = 'aprovado' and f.aprovado_por is not null
-        and l.opt_out = false and l.sem_atendimento = false`,
+        and l.opt_out = false and l.sem_atendimento = false
+        and (f.aula_em is null or f.aula_em > now())`,
   );
   return rows.map((r) => ({
     id: r.id,
@@ -144,14 +145,14 @@ export async function listarCandidatos(
   }));
 }
 
-/** Porteiro sobre um aprovado antigo; erro (lead sem dono, IA fora) conta como barrar. */
+/** Porteiro sobre um aprovado antigo; só `enviar: false` barra, erro deixa a linha como está. */
 async function liberadoPeloPorteiro(db: ClienteDb, ia: ClienteIa, id: string): Promise<boolean> {
-  const parecer = await avaliarPorteiro(db, ia, id).catch((erro: unknown) => ({
-    enviar: false,
-    motivo: (erro instanceof Error ? erro.message : String(erro)).slice(0, 200),
-  }));
-  if (!parecer.enviar) {
-    await comTransacao((c) => abortar(c, id, BARRADO + parecer.motivo, "aprovado"));
+  const parecer = await avaliarPorteiro(db, ia, id).catch((erro: unknown) => {
+    logErro("envio.porteiro_falhou", erro, { followupId: id });
+    return null;
+  });
+  if (!parecer?.enviar) {
+    if (parecer) await comTransacao((c) => abortar(c, id, BARRADO + parecer.motivo, "aprovado"));
     return false;
   }
   await db.query(
