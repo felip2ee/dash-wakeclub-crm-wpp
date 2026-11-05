@@ -6,7 +6,7 @@ import { OpportunityWorkspace } from "@/features/opportunities/OpportunityWorksp
 import { dataHora, moeda } from "@/lib/formato";
 import type { LeadPipeline } from "@/server/leads";
 
-// Card do Pipeline (referência 04): nome, temperatura, dono, horas e valor cheio.
+// Card do Pipeline (referência 04): nome, temperatura, dono, horas, valor cheio e saldo/aulas do aluno.
 // O clique abre o mesmo OpportunityWorkspace do kanban; nada de arrastar.
 export function CardLead({ lead }: { lead: LeadPipeline }) {
   return (
