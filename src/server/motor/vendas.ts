@@ -8,8 +8,10 @@
  */
 import type { PoolClient } from "../db";
 import { estornoPosFechamento, vendaAtrasada } from "../fechamento";
+import { normalizarEventoApp } from "../vendas/eventos-app";
 import { normalizarVenda, type VendaNormalizada } from "../vendas/normalizar";
 import { categoriaDaVenda, comissaoDaVenda } from "../vendas/regras";
+import { avancarPorVendaVinculada, processarEventoApp } from "./app-eventos";
 import { ErroPermanente, type Processador } from "./fila";
 
 const EVENTO = `insert into wakeclub.eventos_automacao
@@ -53,10 +55,10 @@ async function inserirVenda(
   return rows[0]?.id ?? null;
 }
 
-/** Lead da venda: CPF primeiro, senão telefone (já em E.164 pelo normalizador). */
-async function cruzar(
+/** Lead da venda (ou do evento do app): CPF primeiro, senão telefone (já em E.164 pelo normalizador). */
+export async function cruzar(
   db: PoolClient,
-  v: VendaNormalizada,
+  v: Pick<VendaNormalizada, "cpf" | "telefone">,
 ): Promise<{ leadId: string; por: "cpf" | "telefone" } | null> {
   const { rows } = await db.query<{ id: string; por: "cpf" | "telefone" }>(
     `select id, por from (
@@ -233,14 +235,42 @@ export async function vincular(
       where v.id = $1::uuid and l.id = $2::uuid and l.cpf is null and v.cpf is not null`,
     [vendaId, leadId],
   );
+  const { rows } = await db.query<{ horas: number | null; status: string }>(
+    "select horas, status from wakeclub.vendas where id = $1::uuid",
+    [vendaId],
+  );
+  // Venda paga ligada pelo admin move etapa e saldo como a compra paga do app.
+  if (rows[0]?.status === "paga") await avancarPorVendaVinculada(db, leadId, rows[0].horas);
 }
+
+/** Envelope `{ event: "USER_*", data }` do app; o resto segue o formato flat de venda. */
+const ehEnvelopeApp = (c: unknown): boolean =>
+  typeof c === "object" &&
+  c !== null &&
+  typeof (c as { event?: unknown }).event === "string" &&
+  /^USER_/.test((c as { event: string }).event) &&
+  typeof (c as { data?: unknown }).data === "object" &&
+  (c as { data?: unknown }).data !== null;
 
 /** Processador da origem `vendas`: formato não entendido vai direto a `falhou`, sem retentativa. */
 export function criarProcessadorVendas(): Processador {
   return async (db, evento) => {
+    if (ehEnvelopeApp(evento.corpo)) {
+      const ev = normalizarEventoApp(evento.corpo);
+      if ("erro" in ev) throw new ErroPermanente(ev.erro);
+      if ("ignorar" in ev) return "ignorado"; // teste ou evento sem efeito; o corpo bruto já está na fila
+      if (ev.tipo === "compra_paga") {
+        const v = normalizarVenda(evento.corpo);
+        if ("erro" in v) throw new ErroPermanente(v.erro);
+        if ("ignorar" in v) return "ignorado";
+        // A venda liga o lead primeiro; o evento do app acha o mesmo lead depois.
+        await processarVenda(db, v, evento.corpo);
+      }
+      return processarEventoApp(db, ev, evento.corpo);
+    }
     const v = normalizarVenda(evento.corpo);
     if ("erro" in v) throw new ErroPermanente(v.erro);
-    if ("ignorar" in v) return "ignorado"; // evento do app sem venda; o motivo não é gravado de propósito (o corpo bruto já está na fila)
+    if ("ignorar" in v) return "ignorado";
     await processarVenda(db, v, evento.corpo);
     return "processado";
   };

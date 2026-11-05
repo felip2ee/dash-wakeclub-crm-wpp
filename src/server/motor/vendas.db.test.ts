@@ -133,7 +133,7 @@ describe.skipIf(!bancoTesteAtivo)("processador de vendas", () => {
       processador(c, {
         id: 3,
         origem: "vendas",
-        corpo: { event: "USER_HOUR_BOOKED", timestamp: "x", data: { booking_id: "1" } },
+        corpo: { event: "USER_LOGIN", timestamp: "x", data: { user_id: "1" } },
         tentativas: 0,
       }),
     );
