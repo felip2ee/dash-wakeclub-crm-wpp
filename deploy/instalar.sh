@@ -211,6 +211,27 @@ servicos_por() {
   printf '%s' "$achados"
 }
 
+# padrao_postgres HOST_ORION SALVO CANDIDATO...: sugestão do menu de Postgres. Vence o serviço
+# do Host do Orion (nome igual, HOST_HOST ou terminado em _HOST, nessa ordem); depois o salvo,
+# se for candidato; senão o primeiro. Sem candidatos: o salvo, senão o Host do Orion.
+padrao_postgres() {
+  local h="$1" s="$2" c
+  shift 2
+  if [ $# -eq 0 ]; then
+    printf '%s\n' "${s:-$h}"
+    return 0
+  fi
+  if [ -n "$h" ]; then
+    for c in "$@"; do if [ "$c" = "$h" ]; then printf '%s\n' "$c"; return 0; fi; done
+    for c in "$@"; do if [ "$c" = "${h}_$h" ]; then printf '%s\n' "$c"; return 0; fi; done
+    for c in "$@"; do case "$c" in *"_$h") printf '%s\n' "$c"; return 0 ;; esac; done
+  fi
+  if [ -n "$s" ]; then
+    for c in "$@"; do if [ "$c" = "$s" ]; then printf '%s\n' "$c"; return 0; fi; done
+  fi
+  printf '%s\n' "$1"
+}
+
 servico_existe() { docker service inspect "$1" >/dev/null 2>&1; }
 
 # entrypoint_https TEXTO: nome do entrypoint do Traefik na porta 443
@@ -844,14 +865,16 @@ detectar() {
   passo 2 "Detectando o servidor"
   SERVICOS="$(docker service ls --format '{{.Name}} {{.Image}}')"
 
-  # Postgres. O serviço manda; o Orion (dados_postgres) só cobre o que ele não diz. O Host do
-  # Orion só vira sugestão do nome quando não há serviço salvo; a porta fica 5432 (a do
-  # contêiner na overlay, que é por onde o instalador e o CRM falam).
-  local pg_salvo pg_orion
+  # Postgres. O serviço manda; o Orion (dados_postgres) só cobre o que ele não diz. Com mais
+  # de um serviço, a sugestão é o do Host do Orion, depois o salvo (padrao_postgres); a porta
+  # fica 5432 (a do contêiner, que é por onde o instalador e o CRM falam).
+  local pg_salvo pg_orion pg_img='^(postgres(:|$)|pgvector/)' pg_nome='postgres|pgvector' pg_c
+  local -a pg_cand=()
   pg_salvo="$(ler_credencial "$CREDENCIAIS" PG_SERVICO)"
   ler_orion pg_orion dados_postgres Host
-  detectar_servico PG_SERVICO "Postgres" '^(postgres(:|$)|pgvector/)' 'postgres|pgvector' \
-    "${pg_salvo:-$pg_orion}" sim
+  while IFS= read -r pg_c; do [ -n "$pg_c" ] && pg_cand+=("$pg_c"); done <<<"$(servicos_por "$pg_img" "$pg_nome")"
+  detectar_servico PG_SERVICO "Postgres" "$pg_img" "$pg_nome" \
+    "$(padrao_postgres "$pg_orion" "$pg_salvo" ${pg_cand[@]+"${pg_cand[@]}"})" sim
   PG_HOST="$PG_SERVICO"
   local env_pg img_pg
   env_pg="$(env_servico "$PG_SERVICO")"

@@ -416,6 +416,33 @@ case "$(cat "$TMP/perguntas.log")" in *"A rede n1 não é attachable"*"docker st
 assert_eq ok "$r" "rede não attachable sem domínio: avisa"
 assert_eq "dono|API do Portainer (usuário dono)" "$(REDE_ATTACHABLE=1 rodar_perguntas)" "rede attachable: API do Portainer pela overlay"
 
+# padrao_postgres: com mais de um Postgres, sugere o do Host do Orion, depois o salvo.
+assert_eq postgres_postgres "$(padrao_postgres postgres "" pgvector_pgvector postgres_postgres)" "Orion postgres: postgres_postgres"
+assert_eq postgres_postgres "$(padrao_postgres postgres pgvector_pgvector pgvector_pgvector postgres_postgres)" "Orion vence o salvo"
+assert_eq postgres "$(padrao_postgres postgres "" postgres_postgres postgres)" "nome igual ao Host vem primeiro"
+assert_eq banco_postgres "$(padrao_postgres postgres "" pgvector_pgvector banco_postgres)" "serviço terminado em _Host"
+assert_eq x "$(padrao_postgres postgres "" x meupostgres)" "sem _ antes do Host não casa: o primeiro"
+assert_eq pgvector_pgvector "$(padrao_postgres "" pgvector_pgvector postgres_postgres pgvector_pgvector)" "sem Orion: o salvo"
+assert_eq postgres_postgres "$(padrao_postgres "" sumiu postgres_postgres pgvector_pgvector)" "salvo que não é candidato: o primeiro"
+assert_eq salvo "$(padrao_postgres postgres salvo)" "sem candidatos: o salvo"
+assert_eq postgres "$(padrao_postgres postgres "")" "sem candidatos nem salvo: o Host do Orion"
+# detectar com dois Postgres e WAKECRM_SIM: fica com o do Orion.
+# shellcheck disable=SC2329,SC2317 # docker simulado, chamado por detectar
+docker() {
+  case "$*" in
+    "service ls --format"*) printf '%s\n' "pgvector_pgvector pgvector/pgvector:pg16" "postgres_postgres postgres:14" "tr_tr traefik:v3" ;;
+    *ContainerSpec.Env*) echo POSTGRES_PASSWORD=x ;;
+    *) return 1 ;;
+  esac
+}
+mkdir -p "$TMP/orion-pg"
+printf 'Host: postgres\n' >"$TMP/orion-pg/dados_postgres"
+# O docker simulado para detectar depois do Postgres; a escolha sai na linha do ✓.
+# shellcheck disable=SC2034 # lidas dentro de detectar
+r="$( (SIM=1 ORION_DIR="$TMP/orion-pg" CREDENCIAIS="$TMP/sem-credenciais.env"; detectar 2>&1) | sed -n 's/^✓ Postgres: //p')"
+assert_eq postgres_postgres "$r" "detectar com dois Postgres: o do Orion, não o primeiro"
+unset -f docker
+
 # texto_publicacao: o resumo diz por onde a stack sai, sem segredo.
 # shellcheck disable=SC2034 # lidas dentro de texto_publicacao
 { PORTAINER_DOMINIO=painel.exemplo.com; PORTAINER_TOKEN=ptr_1; PORTAINER_USUARIO=dono; }
