@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { textoMinutos } from "./Atendimento";
+import { textoMinutos } from "./formato";
 
 test.each([
   [null, "—"],
