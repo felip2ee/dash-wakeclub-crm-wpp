@@ -118,6 +118,8 @@ O ambiente do serviço nunca recebe `ADMIN_DATABASE_URL` nem a senha do superusu
 sai desligado (`MOTOR_ATIVO` vazio, sem `OPENAI_API_KEY`). Contrato:
 `docs/superpowers/specs/2026-11-04-wakecrm-instalador-design.md`.
 
+`bun run db:origem` (`scripts/origem-leads.mjs`) preenche a origem dos leads antigos e **não faz parte do instalador**: é manual, exige autorização do dono, lê o banco `evolution` só em leitura e escreve apenas as colunas `origem_*` de `wakeclub.leads`. Ordem recomendada em produção: instalar a versão (migração 0007) e rodar `bun run db:origem` uma vez. Regras na seção "Ingestão".
+
 Variáveis consumidas pelo dashboard:
 
 | Variável                    | Consumidor                                    | Finalidade                                                                                                       |
@@ -163,7 +165,7 @@ src/
 ```
 
 `db/migrations/` guarda o schema (`0001_base`, `0002_motor`, `0003_virada`,
-`0004_ia_followup`, `0005_vendas`); o runner é `scripts/migrar.mjs`.
+`0004_ia_followup`, `0005_vendas`, `0006_webhook_sem_apikey`, `0007_origem_e_meta`); o runner é `scripts/migrar.mjs`.
 
 `src/server/db.ts` é o único módulo que importa `pg` (pools `getPool`, `getPoolRw`,
 `getPoolMotor` e `getPoolWebhook`, este só do endpoint de webhook). `vite.config.ts` inclui os
@@ -201,11 +203,11 @@ Rotas novas (WakeCRM):
 | `/aprovar`                     | sessão (admin vê todas as filas, filtra por vendedor) | fila "Para avaliar": `listarFilaAprovacao`, `decidirFollowup`                        |
 | `/inicio`                      | atendente                                        | "Meu painel": `getPainelVendedor` (pode entrar, garantida, a pagar dia 10, ranking semanal) |
 | `/perfil`                      | sessão                                           | preferências do navegador e sair                                                          |
-| `/visao-geral`                 | admin                                            | KPIs em reais, vendas por categoria, pipeline por etapa, ranking, vendas recentes, alertas |
-| `/pipeline`                    | admin                                            | `getPipeline` somente leitura: valor cheio e esperado por etapa                           |
-| `/configuracoes`               | admin                                            | tamanho/tema, usuários, modo de follow-up, preço da hora, status do WhatsApp, fila de eventos, painel de IA, vendas sem dono |
+| `/visao-geral`                 | admin                                            | visão comercial (`lerComercial`): vendas × meta, leads novos, coorte, origem, atendimento; ranking e alertas |
+| `/pipeline`                    | admin                                            | `getPipeline` somente leitura: valor cheio e esperado, com os gráficos por etapa          |
+| `/configuracoes`               | admin                                            | tamanho/tema, usuários, modo de follow-up, preço da hora, meta de vendas por dia, status do WhatsApp, fila de eventos, painel de IA, vendas sem dono |
 | `/equipe`                      | admin                                            | cartões da equipe: peso de distribuição e comissão                                        |
-| `/vendas`                      | admin                                            | vendas do período, vendas sem dono (vincular), fechamento do mês, estorno manual          |
+| `/vendas`                      | admin                                            | resumo do período (vendido, comissão dia 10, por categoria), vendas do período, vendas sem dono (vincular), fechamento do mês, estorno manual          |
 
 Rotas anteriores, ainda acessíveis por URL:
 
@@ -243,9 +245,10 @@ domínio mantidos manualmente.
 | `log.ts`               | `logErro`, `logInfo`                                                            | único lugar com `console`; sem texto de conversa nem segredo                                     |
 | `admin-motor.ts`       | monitor da fila, reprocesso, peso/comissão, correção de dono                    | `webhook_eventos`, `usuarios`, `leads`; exige admin                                              |
 | `admin-ia.ts`          | `getPainelIa`, `getRitmo`, `definirRitmoAdmin`, `registrarExecucao`             | `configuracoes`, `followups`, `leads`; aquecido exige confirmação                                |
-| `configuracoes.ts`     | `getConfiguracoes`, `definirPrecoHora`                                          | `configuracoes` (`preco_hora`)                                                                   |
+| `configuracoes.ts`     | `getConfiguracoes`, `definirPrecoHora`, `definirMetaVendasDia`                  | `configuracoes` (`preco_hora`, `meta_vendas_dia`)                                                                 |
 | `aprovacao.ts`         | `listarFilaAprovacao`, `listarVendedoresAprovacao`, `decidirFollowup`           | `followups`, `followup_avaliacoes`, `eventos_automacao`; posse conferida no servidor             |
-| `visao-geral.ts`       | `getVisaoGeral`                                                                 | alertas de operação + `getPipeline` + `lerResumoDinheiro`                                        |
+| `visao-geral.ts`       | `getVisaoGeral`                                                                 | alertas de operação + `lerComercial` + `lerResumoDinheiro`                                       |
+| `comercial.ts`         | `lerComercial` (usado por `getVisaoGeral`)                                      | vendas × meta, leads novos por coorte, origem, atendimento; pool do motor, sem `createServerFn`  |
 | `dinheiro.ts`          | `getResumoDinheiro`, `getPainelVendedor`, `getRankingSemanal`                   | `vendas`, `fechamentos`, `leads`; vendedor só vê o próprio dinheiro                              |
 | `vendas.ts`            | `listarVendas`, `listarVendasSemDono`, `vincularVenda`, `estornarVenda`         | `vendas`; admin                                                                                  |
 | `fechamento.ts`        | `getFechamento`, `marcarPago`, `listarLancamentos`                              | `fechamentos`, `lancamentos_comissao`; admin                                                     |
@@ -360,6 +363,8 @@ idempotente, trata opt-out (evento `opt_out`, lead vai a "Negociação encerrada
 eco, agenda a qualificação (`qualificar_apos` = agora + 2 min de debounce), cancela
 follow-ups em aberto e distribui lead sem dono. Mensagem gravada pelo envio de um follow-up
 leva `followup_id`. Hoje só processa o tipo `mensagem` do evento normalizado.
+
+**Origem do lead.** `upsertLead` (`motor/ingestao.ts`) grava `origem_canal`, `origem_app`, `origem_anuncio_id`, `origem_anuncio_titulo` e `origem_detectada_em` em `wakeclub.leads`. Mensagem da equipe nunca define a origem. A primeira mensagem do próprio lead define: com marca, o canal mapeado (`anuncio`, `link`, `busca`, `outro`); sem marca, `direto` com `origem_detectada_em` nulo. A primeira origem vale e nunca é sobrescrita pela ingestão. `db:origem` só troca `direto` com `origem_detectada_em` nulo quando a Evolution tem marca; a varredura final marca `direto` somente o lead com ao menos uma mensagem dele; é idempotente. A meta diária é `configuracoes.meta_vendas_dia` (padrão 2, inteiro de 1 a 1000), editada em `/configuracoes` por `definirMetaVendasDia`.
 
 **Saúde e notificações.** `saude.ts` mantém `instancia_estado`/`instancia_eventos` a partir
 de eventos de conexão, ack e heartbeat; `notificacoes.ts` cria a fila de push e a tarefa
