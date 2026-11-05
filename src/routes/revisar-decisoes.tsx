@@ -34,11 +34,10 @@ function RevisarDecisoesPage() {
   const revisar = useMutation({
     mutationFn: (v: { avaliacaoId: string; concorda: boolean; observacao: string }) =>
       revisarDecisao({ data: v }),
-    onSuccess: () => {
-      toast.success("Revisão registrada.");
-      return cliente.invalidateQueries({ queryKey: ["revisao"] });
-    },
-    onError: (e) => toast.error(e.message),
+    onSuccess: () => toast.success("Revisão registrada."),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Não foi possível salvar."),
+    // Também no erro: "já revisada" tira o card da lista.
+    onSettled: () => cliente.invalidateQueries({ queryKey: ["revisao"] }),
   });
 
   return (
