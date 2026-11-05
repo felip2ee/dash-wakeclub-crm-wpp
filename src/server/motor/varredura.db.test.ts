@@ -4,7 +4,12 @@ import { type ClienteDb, getPoolMotor } from "../db";
 import type { ClienteIa, PedidoChat } from "../ia/tipos";
 import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./banco-teste";
 import { MODELO_REDATOR } from "./redator-sql";
-import { executarVarredura, iniciarVarredura, lerVarreduraAtual } from "./varredura";
+import {
+  destravarVarreduraPresa,
+  executarVarredura,
+  iniciarVarredura,
+  lerVarreduraAtual,
+} from "./varredura";
 
 const db = () => getPoolMotor();
 
@@ -97,15 +102,18 @@ describe.skipIf(!bancoTesteAtivo)("varredura", () => {
 
     await executarVarredura(db(), ia, id);
 
+    // total conta todo pendente vencido do banco; os desta suíte são conferidos em followupsDe.
     expect(await varredura(id)).toMatchObject({
       status: "concluida",
-      total: 3,
-      analisados: 3,
+      total: expect.any(Number),
       sugeridos: 3,
       barrados: 0,
       erro: null,
       fim: true,
     });
+    const v = (await varredura(id)) as { total: number; analisados: number };
+    expect(v.total).toBeGreaterThanOrEqual(3);
+    expect(v.analisados).toBe(v.total);
     const fs = await followupsDe(leads.map((l) => l.id));
     const limite = await amanha1959();
     expect(fs).toEqual([1, 2, 3].map(() => ({ status: "aguardando_aprovacao", expira: limite })));
@@ -135,8 +143,6 @@ describe.skipIf(!bancoTesteAtivo)("varredura", () => {
 
     expect(await varredura(id)).toMatchObject({
       status: "concluida",
-      total: 2,
-      analisados: 2,
       sugeridos: 1,
       barrados: 1,
     });
@@ -186,7 +192,6 @@ describe.skipIf(!bancoTesteAtivo)("varredura", () => {
     expect(await lerVarreduraAtual(db())).toMatchObject({
       id,
       status: "concluida",
-      total: 1,
       sugeridos: 1,
     });
     expect((await followupsDe([l.id]))[0].status).toBe("aguardando_aprovacao");
@@ -207,7 +212,7 @@ describe.skipIf(!bancoTesteAtivo)("varredura", () => {
 
     expect(await varredura(presa)).toMatchObject({
       status: "falhou",
-      erro: "sem progresso há mais de 2 h (processo reiniciado?)",
+      erro: "iniciada há mais de 2 h sem concluir (processo reiniciado?)",
       fim: true,
     });
     const ev = await db().query(
@@ -216,6 +221,19 @@ describe.skipIf(!bancoTesteAtivo)("varredura", () => {
       [presa],
     );
     expect(ev.rowCount).toBe(1);
-    expect(await varredura(id)).toMatchObject({ status: "concluida", total: 1, sugeridos: 1 });
+    expect(await varredura(id)).toMatchObject({ status: "concluida", sugeridos: 1 });
+  });
+
+  test("leitura do painel destrava a varredura presa sem iniciar outra", async () => {
+    const presa = await novaVarredura();
+    await db().query(
+      "update wakeclub.varreduras set iniciada_em = now() - interval '3 hours' where id = $1::uuid",
+      [presa],
+    );
+
+    await destravarVarreduraPresa(db());
+
+    expect(await varredura(presa)).toMatchObject({ status: "falhou", fim: true });
+    expect((await lerVarreduraAtual(db()))?.status).not.toBe("rodando");
   });
 });

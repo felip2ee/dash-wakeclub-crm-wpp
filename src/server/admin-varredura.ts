@@ -12,6 +12,7 @@ import { criarClienteOpenAi } from "./ia/openai";
 import { contarParados } from "./motor/parado";
 import {
   contarVencidos,
+  destravarVarreduraPresa,
   type EstadoVarredura,
   iniciarVarredura,
   lerVarreduraAtual,
@@ -28,6 +29,7 @@ export const getVarredura = createServerFn({ method: "GET" }).handler(
   async (): Promise<PainelVarredura> => {
     await exigirAdmin();
     const db = getPoolMotor();
+    await destravarVarreduraPresa(db);
     const [parados, vencidos, atual] = await Promise.all([
       contarParados(db),
       contarVencidos(db),

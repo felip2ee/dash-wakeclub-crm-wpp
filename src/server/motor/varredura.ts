@@ -82,6 +82,24 @@ export async function contarVencidos(db: ClienteDb): Promise<number> {
   return rows[0].n;
 }
 
+/**
+ * Processo reiniciado no meio deixa `rodando` para sempre e trava botão e nova varredura;
+ * iniciada há mais de 2 h sem concluir é tratada como falha (com `sweep_finished`). Roda na
+ * leitura do painel e antes de iniciar.
+ */
+export async function destravarVarreduraPresa(db: ClienteDb): Promise<void> {
+  await db.query(
+    `with v as (
+       update wakeclub.varreduras
+          set status = 'falhou', concluida_em = now(), erro = $2::text
+        where status = 'rodando' and iniciada_em < now() - interval '2 hours'
+       returning id, status, total, sugeridos, barrados
+     )
+     ${EVENTO("sweep_finished", "sistema", "motor")}`,
+    [CONFIG_ID, "iniciada há mais de 2 h sem concluir (processo reiniciado?)"],
+  );
+}
+
 /** Registra a varredura e a dispara sem esperar; a segunda simultânea é recusada. */
 export async function iniciarVarredura(
   db: ClienteDb,
@@ -91,17 +109,7 @@ export async function iniciarVarredura(
   let id: string;
   try {
     id = await comTransacao(async (c) => {
-      // Processo reiniciado no meio deixa `rodando` para sempre; 2 h sem fim é tratado como falha.
-      await c.query(
-        `with v as (
-           update wakeclub.varreduras
-              set status = 'falhou', concluida_em = now(), erro = $2::text
-            where status = 'rodando' and iniciada_em < now() - interval '2 hours'
-           returning id, status, total, sugeridos, barrados
-         )
-         ${EVENTO("sweep_finished", "sistema", "motor")}`,
-        [CONFIG_ID, "sem progresso há mais de 2 h (processo reiniciado?)"],
-      );
+      await destravarVarreduraPresa(c);
       const { rows } = await c.query<{ id: string }>(
         `with v as (
            insert into wakeclub.varreduras (iniciada_por) values ($2::uuid)
