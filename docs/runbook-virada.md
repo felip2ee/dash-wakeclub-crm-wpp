@@ -41,7 +41,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/felip2ee/dash-wakeclub-crm-w
   - `dados_vps`: `Rede interna`, para desempatar quando Postgres e Traefik têm mais de uma rede
     em comum e não há escolha salva (sem rede comum o instalador para; a rede não precisa ser
     attachable);
-  - `dados_postgres`: `Senha` e `Usuario`, só se o serviço do Postgres não tiver `POSTGRES_PASSWORD`;
+  - `dados_postgres`: `Host`, para sugerir o serviço quando há mais de um Postgres e não há
+    escolha salva; `Senha` e `Usuario`, só se o serviço do Postgres não tiver `POSTGRES_PASSWORD`;
   - `dados_evolution`: `Global API Key`, se o serviço da Evolution não tiver a chave, e `BaseUrl`,
     se não houver serviço da Evolution;
   - `dados_portainer`: com ele, a API vai por `https://<Dominio do portainer>` com certificado
