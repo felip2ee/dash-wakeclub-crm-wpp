@@ -229,6 +229,17 @@ html[data-densidade="pequeno"] {
   h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.02em; }
 }
 
+/* O Safari do iOS dá zoom ao focar campo com fonte abaixo de 16px, e a densidade
+   "pequeno" (14,5px) derrubaria o `text-base` dos campos para isso. Fora de @layer de
+   propósito, para vencer os utilitários de tamanho. Zoom do usuário continua livre. */
+@media (width < 48rem) {
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1rem);
+  }
+}
+
 @utility bg-gradiente-primario {
   background-image: var(--gradiente-primario);
 }

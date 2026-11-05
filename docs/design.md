@@ -131,6 +131,9 @@ Regras deste projeto:
   e `/meus-leads`, `conversaAberta` em `navegacao.ts`) somem o cabeçalho e a barra inferior, e
   a conversa ocupa `100dvh`. O viewport usa `viewport-fit=cover`; cabeçalhos, Composer,
   sheets e drawer descontam `env(safe-area-inset-*)`.
+- Campos (`input`, `textarea`, `select`) ficam com no mínimo 16px no celular, em qualquer
+  densidade, para o iOS não dar zoom ao focar (`src/styles.css`). Nunca desligar o zoom com
+  `maximum-scale` ou `user-scalable=no`.
 
 - Estados que cada tela operacional precisa ter: carregando, vazio, erro e sem permissão.
 - Pendências conhecidas: altura das telas antigas no celular (`h-[calc(100dvh-...)]`) e área
