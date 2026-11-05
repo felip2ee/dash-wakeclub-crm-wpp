@@ -3,7 +3,7 @@ import { Clock, UserRound } from "lucide-react";
 import { ChipTemperatura } from "@/components/ui/chip-temperatura";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { OpportunityWorkspace } from "@/features/opportunities/OpportunityWorkspace";
-import { moeda } from "@/lib/formato";
+import { dataHora, moeda } from "@/lib/formato";
 import type { LeadPipeline } from "@/server/leads";
 
 // Card do Pipeline (referência 04): nome, temperatura, dono, horas e valor cheio.
@@ -36,6 +36,15 @@ export function CardLead({ lead }: { lead: LeadPipeline }) {
             </span>
             <span className="font-semibold tabular-nums">{moeda(lead.valorCheio)}</span>
           </div>
+          {(lead.etiqueta === "Aluno com horas" || lead.etiqueta === "Aluno sem horas") && (
+            <div className="mt-1 space-y-0.5 text-sm text-muted-foreground">
+              <p>
+                {lead.saldoHoras === null ? "saldo desconhecido" : `${lead.saldoHoras} h restantes`}
+              </p>
+              {lead.proximaAulaEm && <p>próxima aula {dataHora(lead.proximaAulaEm)}</p>}
+              {lead.ultimaAulaEm && <p>última aula {dataHora(lead.ultimaAulaEm)}</p>}
+            </div>
+          )}
         </button>
       </DialogTrigger>
       <OpportunityWorkspace lead={lead} />
