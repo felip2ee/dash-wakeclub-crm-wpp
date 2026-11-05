@@ -95,7 +95,8 @@ export function ListaConversas({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+      {/* No celular a lista rola por baixo da barra inferior; o fim fica acima dela. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-[calc(0.75rem+var(--barra-inferior))] md:pb-3">
         {lista.length === 0 ? (
           <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
             <MessageSquareText aria-hidden className="mx-auto mb-2 h-8 w-8 opacity-40" />

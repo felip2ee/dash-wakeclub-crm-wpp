@@ -64,13 +64,8 @@ export function AppShell({
         >
           {cabecalho}
         </header>
-        {/* Espaço da barra inferior no celular: 3.5rem + borda + área segura do iPhone. */}
-        <main
-          className={cn(
-            "min-h-0 flex-1 md:pb-0",
-            !telaCheia && "pb-[calc(3.5rem+1px+env(safe-area-inset-bottom))]",
-          )}
-        >
+        {/* Espaço da barra inferior flutuante no celular (--barra-inferior em styles.css). */}
+        <main className={cn("min-h-0 flex-1 md:pb-0", !telaCheia && "pb-(--barra-inferior)")}>
           {children}
         </main>
       </div>

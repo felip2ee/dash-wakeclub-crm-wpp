@@ -3,6 +3,7 @@
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant transparencia-reduzida (@media (prefers-reduced-transparency: reduce));
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -62,6 +63,9 @@
   --espaco: 1;
   /* Cabeçalho do AppShell: 3.5rem mais a barra de status do iPhone (viewport-fit=cover). */
   --cabecalho: calc(3.5rem + env(safe-area-inset-top));
+  /* Espaço da barra inferior flutuante do celular: 4rem de barra, 0.5rem de folga acima
+     e a distância da borda (área segura do iPhone, no mínimo 0.5rem). */
+  --barra-inferior: calc(4.5rem + max(0.5rem, env(safe-area-inset-bottom)));
 
   /* Warm off-white canvas, near-black ink, emerald WABA accent */
   --background: oklch(0.985 0.005 95);
@@ -247,10 +251,20 @@ html[data-densidade="pequeno"] {
   background-image: var(--gradiente-primario-suave);
 }
 
-/* Altura útil no celular: tela menos cabeçalho e barra inferior
-   (3.5rem + borda de 1px + área segura do iPhone). No desktop cada tela usa md:h-[…]. */
+/* Altura útil no celular: tela menos cabeçalho e barra inferior. No desktop cada tela
+   usa md:h-[…]. */
 @utility altura-tela-com-barra {
-  height: calc(100dvh - var(--cabecalho) - 3.5rem - 1px - env(safe-area-inset-bottom));
+  height: calc(100dvh - var(--cabecalho) - var(--barra-inferior));
+}
+
+/* Como a anterior, mas vai até a base da tela: a lista rola por baixo da barra
+   translúcida (o scroll interno reserva --barra-inferior embaixo). A margem negativa
+   anula o padding do <main> do AppShell, só no celular. */
+@utility altura-tela-sob-barra {
+  height: calc(100dvh - var(--cabecalho));
+  @media (width < 48rem) {
+    margin-bottom: calc(-1 * var(--barra-inferior));
+  }
 }
 
 @utility scrollbar-thin {

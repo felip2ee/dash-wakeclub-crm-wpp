@@ -66,7 +66,7 @@ function InboxPage() {
       className={cn(
         "grid grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[340px_1fr] xl:grid-cols-[360px_1fr_320px]",
         // Conversa aberta no celular ocupa a tela inteira (o AppShell esconde cabeçalho e barra).
-        leadSelecionado ? "h-dvh" : "altura-tela-com-barra",
+        leadSelecionado ? "h-dvh" : "altura-tela-sob-barra",
       )}
     >
       <aside

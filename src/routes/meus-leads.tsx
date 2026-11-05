@@ -32,7 +32,7 @@ function MeusLeadsPage() {
       className={cn(
         "mx-auto w-full max-w-3xl md:h-[calc(100dvh-3.5rem)]",
         // Conversa aberta no celular ocupa a tela inteira (o AppShell esconde cabeçalho e barra).
-        leadId ? "h-dvh" : "altura-tela-com-barra",
+        leadId ? "h-dvh" : "altura-tela-sob-barra",
       )}
     >
       {selecionado ? (
