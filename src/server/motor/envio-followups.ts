@@ -14,7 +14,7 @@ import type { ClienteIa } from "../ia/tipos";
 import { logErro, logInfo } from "../log";
 import { registrarMensagem } from "./ingestao";
 import { avaliarPorteiro } from "./redator";
-import { dentroDaJanela, enviadosHoje, lerRitmo, MODOS } from "./ritmo";
+import { cotaAteAgora, dentroDaJanela, enviadosHoje, lerRitmo, MODOS } from "./ritmo";
 import { valorEsperado } from "./valor";
 
 const MAX_TENTATIVAS = 3;
@@ -80,15 +80,29 @@ async function abortar(db: PoolClient, id: string, motivo: string, statusAntes: 
   );
 }
 
-export type Candidato = { id: string; tipo: string; aprovadoEm: Date; valorEsperado: number };
+export type Candidato = {
+  id: string;
+  tipo: string;
+  aprovadoEm: Date;
+  valorEsperado: number;
+  temperatura: string | null;
+};
 
 export const LEMBRETES = new Set(["lembrete_d1", "lembrete_dia"]);
 
-/** Lembretes de aula primeiro (spec §6), depois maior valor esperado, depois o mais antigo. */
+// Mais quente primeiro (dono, 07/11/2026); sem temperatura vai por último.
+const ORDEM_TEMPERATURA: Record<string, number> = { quente: 0, morno: 1, frio: 2 };
+const posTemperatura = (t: string | null) => (t === null ? 3 : (ORDEM_TEMPERATURA[t] ?? 3));
+
+/**
+ * Lembretes de aula primeiro (spec §6: hora marcada), depois do mais quente ao mais frio,
+ * depois maior valor esperado, depois o mais antigo.
+ */
 export function ordenarFila<T extends Candidato>(c: T[]): T[] {
   return [...c].sort(
     (a, b) =>
       Number(LEMBRETES.has(b.tipo)) - Number(LEMBRETES.has(a.tipo)) ||
+      posTemperatura(a.temperatura) - posTemperatura(b.temperatura) ||
       b.valorEsperado - a.valorEsperado ||
       a.aprovadoEm.getTime() - b.aprovadoEm.getTime() ||
       a.id.localeCompare(b.id),
@@ -97,7 +111,8 @@ export function ordenarFila<T extends Candidato>(c: T[]): T[] {
 
 /**
  * Aprovados que podem sair, de qualquer dia. `reconferir`: aprovado há mais de 3 dias e sem
- * passar pelo porteiro nos últimos 3 dias (spec §8).
+ * passar pelo porteiro nos últimos 3 dias (spec §8). Lead que recebeu follow-up (fora
+ * lembrete de aula) nos últimos 3 dias espera (dono, 07/11/2026): o aprovado fica na fila até completar o prazo.
  */
 export async function listarCandidatos(
   db: ClienteDb,
@@ -124,11 +139,18 @@ export async function listarCandidatos(
        join wakeclub.leads l on l.id = f.lead_id
       where f.status = 'aprovado' and f.aprovado_por is not null
         and l.opt_out = false and l.sem_atendimento = false
-        and (f.aula_em is null or f.aula_em > now())`,
+        and (f.aula_em is null or f.aula_em > now())
+        and (f.tipo in ('lembrete_d1', 'lembrete_dia')
+             or not exists (
+               select 1 from wakeclub.followups e
+                where e.lead_id = f.lead_id and e.status = 'enviado'
+                  and e.tipo not in ('lembrete_d1', 'lembrete_dia')
+                  and e.enviado_em > now() - interval '3 days'))`,
   );
   return rows.map((r) => ({
     id: r.id,
     tipo: r.tipo,
+    temperatura: r.temperatura,
     aprovadoEm: r.aprovado_em,
     reconferir: r.reconferir,
     valorEsperado: valorEsperado(
@@ -238,7 +260,7 @@ export async function tarefaEnvioFollowups(deps: {
 
   const db = getPoolMotor();
   const { modo } = await lerRitmo(db);
-  if ((await enviadosHoje(db)) >= MODOS[modo].cotaDia) return 0;
+  if ((await enviadosHoje(db)) >= cotaAteAgora(MODOS[modo].cotaDia, agora())) return 0;
   const { rows: intervalo } = await db.query<{ cedo: boolean }>(
     `select coalesce(max(enviado_em) > now() - make_interval(secs => $1::int), false) as cedo
        from wakeclub.followups where status = 'enviado'`,
