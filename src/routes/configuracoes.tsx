@@ -5,6 +5,7 @@ import {
   Bot,
   Coins,
   Gauge,
+  Hourglass,
   Layers,
   Link2,
   MessageSquareText,
@@ -21,6 +22,7 @@ import { FilaEventos, useMonitorFila } from "@/features/configuracoes/FilaEvento
 import { ListaCelular, type SecaoCelular } from "@/features/configuracoes/ListaCelular";
 import { MetaVendas } from "@/features/configuracoes/MetaVendas";
 import { ModoFollowup } from "@/features/configuracoes/ModoFollowup";
+import { PrazosParado } from "@/features/configuracoes/PrazosParado";
 import { CHAVE_CONFIGURACOES, PrecoHora } from "@/features/configuracoes/PrecoHora";
 import { RespostasRapidasCartao } from "@/features/configuracoes/RespostasRapidasCartao";
 import { Secao } from "@/features/configuracoes/Secao";
@@ -87,6 +89,7 @@ function ConfiguracoesPage() {
           <Usuarios />
           <ModoFollowup />
         </div>
+        <PrazosParado />
         <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-5">
           <DistribuicaoLeads />
           <PrecoHora />
@@ -145,6 +148,13 @@ function useSecoesCelular(): SecaoCelular[] {
       icone: Gauge,
       resumo: ritmo.data ? (ritmo.data.modo === "aquecido" ? "Aquecido" : "Conservador") : "…",
       conteudo: <ModoFollowup />,
+    },
+    {
+      id: "prazos-parado",
+      titulo: "Prazos de follow-up",
+      icone: Hourglass,
+      resumo: "Parado",
+      conteudo: <PrazosParado />,
     },
     {
       id: "preco-hora",

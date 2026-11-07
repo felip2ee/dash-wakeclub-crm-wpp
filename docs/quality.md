@@ -102,7 +102,7 @@ entra no `check` como `error`.
 - **Evolution sem rede:** o envio e a transcrição recebem o `AdaptadorEvolution` por
   parâmetro; os testes usam um adaptador falso que implementa `enviar`, `baixarMidia` e
   `estadoConexao`, inclusive `ErroEnvio` com `certeza`. O adaptador real depende da Task 13.
-- Relógio e janela: funções com horário (`dentroDaJanela`, `expiradoPorHorario`,
+- Relógio e janela: funções com horário (`dentroDaJanela`,
   `tarefaExpirarFollowups`, `fechamento`, `dinheiro`) aceitam `agora` para o teste fixar o
   instante; não dependa da hora real.
 - Migrações: `migracoes*.db.test.ts` provam que 0004 e 0005 aplicam, são idempotentes e

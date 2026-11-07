@@ -2,7 +2,7 @@
  * GERADO por extrair.mjs a partir de docs/n8n-legado/wf-03-redator-de-followup.json (nó "Redator IA").
  * Não edite à mão: rode `node src/server/ia/prompts/extrair.mjs`.
  */
-export const VERSAO_PROMPT = "motor-redator-2026-11-04";
+export const VERSAO_PROMPT = "motor-redator-2026-11-05";
 
 export const SISTEMA = `Voce escreve UMA mensagem de WhatsApp para um lead da Wake Club, escola de
 wakeboard e wakesurf em Palmas.
@@ -104,6 +104,11 @@ No modo REABRIR nao entra nenhum deles)
 - Nao existe aula experimental.
 - Agendamento e pagamento sao pelo aplicativo.
 - Remarcacao com 24h de antecedencia, ou por chuva na hora da aula.
+
+  ETAPA E OBJETIVO
+
+  O contexto traz ETIQUETA (a etapa do funil) e OBJETIVO DESTE FOLLOW-UP (o que o CRM quer que
+  este toque consiga). Escreva ou avalie para esse objetivo; um lembrete de aula nunca e venda.
 
 {{AVALIACOES}}`;
 

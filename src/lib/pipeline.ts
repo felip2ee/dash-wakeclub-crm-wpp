@@ -2,16 +2,9 @@
 // funil do playbook, com soma de valor cheio e esperado. Função pura para o servidor
 // montar as colunas e o teste conferir os totais.
 
-export const ETAPAS = [
-  "Novo Lead",
-  "Atendimento",
-  "Link enviado",
-  "Aguardando pagamento",
-  "Agendado",
-  "Aula realizada",
-  "Follow-up",
-  "Negociação encerrada",
-] as const;
+import { ETAPAS } from "./etapas";
+
+export { ETAPAS };
 
 type ComValor = { etiqueta: string; valorCheio: number; valorEsperado: number };
 

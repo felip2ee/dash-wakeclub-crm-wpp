@@ -14,6 +14,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AprovarRouteImport } from './routes/aprovar'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as EquipeRouteImport } from './routes/equipe'
+import { Route as FilaEnvioRouteImport } from './routes/fila-envio'
 import { Route as FollowupsRouteImport } from './routes/followups'
 import { Route as InicioRouteImport } from './routes/inicio'
 import { Route as InstalarRouteImport } from './routes/instalar'
@@ -24,6 +25,7 @@ import { Route as MinhaFilaRouteImport } from './routes/minha-fila'
 import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as PipelineRouteImport } from './routes/pipeline'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as RevisarDecisoesRouteImport } from './routes/revisar-decisoes'
 import { Route as TemplatesRouteImport } from './routes/templates'
 import { Route as VendasRouteImport } from './routes/vendas'
 import { Route as VisaoGeralRouteImport } from './routes/visao-geral'
@@ -56,6 +58,11 @@ const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
 const EquipeRoute = EquipeRouteImport.update({
   id: '/equipe',
   path: '/equipe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FilaEnvioRoute = FilaEnvioRouteImport.update({
+  id: '/fila-envio',
+  path: '/fila-envio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FollowupsRoute = FollowupsRouteImport.update({
@@ -108,6 +115,11 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RevisarDecisoesRoute = RevisarDecisoesRouteImport.update({
+  id: '/revisar-decisoes',
+  path: '/revisar-decisoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TemplatesRoute = TemplatesRouteImport.update({
   id: '/templates',
   path: '/templates',
@@ -155,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
+  '/fila-envio': typeof FilaEnvioRoute
   '/followups': typeof FollowupsRoute
   '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
@@ -165,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/perfil': typeof PerfilRoute
   '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
+  '/revisar-decisoes': typeof RevisarDecisoesRoute
   '/templates': typeof TemplatesRoute
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
@@ -180,6 +194,7 @@ export interface FileRoutesByTo {
   '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
+  '/fila-envio': typeof FilaEnvioRoute
   '/followups': typeof FollowupsRoute
   '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
@@ -190,6 +205,7 @@ export interface FileRoutesByTo {
   '/perfil': typeof PerfilRoute
   '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
+  '/revisar-decisoes': typeof RevisarDecisoesRoute
   '/templates': typeof TemplatesRoute
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
@@ -206,6 +222,7 @@ export interface FileRoutesById {
   '/aprovar': typeof AprovarRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/equipe': typeof EquipeRoute
+  '/fila-envio': typeof FilaEnvioRoute
   '/followups': typeof FollowupsRoute
   '/inicio': typeof InicioRoute
   '/instalar': typeof InstalarRoute
@@ -216,6 +233,7 @@ export interface FileRoutesById {
   '/perfil': typeof PerfilRoute
   '/pipeline': typeof PipelineRoute
   '/reports': typeof ReportsRoute
+  '/revisar-decisoes': typeof RevisarDecisoesRoute
   '/templates': typeof TemplatesRoute
   '/vendas': typeof VendasRoute
   '/visao-geral': typeof VisaoGeralRoute
@@ -233,6 +251,7 @@ export interface FileRouteTypes {
     | '/aprovar'
     | '/configuracoes'
     | '/equipe'
+    | '/fila-envio'
     | '/followups'
     | '/inicio'
     | '/instalar'
@@ -243,6 +262,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/pipeline'
     | '/reports'
+    | '/revisar-decisoes'
     | '/templates'
     | '/vendas'
     | '/visao-geral'
@@ -258,6 +278,7 @@ export interface FileRouteTypes {
     | '/aprovar'
     | '/configuracoes'
     | '/equipe'
+    | '/fila-envio'
     | '/followups'
     | '/inicio'
     | '/instalar'
@@ -268,6 +289,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/pipeline'
     | '/reports'
+    | '/revisar-decisoes'
     | '/templates'
     | '/vendas'
     | '/visao-geral'
@@ -283,6 +305,7 @@ export interface FileRouteTypes {
     | '/aprovar'
     | '/configuracoes'
     | '/equipe'
+    | '/fila-envio'
     | '/followups'
     | '/inicio'
     | '/instalar'
@@ -293,6 +316,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/pipeline'
     | '/reports'
+    | '/revisar-decisoes'
     | '/templates'
     | '/vendas'
     | '/visao-geral'
@@ -309,6 +333,7 @@ export interface RootRouteChildren {
   AprovarRoute: typeof AprovarRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   EquipeRoute: typeof EquipeRoute
+  FilaEnvioRoute: typeof FilaEnvioRoute
   FollowupsRoute: typeof FollowupsRoute
   InicioRoute: typeof InicioRoute
   InstalarRoute: typeof InstalarRoute
@@ -319,6 +344,7 @@ export interface RootRouteChildren {
   PerfilRoute: typeof PerfilRoute
   PipelineRoute: typeof PipelineRoute
   ReportsRoute: typeof ReportsRoute
+  RevisarDecisoesRoute: typeof RevisarDecisoesRoute
   TemplatesRoute: typeof TemplatesRoute
   VendasRoute: typeof VendasRoute
   VisaoGeralRoute: typeof VisaoGeralRoute
@@ -364,6 +390,13 @@ declare module '@tanstack/react-router' {
       path: '/equipe'
       fullPath: '/equipe'
       preLoaderRoute: typeof EquipeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/fila-envio': {
+      id: '/fila-envio'
+      path: '/fila-envio'
+      fullPath: '/fila-envio'
+      preLoaderRoute: typeof FilaEnvioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/followups': {
@@ -436,6 +469,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/revisar-decisoes': {
+      id: '/revisar-decisoes'
+      path: '/revisar-decisoes'
+      fullPath: '/revisar-decisoes'
+      preLoaderRoute: typeof RevisarDecisoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/templates': {
       id: '/templates'
       path: '/templates'
@@ -501,6 +541,7 @@ const rootRouteChildren: RootRouteChildren = {
   AprovarRoute: AprovarRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   EquipeRoute: EquipeRoute,
+  FilaEnvioRoute: FilaEnvioRoute,
   FollowupsRoute: FollowupsRoute,
   InicioRoute: InicioRoute,
   InstalarRoute: InstalarRoute,
@@ -511,6 +552,7 @@ const rootRouteChildren: RootRouteChildren = {
   PerfilRoute: PerfilRoute,
   PipelineRoute: PipelineRoute,
   ReportsRoute: ReportsRoute,
+  RevisarDecisoesRoute: RevisarDecisoesRoute,
   TemplatesRoute: TemplatesRoute,
   VendasRoute: VendasRoute,
   VisaoGeralRoute: VisaoGeralRoute,

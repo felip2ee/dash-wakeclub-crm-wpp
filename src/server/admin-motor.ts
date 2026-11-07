@@ -22,10 +22,12 @@ export type MonitorFila = {
     recebidoEm: string;
     tentativas: number;
   }[];
+  /** Aulas que o app registrou com o saldo de horas já zerado: as 20 mais recentes. */
+  horasSemSaldo: { leadNome: string | null; telefone: string; ocorridoEm: string }[];
 };
 
 export async function lerMonitorFila(db: ClienteDb): Promise<MonitorFila> {
-  const [contagem, falhas] = await Promise.all([
+  const [contagem, falhas, semSaldo] = await Promise.all([
     db.query(
       `select count(*) filter (where status = 'pendente')::int as pendentes,
               count(*) filter (where (status = 'pendente'
@@ -43,6 +45,14 @@ export async function lerMonitorFila(db: ClienteDb): Promise<MonitorFila> {
         order by recebido_em desc
         limit 50`,
     ),
+    db.query(
+      `select l.nome, l.telefone, coalesce(e.ocorrido_em, e.recebido_em) as ocorrido_em
+         from wakeclub.app_eventos e
+         join wakeclub.leads l on l.id = e.lead_id
+        where e.resultado = 'hora_sem_saldo'
+        order by coalesce(e.ocorrido_em, e.recebido_em) desc
+        limit 20`,
+    ),
   ]);
   return {
     pendentes: Number(contagem.rows[0].pendentes),
@@ -54,6 +64,11 @@ export async function lerMonitorFila(db: ClienteDb): Promise<MonitorFila> {
       erro: r.erro,
       recebidoEm: r.recebido_em.toISOString(),
       tentativas: Number(r.tentativas),
+    })),
+    horasSemSaldo: semSaldo.rows.map((r) => ({
+      leadNome: r.nome,
+      telefone: r.telefone,
+      ocorridoEm: r.ocorrido_em.toISOString(),
     })),
   };
 }

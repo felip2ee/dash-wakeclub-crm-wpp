@@ -24,7 +24,7 @@ describe.skipIf(!bancoTesteAtivo)("admin de IA e ritmo no banco", () => {
     const ritmo = await lerRitmoAdmin(db());
     expect(ritmo).toMatchObject({ modo: "aquecido", cotaDia: 60, intervaloSegundos: 45 });
     expect(ritmo.ligadoEm).not.toBeNull();
-    expect(typeof ritmo.preparadosHoje).toBe("number");
+    expect(typeof ritmo.enviadosHoje).toBe("number");
 
     const { rows } = await db().query(
       `select decisao, estado_novo->>'modo' as modo

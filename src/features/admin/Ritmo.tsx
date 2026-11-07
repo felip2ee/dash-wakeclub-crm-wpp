@@ -67,7 +67,7 @@ export function Ritmo() {
               {m.titulo}
             </span>
             <span className="block font-display text-2xl font-bold">{m.cota}/dia</span>
-            <span className="block text-xs">Até {m.cota} follow-ups no total (em todo o CRM)</span>
+            <span className="block text-xs">Até {m.cota} envios por dia (em todo o CRM)</span>
           </RadioGroupPrimitive.Item>
         ))}
       </RadioGroupPrimitive.Root>
@@ -86,7 +86,7 @@ export function Ritmo() {
       )}
 
       <p className="text-sm text-muted-foreground">
-        Hoje: {ritmo.data.preparadosHoje} de {ritmo.data.cotaDia} preparados · intervalo de{" "}
+        Enviados hoje: {ritmo.data.enviadosHoje} de {ritmo.data.cotaDia} · intervalo de{" "}
         {ritmo.data.intervaloSegundos} s entre envios.
       </p>
 

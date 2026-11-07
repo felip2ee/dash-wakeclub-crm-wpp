@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { MonitorDaFila } from "@/features/admin/MonitorDaFila";
+import { dataHora } from "@/lib/formato";
 import { cn } from "@/lib/utils";
 import { getMonitorFila, reprocessarEvento } from "@/server/admin-motor";
 import { Carregando, ErroAoCarregar, Secao } from "./Secao";
@@ -80,6 +81,24 @@ export function FilaEventos() {
                 : "Reprocessar fila"}
             </Button>
           </div>
+          {fila.data.horasSemSaldo.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium">Horas sem saldo</h3>
+              <ul className="divide-y divide-border text-sm">
+                {fila.data.horasSemSaldo.map((h) => (
+                  <li
+                    key={`${h.telefone}-${h.ocorridoEm}`}
+                    className="flex justify-between gap-2 py-1.5"
+                  >
+                    <span>{h.leadNome ?? h.telefone}</span>
+                    <time className="text-muted-foreground" dateTime={h.ocorridoEm}>
+                      {dataHora(h.ocorridoEm)}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {falhas.length > 0 && (
             <details>
               <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">

@@ -11,7 +11,7 @@ import { z } from "zod";
 import { exigirAdmin } from "./auth";
 import { type ClienteDb, getPoolMotor } from "./db";
 import { obterAdaptador } from "./evolution";
-import { definirRitmo, lerRitmo, MODOS, type Modo, preparadosHoje } from "./motor/ritmo";
+import { definirRitmo, enviadosHoje, lerRitmo, MODOS, type Modo } from "./motor/ritmo";
 
 /** Grava agora como última execução de `nome` em `configuracoes.tarefas_execucao`. */
 export async function registrarExecucao(db: ClienteDb, nome: string): Promise<void> {
@@ -75,13 +75,13 @@ export type RitmoAdmin = {
   modo: Modo;
   ligadoEm: string | null;
   cotaDia: number;
-  preparadosHoje: number;
+  enviadosHoje: number;
   intervaloSegundos: number;
 };
 
 export async function lerRitmoAdmin(db: ClienteDb): Promise<RitmoAdmin> {
-  const [ritmo, preparados] = await Promise.all([lerRitmo(db), preparadosHoje(db)]);
-  return { ...ritmo, ...MODOS[ritmo.modo], preparadosHoje: preparados };
+  const [ritmo, enviados] = await Promise.all([lerRitmo(db), enviadosHoje(db)]);
+  return { ...ritmo, ...MODOS[ritmo.modo], enviadosHoje: enviados };
 }
 
 const entradaRitmo = z.object({

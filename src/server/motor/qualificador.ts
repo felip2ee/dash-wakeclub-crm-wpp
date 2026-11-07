@@ -1,11 +1,12 @@
 /**
  * Qualificador: porta do WF-02 do n8n (docs/n8n-legado/wf-02-qualificador-ia.json) para o
  * motor, mais `horas_estimadas` (spec fases 2-3 §4). Reivindica leads vencidos, pede a
- * qualificação à IA, valida em código e grava ficha, eventos e follow-up sugerido.
+ * qualificação à IA, valida em código e grava ficha e eventos (follow-up é do sinal "parado").
  * O SQL e as regras de "Montar prompt do lead"/"Validar decisao da IA" são os do legado.
  */
 import { randomUUID } from "node:crypto";
 
+import { etiquetaDaIa } from "../../lib/etapas";
 import { comTransacao, getPoolMotor, type PoolClient } from "../db";
 import { SCHEMA, SISTEMA, VERSAO_PROMPT } from "../ia/prompts/qualificador";
 import type { ClienteIa } from "../ia/tipos";
@@ -41,11 +42,11 @@ export type Qualificacao = {
   dataAgendada: string;
   resumo: string;
   justificativa: string;
-  followup: { quando: string; tipo: string; motivo: string } | null;
+  followup: null;
   horasEstimadas: number;
 };
 
-type Contexto = { etiquetaAtual: string; minimoLocal: string; limiteLocal: string };
+type Contexto = { etiquetaAtual: string };
 
 function ou(v: unknown, alt: string): string {
   if (v === null || v === undefined || v === "") return alt;
@@ -80,7 +81,7 @@ export function montarPromptLead(l: LinhaLead): string {
     ou(l.nome, "(desconhecido)") +
     "\n" +
     "etiqueta: " +
-    ou(l.etiqueta, "Novo Lead") +
+    ou(l.etiqueta, "Novo lead") +
     "\n" +
     "origem: " +
     ou(l.origem, "(nao sei)") +
@@ -115,18 +116,7 @@ export function montarPromptLead(l: LinhaLead): string {
   return ficha + conversa;
 }
 
-const ETIQUETAS = [
-  "Novo Lead",
-  "Atendimento",
-  "Link enviado",
-  "Aguardando pagamento",
-  "Agendado",
-  "Aula realizada",
-  "Follow-up",
-  "Negociação encerrada",
-];
 const TEMPERATURAS = ["quente", "morno", "frio"];
-const TIPOS = ["reengajar", "lembrete_d1", "lembrete_dia", "pos_aula"];
 const CARIMBO = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
 
 /** "AAAA-MM-DD HH:MI" que existe no calendário: 2026-02-30 ou 25:61 não passam. */
@@ -143,27 +133,12 @@ function texto(v: unknown, max: number): string {
   return s.slice(0, max);
 }
 
-function validarFollowup(f: unknown, ctx: Contexto): Qualificacao["followup"] {
-  if (!f || typeof f !== "object") return null;
-  const o = f as Record<string, unknown>;
-  let quando = texto(o.quando, 16);
-  let tipo = texto(o.tipo, 30).toLowerCase();
-  const motivo = texto(o.motivo, 500);
-  if (!carimboValido(quando)) return null;
-  if (TIPOS.indexOf(tipo) === -1) tipo = "reengajar";
-  if (quando < ctx.minimoLocal) quando = ctx.minimoLocal;
-  if (quando > ctx.limiteLocal) quando = ctx.limiteLocal;
-  return { quando, tipo, motivo };
-}
-
 /** Literal do nó "Validar decisao da IA", mais `horas_estimadas` (inteiro, 1..8, default 1). */
 export function validarQualificacao(cru: unknown, ctx: Contexto): Qualificacao | { erro: string } {
   if (!cru || typeof cru !== "object") return { erro: "a IA nao devolveu objeto" };
   const c = cru as Record<string, unknown>;
 
-  let etiqueta = texto(c.etiqueta, 60);
-  if (etiqueta === "Negociacao encerrada") etiqueta = "Negociação encerrada";
-  if (ETIQUETAS.indexOf(etiqueta) === -1) etiqueta = ctx.etiquetaAtual;
+  const etiqueta = etiquetaDaIa(texto(c.etiqueta, 60), ctx.etiquetaAtual);
 
   let temperatura = texto(c.temperatura, 20).toLowerCase();
   if (TEMPERATURAS.indexOf(temperatura) === -1) temperatura = "";
@@ -173,8 +148,6 @@ export function validarQualificacao(cru: unknown, ctx: Contexto): Qualificacao |
 
   let dataAgendada = texto(c.data_agendada, 16);
   if (dataAgendada && !carimboValido(dataAgendada)) dataAgendada = "";
-
-  const followup = validarFollowup(c.followup, ctx);
 
   const h = c.horas_estimadas;
   const horasEstimadas = Number.isInteger(h) ? Math.min(8, Math.max(1, h as number)) : 1;
@@ -188,7 +161,8 @@ export function validarQualificacao(cru: unknown, ctx: Contexto): Qualificacao |
     resumo,
     // Auditoria (§18). Vazio e aceito: campo novo nunca derruba qualificacao.
     justificativa: texto(c.justificativa_curta, 300),
-    followup,
+    // O sinal "parado" decide o follow-up; o que a IA devolver aqui é descartado.
+    followup: null,
     horasEstimadas,
   };
 }
@@ -293,6 +267,7 @@ cancelados as (
    where o.id = f.id
      and f.lead_id = (select id from atualizado)
      and f.status in ('pendente', 'aguardando_aprovacao', 'aprovado')
+     and f.tipo not in ('lembrete_d1', 'lembrete_dia')
   returning f.id, f.lead_id, f.tipo, f.agendado_para, f.motivo_cancelamento,
             o.status as status_antes
 ),
@@ -410,51 +385,13 @@ ev_cancelado as (
 select a.id as lead_id
   from atualizado a`;
 
-// "Agendar followup" do legado. O "não existe" cobre os mesmos status do índice
-// followups_um_pendente_por_lead: um 'enviando' em aberto barra o novo sem estourar 23505.
-const SQL_AGENDAR = `
-with criado as (
-  insert into wakeclub.followups (lead_id, agendado_para, tipo, motivo)
-  select $1::uuid,
-         ($2)::timestamp at time zone 'America/Sao_Paulo',
-         $3,
-         nullif($4, '')
-   where not exists (
-           select 1
-             from wakeclub.followups f
-            where f.lead_id = $1::uuid
-              and f.status in ('pendente', 'aguardando_aprovacao', 'aprovado', 'enviando'))
-  returning id, lead_id, tipo, agendado_para, motivo
-)
-insert into wakeclub.eventos_automacao
-  (lead_id, agente, tipo_evento, gatilho, decisao, motivo,
-   estado_anterior, estado_novo, metadados,
-   entidade_tipo, entidade_id, origem_tipo, origem_id, correlacao_id,
-   modelo, versao_prompt)
-select c.lead_id, 'qualificador', 'followup_created', 'schedule',
-       c.tipo || ' em ' ||
-         to_char(c.agendado_para at time zone 'America/Sao_Paulo',
-                 'YYYY-MM-DD HH24:MI'),
-       c.motivo,
-       '{}'::jsonb,
-       jsonb_build_object(
-         'tipo', c.tipo,
-         'agendado_para', c.agendado_para,
-         'status', 'pendente'),
-       '{}'::jsonb,
-       'followup', c.id, 'motor', $5::text,
-       'motor:qual:' || $5::text || ':' || c.id::text,
-       $6::text, $7::text
-  from criado c
-on conflict do nothing`;
-
 async function gravar(
   db: PoolClient,
   { lead_id: leadId, lease }: { lead_id: string; lease: string },
   q: Qualificacao,
   rodada: string,
 ) {
-  const { rowCount } = await db.query(SQL_GRAVAR, [
+  await db.query(SQL_GRAVAR, [
     leadId,
     q.etiqueta,
     q.interesse,
@@ -468,17 +405,6 @@ async function gravar(
     VERSAO_PROMPT,
     q.horasEstimadas,
     lease,
-  ]);
-  // Lead virou opt_out entre a reivindicação e a gravação: nada de follow-up.
-  if (!rowCount || !q.followup) return;
-  await db.query(SQL_AGENDAR, [
-    leadId,
-    q.followup.quando,
-    q.followup.tipo,
-    q.followup.motivo,
-    rodada,
-    MODELO,
-    VERSAO_PROMPT,
   ]);
 }
 
@@ -503,9 +429,7 @@ export async function tarefaQualificador(deps: { ia: ClienteIa }): Promise<numbe
         timeoutMs: 60000,
       });
       const q = validarQualificacao(cru, {
-        etiquetaAtual: ou(l.etiqueta, "Novo Lead"),
-        minimoLocal: l.minimo_local,
-        limiteLocal: l.limite_local,
+        etiquetaAtual: ou(l.etiqueta, "Novo lead"),
       });
       if ("erro" in q) throw new Error(q.erro);
       await comTransacao((c) => gravar(c, l, q, rodada));

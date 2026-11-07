@@ -1,14 +1,14 @@
 import {
   Archive,
-  CalendarCheck,
-  CalendarClock,
   Coins,
   CreditCard,
   GraduationCap,
   Headset,
+  Hourglass,
   Link2,
   Sprout,
   Target,
+  UserCheck,
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
@@ -19,14 +19,14 @@ import type { ColunaPipeline } from "@/lib/pipeline";
 import { CardLead } from "./CardLead";
 
 const ICONES: Record<ColunaPipeline<LeadPipeline>["etapa"], LucideIcon> = {
-  "Novo Lead": Sprout,
-  Atendimento: Headset,
+  "Novo lead": Sprout,
+  "Em atendimento": Headset,
   "Link enviado": Link2,
+  Cadastrado: UserCheck,
   "Aguardando pagamento": CreditCard,
-  Agendado: CalendarCheck,
-  "Aula realizada": GraduationCap,
-  "Follow-up": CalendarClock,
-  "Negociação encerrada": Archive,
+  "Aluno com horas": GraduationCap,
+  "Aluno sem horas": Hourglass,
+  Encerrado: Archive,
 };
 
 // Coluna grande demais vira rolagem infinita; mostra as primeiras e um "+ n leads" (referência 05).
