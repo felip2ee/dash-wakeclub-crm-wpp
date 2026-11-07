@@ -25,6 +25,18 @@ export const HORA_SP = new Intl.DateTimeFormat("pt-BR", {
   hourCycle: "h23",
 });
 
+/**
+ * Quantos envios a cota do dia libera até esta hora: a cota se espalha pelas 12 horas da
+ * janela (conservador 20/dia: 2 até as 8h59, 4 até as 9h59 ... 20 até as 19h59). O que não
+ * saiu numa hora pode sair na seguinte, sempre com o intervalo mínimo entre envios.
+ */
+export function cotaAteAgora(cotaDia: number, agora: Date): number {
+  const hora = Number(HORA_SP.format(agora));
+  if (hora < 8) return 0;
+  if (hora > 19) return cotaDia;
+  return Math.min(cotaDia, Math.ceil((cotaDia * (hora - 7)) / 12));
+}
+
 /** Envio e preparo só das 8h às 19h59 de São Paulo. */
 export function dentroDaJanela(agora: Date): boolean {
   const hora = Number(HORA_SP.format(agora));

@@ -477,7 +477,9 @@ Quem muda o quê:
 | `envio-followups`         | `aprovado` → `enviando` → `enviado` (grava mensagem com `followup_id`); falhas: `aprovado` de novo (`nao_saiu`) ou `abortado` (`incerto`/órfão/sem texto) |
 
 `aprovado` sem envio (por exemplo, sem adaptador, fora da janela ou além da cota) espera na
-`/fila-envio`, ordenado por lembretes, valor esperado e idade.
+`/fila-envio`, ordenado por lembretes, temperatura (quente, morno, frio, sem), valor esperado e
+idade. Lead que recebeu follow-up comum nos últimos 3 dias fica fora da fila até completar o
+prazo; lembrete de aula não espera.
 
 ## Fila de aprovação e avaliações
 
@@ -512,6 +514,11 @@ Modo em `configuracoes.ritmo`; muda só o admin (`definirRitmoAdmin`, que regist
 
 - **Cota:** conta os follow-ups `enviado` no dia de São Paulo (`enviadosHoje`). Preparar e
   decidir não têm limite; o que passa da cota espera na fila para o dia seguinte.
+- **Cota espalhada** (`cotaAteAgora`): a cota se divide pelas 12 horas da janela. No
+  conservador saem até 2 até as 8h59, 4 até as 9h59 … 20 até as 19h59; no aquecido, 5 por
+  hora. O que não saiu numa hora pode sair na seguinte.
+- **Prazo entre follow-ups:** lead que recebeu follow-up comum (fora lembrete de aula) espera
+  3 dias pelo próximo.
 - **Janela:** preparo e envio só das 8h às 19h59 de São Paulo (`dentroDaJanela`).
 - **Intervalo:** o envio espera o intervalo do modo desde o último `enviado_em`.
 - **Aquecido** dura até a meia-noite de São Paulo; `ritmo-meia-noite` registra `rhythm_reset`

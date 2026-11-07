@@ -12,6 +12,10 @@ const db = () => getPoolMotor();
 // 12h e 20h30 de São Paulo (UTC-3).
 const MEIO_DIA = () => new Date("2026-11-04T15:00:00Z");
 const NOITE = () => new Date("2026-11-04T23:30:00Z");
+// 19h30: a cota espalhada já liberou o dia inteiro.
+const FIM_DA_TARDE = () => new Date("2026-11-04T22:30:00Z");
+// 8h30: a cota espalhada libera só 2 dos 20 do conservador.
+const COMECO = () => new Date("2026-11-04T11:30:00Z");
 
 /** Adaptador falso: registra cada envio e lança `falhar` quando houver. */
 function adaptadorFalso(falhar?: Error) {
@@ -115,20 +119,37 @@ async function avisos(usuarioId: string) {
 }
 
 describe("ordenarFila", () => {
-  const c = (id: string, tipo: string, valorEsperado: number, dia: number): Candidato => ({
+  const c = (
+    id: string,
+    tipo: string,
+    valorEsperado: number,
+    [dia, temperatura]: [number, string?],
+  ): Candidato => ({
     id,
     tipo,
     valorEsperado,
+    temperatura: temperatura ?? null,
     aprovadoEm: new Date(Date.UTC(2026, 10, dia)),
+  });
+
+  test("lembrete, depois quente, morno, frio e sem temperatura, mesmo com valor maior", () => {
+    const fila = ordenarFila([
+      c("frio-caro", "parado", 5000, [1, "frio"]),
+      c("sem", "parado", 9000, [1]),
+      c("morno", "parado", 10, [1, "morno"]),
+      c("quente", "parado", 1, [2, "quente"]),
+      c("lembrete", "lembrete_dia", 0, [3, "frio"]),
+    ]);
+    expect(fila.map((x) => x.id)).toEqual(["lembrete", "quente", "morno", "frio-caro", "sem"]);
   });
 
   test("lembretes primeiro, depois maior valor esperado, depois o aprovado mais antigo", () => {
     const fila = ordenarFila([
-      c("parado-caro", "parado", 1000, 1),
-      c("parado-novo", "parado", 50, 4),
-      c("lembrete", "lembrete_dia", 0, 5),
-      c("parado-antigo", "parado", 50, 2),
-      c("d1", "lembrete_d1", 0, 3),
+      c("parado-caro", "parado", 1000, [1]),
+      c("parado-novo", "parado", 50, [4]),
+      c("lembrete", "lembrete_dia", 0, [5]),
+      c("parado-antigo", "parado", 50, [2]),
+      c("d1", "lembrete_d1", 0, [3]),
     ]);
     expect(fila.map((x) => x.id)).toEqual([
       "d1",
@@ -396,7 +417,7 @@ describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
     const { followupId } = await cenario();
     const { chamadas, adaptador } = adaptadorFalso();
 
-    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
+    expect(await tarefaEnvioFollowups({ adaptador, agora: FIM_DA_TARDE })).toBe(0);
     expect(chamadas).toHaveLength(0);
     expect((await followup(followupId)).status).toBe("aprovado");
 
@@ -405,7 +426,7 @@ describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
       "update wakeclub.followups set enviado_em = now() - interval '2 days' where id = $1::uuid",
       [enviados[0].followupId],
     );
-    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(1);
+    expect(await tarefaEnvioFollowups({ adaptador, agora: FIM_DA_TARDE })).toBe(1);
     expect((await followup(followupId)).status).toBe("enviado");
   });
 
@@ -503,5 +524,64 @@ describe.skipIf(!bancoTesteAtivo)("envio dos aprovados", () => {
 
     expect(chamadas).toHaveLength(0);
     expect((await followup(followupId)).status).toBe("aprovado");
+  });
+  test("cota espalhada: às 8h30, com 2 enviados hoje, o próximo espera a hora seguinte", async () => {
+    const enviados = await Promise.all([
+      cenario({ status: "enviado" }),
+      cenario({ status: "enviado" }),
+    ]);
+    await db().query(
+      `update wakeclub.followups set enviado_em = now() - interval '130 seconds'
+        where id = any($1::uuid[])`,
+      [enviados.map((e) => e.followupId)],
+    );
+    const { followupId } = await cenario();
+    const { adaptador } = adaptadorFalso();
+
+    expect(await tarefaEnvioFollowups({ adaptador, agora: COMECO })).toBe(0);
+    expect((await followup(followupId)).status).toBe("aprovado");
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(1);
+  });
+
+  /** Lead que recebeu um follow-up comum há `ha`, com um novo aprovado do `tipo`. */
+  async function leadComEnvioRecente(ha: string, tipo: string) {
+    const { leadId, dono } = await cenario({ status: "enviado" });
+    await db().query(
+      "update wakeclub.followups set enviado_em = now() - $2::interval where lead_id = $1::uuid",
+      [leadId, ha],
+    );
+    const { rows } = await db().query<{ id: string }>(
+      `insert into wakeclub.followups
+         (lead_id, agendado_para, tipo, status, texto_sugerido, sugerido_em, texto_enviado,
+          aprovado_em, aprovado_por)
+       values ($1::uuid, now(), $2::text, 'aprovado', 'Oi', now(), 'Oi de novo', now(), $3::uuid)
+       returning id`,
+      [leadId, tipo, dono],
+    );
+    return { leadId, id: rows[0].id };
+  }
+
+  test("lead com follow-up enviado há menos de 3 dias espera; passado o prazo, sai", async () => {
+    const { leadId, id } = await leadComEnvioRecente("2 days", "parado");
+    const { adaptador } = adaptadorFalso();
+
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(0);
+    expect((await followup(id)).status).toBe("aprovado");
+
+    await db().query(
+      `update wakeclub.followups set enviado_em = now() - interval '4 days'
+        where lead_id = $1::uuid and status = 'enviado'`,
+      [leadId],
+    );
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(1);
+    expect((await followup(id)).status).toBe("enviado");
+  });
+
+  test("lembrete de aula não espera o prazo entre follow-ups", async () => {
+    const { id } = await leadComEnvioRecente("1 day", "lembrete_d1");
+    const { adaptador } = adaptadorFalso();
+
+    expect(await tarefaEnvioFollowups({ adaptador, agora: MEIO_DIA })).toBe(1);
+    expect((await followup(id)).status).toBe("enviado");
   });
 });
