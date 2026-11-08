@@ -165,7 +165,7 @@ src/
 ```
 
 `db/migrations/` guarda o schema (`0001_base`, `0002_motor`, `0003_virada`,
-`0004_ia_followup`, `0005_vendas`, `0006_webhook_sem_apikey`, `0007_origem_e_meta`); o runner é `scripts/migrar.mjs`.
+`0004_ia_followup`, `0005_vendas`, `0006_webhook_sem_apikey`, `0007_origem_e_meta`, `0009_vendas_pix`); o runner é `scripts/migrar.mjs`.
 
 `src/server/db.ts` é o único módulo que importa `pg` (pools `getPool`, `getPoolRw`,
 `getPoolMotor` e `getPoolWebhook`, este só do endpoint de webhook). `vite.config.ts` inclui os
@@ -205,11 +205,11 @@ Rotas novas (WakeCRM):
 | `/perfil`                      | sessão                                           | preferências do navegador e sair                                                          |
 | `/visao-geral`                 | admin                                            | visão comercial (`lerComercial`): vendas × meta, leads novos, coorte, origem, atendimento; ranking e alertas |
 | `/pipeline`                    | admin                                            | `getPipeline` somente leitura: valor cheio e esperado, com os gráficos por etapa          |
-| `/configuracoes`               | admin                                            | tamanho/tema, usuários, modo de follow-up, preço da hora, meta de vendas por dia, status do WhatsApp, fila de eventos, painel de IA, vendas sem dono |
+| `/configuracoes`               | admin                                            | tamanho/tema, usuários, modo de follow-up, preço da hora, meta de vendas por dia, cartão "Venda direta por Pix" (chave, CNPJ e preços de 1, 2 e 4 h), status do WhatsApp, fila de eventos, painel de IA, vendas sem dono |
 | `/equipe`                      | admin                                            | cartões da equipe: peso de distribuição e comissão                                        |
 | `/revisar-decisoes`            | admin                                            | revisão das decisões humanas sobre os textos (`followup_revisoes`); única fonte de aprendizado dos prompts; o botão de varredura dos parados fica em `/aprovar` |
 | `/fila-envio`                  | admin                                            | fila entre dias dos aprovados: cota de envios, previsão de saída e lembretes             |
-| `/vendas`                      | admin                                            | resumo do período (vendido, comissão dia 10, por categoria), vendas do período, vendas sem dono (vincular), fechamento do mês, estorno manual          |
+| `/vendas`                      | admin                                            | resumo do período (vendido, comissão dia 10, por categoria), vendas do período, vendas sem dono (vincular), "Vendas para confirmar" (perguntas dos comprovantes de Pix) e "Registradas automaticamente", fechamento do mês, estorno manual          |
 
 Rotas anteriores, ainda acessíveis por URL:
 
@@ -360,6 +360,7 @@ banco), registradas em `iniciar.ts`. Toda tarefa grava a última execução em
 | `qualificador`      | 1 min     | `OPENAI_API_KEY`            | qualifica até 8 leads vencidos                                       |
 | `redator`           | 15 min    | `OPENAI_API_KEY`            | porteiro + redator dos follow-ups vencidos                           |
 | `transcricao`       | 1 min     | `OPENAI_API_KEY` e adaptador | transcreve até 5 áudios por rodada                                  |
+| `comprovantes`      | 2 min     | `OPENAI_API_KEY` e adaptador | `tarefaComprovantes`: lê imagens e PDFs que o lead mandou nos últimos 7 dias; registra a venda direta ou pergunta ao admin (ver "Vendas e dinheiro") |
 
 `parado` e `pagamento-pendente` não dependem de IA nem de adaptador. Sem a chave, `iniciar.ts` loga
 `ia.sem_chave` uma vez e segue (o envio roda sem reconferência: item que precisaria dela é pulado,
@@ -568,6 +569,23 @@ no lead (se vazio). Venda sem casamento fica sem dono (`lead_id` nulo) e aparece
 "Vendas sem dono"; o admin vincula à mão (`vinculada_por = 'admin'`, com confirmação,
 irreversível).
 
+**Venda direta por Pix** (`motor/comprovantes.ts`; `vendas.origem_externa = 'pix'` é a
+venda **Direta**, qualquer outra origem é **App**). A tarefa `comprovantes` (2 min, só com IA e
+adaptador Evolution) pega imagens e PDFs do lead dos últimos 7 dias, lê o comprovante com a IA
+(valor, data, recebedor, E2E), deduz as horas pela conversa e decide. Registra sozinha, com
+`vinculada_por = 'comprovante'`, só quando tudo confere: chave/CNPJ e preços de 1, 2 e 4 h
+configurados em `configuracoes.venda_pix`; recebedor igual à chave ou ao CNPJ da Wake; valor
+igual a um único pacote; horas da conversa iguais às do valor; pagamento de até 3 dias, sem
+data futura; lead com dono; nenhuma venda parecida. Qualquer falha vira uma pergunta
+(`comprovantes.status = 'confirmar'` com `motivo`), que **não conta em faturado** até o admin
+decidir. Duplicatas: mesmo arquivo (hash SHA-256) ou mesmo E2E de formato oficial viram
+`repetido`; sem E2E, mesmo lead + valor + pagamento a até 10 min também; dois E2E diferentes
+com lead + valor + 10 min parecidos vão ao admin. App × Direta: venda paga do app com o mesmo
+lead e valor de uma direta a até 48 h, em qualquer ordem, gera pergunta ao admin (inclusive
+quando o admin vincula a venda do app à mão); as duas contam até ele decidir. "Não é venda"
+numa direta registrada estorna pelo caminho atual e **devolve as horas ao saldo do lead**
+(sem ficar negativo; a etapa não volta sozinha). Nada é enviado ao cliente; admins recebem push.
+
 **Categorias** (`vendas/regras.ts`, janela de 48 h antes da compra): `follow-up` (follow-up
 `enviado` na janela), `atendimento` (mensagem da equipe na janela), `recompra` (sem
 interação, lead já tinha venda paga) e `espontanea` (nenhum dos três). O motivo fica em
@@ -588,11 +606,22 @@ e cria um lançamento negativo pendente (`venda_id` nulo, motivo "saldo negativo
 para o mês seguinte. Na soma do admin, o a pagar por vendedor usa `max(0)`; no painel do
 vendedor o valor é o líquido.
 
-**Painéis.** `lerResumoDinheiro` (Visão geral e Pipeline): pipeline cheio/esperado, vendido
+**Painéis.** O faturado se divide em App e Direta na Visão geral (`faturadoApp`/`faturadoDireta`) e em Dinheiro (`valorApp`/`valorDireta`). `lerResumoDinheiro` (Visão geral e Pipeline): pipeline cheio/esperado, vendido
 no período (só `paga`), categorias, a pagar no dia 10 e ranking. `getPainelVendedor`
 ("Meu painel"): *pode entrar* (valor esperado do pipeline do vendedor × sua %), *garantida
 no mês* e *a pagar dia 10*. O ranking semanal (posição por `rank()`, inclui vendedores com
 zero) é a única visão de outro vendedor; o resto do dinheiro é só do dono.
+
+**Privacidade dos comprovantes.** `comprovantes` guarda a leitura do documento (pode ter nome
+e CPF de quem pagou), por isso só a `wakecrm_motor` tem grant (select, insert, update); os
+painéis (`painel_ro`/`painel_rw`) não leem a tabela. O admin lê e responde pelo pool do motor
+(`vendas-pix.ts`, `exigirAdmin`), com o evento de auditoria na mesma transação. Logs não
+incluem o conteúdo do comprovante.
+
+**Telas.** `/vendas` mostra "Vendas para confirmar" (aceitar, corrigir e confirmar, "não é
+venda", ou escolher qual de duas vendas parecidas desfazer) e "Registradas automaticamente".
+`/configuracoes` tem o cartão "Venda direta por Pix". Sem chave/CNPJ e preços, nada é
+registrado sozinho.
 
 ## Modelo de dados
 
@@ -607,8 +636,9 @@ zero) é a única visão de outro vendedor; o resto do dinheiro é só do dono.
 | `app_eventos`          | eventos `USER_*` do app já processados (0008)                 | `unique (tipo, chave)`; `resultado`; N:1 opcional com lead                                                                               |
 | `followup_revisoes`    | revisão do admin sobre uma avaliação (0008)                   | 1:1 com `followup_avaliacoes`; `concorda`, `observacao`; só INSERT; única fonte de aprendizado dos prompts                              |
 | `varreduras`           | progresso da varredura sob demanda (0008)                     | total, analisados, sugeridos, barrados, `status`; índice único garante uma `rodando`                                                     |
-| `configuracoes`        | chave/valor do motor (0004)                                   | `ritmo`, `preco_hora`, `prazos_parado`, `tarefas_execucao`; trigger de `atualizado_em`                                                                    |
-| `vendas`               | venda recebida por webhook (0005)                             | única por `(origem_externa, id_externo)`; `lead_id`/`vendedor_id` nulos = sem dono; categoria, comissão congelada, estorno, `corpo_bruto` |
+| `configuracoes`        | chave/valor do motor (0004)                                   | `ritmo`, `preco_hora`, `prazos_parado`, `tarefas_execucao`, `venda_pix` (0009: `chave`, `cnpj`, `precos` por pacote); trigger de `atualizado_em`                                                                    |
+| `vendas`               | venda recebida por webhook (0005)                             | única por `(origem_externa, id_externo)`; `origem_externa = 'pix'` = Direta, `vinculada_por` aceita `comprovante` (0009); `lead_id`/`vendedor_id` nulos = sem dono; categoria, comissão congelada, estorno, `corpo_bruto` |
+| `comprovantes`         | uma linha por imagem/PDF analisado (0009)                     | `status` (`lendo`, `nao_e`, `registrado`, `confirmar`, `recusado`, `repetido`, `falhou`); `hash`, `e2e` (único entre os `registrado`), `leitura jsonb`, `venda_id`, `venda_suspeita_id`, `repetido_de`, `decidido_por`; sem grant para os painéis (ver "Privacidade dos comprovantes") |
 | `fechamentos`          | fechamento mensal por vendedor (0005)                         | único por `(vendedor_id, mes)`; `total_vendas` em reais, `quantidade_vendas`, `total_comissao`, `ajustes`, `a_pagar`, `pago_em/por`     |
 | `lancamentos_comissao` | ajustes entre meses (0005)                                    | estorno pós-fechamento, venda atrasada, saldo negativo (`venda_id` nulo); consumido por um `fechamento_id`                              |
 | `crm_outbox`           | trilha das qualificações e do opt-out                         | N:1 com lead; `tipo='qualificacao'` guarda payloads usados por `v_wf02_atividade`                                                         |
