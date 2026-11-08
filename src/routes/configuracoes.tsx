@@ -10,6 +10,7 @@ import {
   Link2,
   MessageSquareText,
   Monitor,
+  QrCode,
   Tag,
   Target,
   Users,
@@ -29,6 +30,7 @@ import { Secao } from "@/features/configuracoes/Secao";
 import { StatusWhatsapp, useSaudeNumero } from "@/features/configuracoes/StatusWhatsapp";
 import { TamanhoInterface } from "@/features/configuracoes/TamanhoInterface";
 import { TemaEModo } from "@/features/configuracoes/TemaEModo";
+import { CHAVE_CONFIG_PIX, resumoConfigPix, VendaPix } from "@/features/configuracoes/VendaPix";
 import { DistribuicaoLeads, usePainelAdmin, Usuarios } from "@/features/configuracoes/Usuarios";
 import { totalPesoAtivo } from "@/features/configuracoes/peso";
 import { VendasNaoConciliadas } from "@/features/configuracoes/VendasNaoConciliadas";
@@ -38,6 +40,7 @@ import { getRitmo } from "@/server/admin-ia";
 import { exigirAdmin } from "@/server/auth";
 import { getConfiguracoes } from "@/server/configuracoes";
 import { listarVendasSemDono, type VendaLinha } from "@/server/vendas";
+import { getConfigPix } from "@/server/vendas-pix";
 
 export const Route = createFileRoute("/configuracoes")({
   beforeLoad: async () => ({ sessao: await exigirAdmin() }),
@@ -90,6 +93,7 @@ function ConfiguracoesPage() {
           <ModoFollowup />
         </div>
         <PrazosParado />
+        <VendaPix />
         <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-5">
           <DistribuicaoLeads />
           <PrecoHora />
@@ -119,6 +123,7 @@ function useSecoesCelular(): SecaoCelular[] {
   const painel = usePainelAdmin();
   const ritmo = useQuery({ queryKey: CHAVE_RITMO, queryFn: () => getRitmo() });
   const config = useQuery({ queryKey: CHAVE_CONFIGURACOES, queryFn: () => getConfiguracoes() });
+  const pix = useQuery({ queryKey: CHAVE_CONFIG_PIX, queryFn: () => getConfigPix() });
   const saude = useSaudeNumero();
   const fila = useMonitorFila();
   const semDono = useQuery({
@@ -171,6 +176,13 @@ function useSecoesCelular(): SecaoCelular[] {
         ? plural(config.data.metaVendasDia, "venda por dia", "vendas por dia")
         : "…",
       conteudo: <MetaVendas />,
+    },
+    {
+      id: "venda-pix",
+      titulo: "Venda direta por Pix",
+      icone: QrCode,
+      resumo: pix.data ? resumoConfigPix(pix.data) : "…",
+      conteudo: <VendaPix />,
     },
     {
       id: "whatsapp",

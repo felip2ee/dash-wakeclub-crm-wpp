@@ -16,6 +16,7 @@ import { Secao } from "@/features/configuracoes/Secao";
 import { FechamentoMes } from "@/features/dinheiro/FechamentoMes";
 import { FiltroPeriodo } from "@/features/dinheiro/FiltroPeriodo";
 import { ListaVendas } from "@/features/dinheiro/ListaVendas";
+import { ParaConfirmar } from "@/features/dinheiro/ParaConfirmar";
 import { mesCorrente, rotuloMes } from "@/features/dinheiro/periodo";
 import { VendasSemDono } from "@/features/dinheiro/VendasSemDono";
 import { VendasPorCategoria } from "@/features/visao-geral/VendasPorCategoria";
@@ -32,8 +33,8 @@ export const Route = createFileRoute("/vendas")({
 
 const TODOS = "todos";
 
-// Vendas e comissões (admin, spec fase 4 §7): lista com filtros, vendas sem dono e o
-// fechamento do mês com "Marcar pago".
+// Vendas e comissões (admin, spec fase 4 §7): comprovantes de Pix para confirmar, lista com
+// filtros, vendas sem dono e o fechamento do mês com "Marcar pago".
 function VendasPage() {
   const [periodo, setPeriodo] = useState(mesCorrente);
   const [vendedor, setVendedor] = useState(TODOS);
@@ -55,6 +56,8 @@ function VendasPage() {
         <h1 className="font-display text-3xl font-bold">Vendas e comissões</h1>
         <p className="text-muted-foreground">Vendas recebidas, conciliação e comissões do time</p>
       </header>
+
+      <ParaConfirmar />
 
       <div className="flex flex-wrap gap-3">
         <FiltroPeriodo periodo={periodo} onChange={setPeriodo} />
