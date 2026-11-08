@@ -16,10 +16,16 @@ const LEITURA: Leitura = {
   recebedor: "Wake Club",
   chaveRecebedor: "PIX@wake.club",
   cnpjRecebedor: null,
-  e2e: "E123",
+  e2e: "E12345678202611081400ABCDEFGHIJK",
   legivel: true,
 };
-const CTX = { config: CONFIG, agora: AGORA, vendaAppParecida: false, leadComDono: true };
+const CTX = {
+  config: CONFIG,
+  agora: AGORA,
+  vendaAppParecida: false,
+  comprovanteParecido: false,
+  leadComDono: true,
+};
 
 const motivo = (l: Partial<Leitura>, horas: number | null = 2, ctx: Partial<typeof CTX> = {}) => {
   const d = decidir({ ...LEITURA, ...l }, horas, { ...CTX, ...ctx });
@@ -48,6 +54,44 @@ describe("decidir", () => {
     expect(motivo({ legivel: false })).toBe(c);
     expect(motivo({ valor: null })).toBe(c);
     expect(motivo({ pagoEm: "2026-11-10T10:00:00-03:00" })).toBe(c); // no futuro
+    expect(motivo({ pagoEm: null })).toBe(c); // data não lida não vira a hora da mensagem
+  });
+
+  test("chave e CNPJ comparados conforme o tipo", () => {
+    const nao = "recebedor não confere com a chave/CNPJ da Wake";
+    const so = (chave: string | null, cnpj: string | null) => ({ ...CONFIG, chave, cnpj });
+    const lido = (chaveRecebedor: string | null, cnpjRecebedor: string | null = null) => ({
+      chaveRecebedor,
+      cnpjRecebedor,
+    });
+    // E-mail: ponto e @ contam.
+    expect(motivo(lido("a.b@x.com"), 2, { config: so("ab@x.com", null) })).toBe(nao);
+    // CNPJ mascarado não basta.
+    expect(motivo(lido(null, "12.***.***/0001-**"), 2, { config: so(null, CONFIG.cnpj) })).toBe(
+      nao,
+    );
+    expect(
+      motivo(lido(null, "12.345.678/0001-90"), 2, { config: so(null, "12345678000190") }),
+    ).toEqual({ acao: "registrar", horas: 2 });
+    // Telefone: só dígitos.
+    expect(motivo(lido("+55 63 98111-9636"), 2, { config: so("5563981119636", null) })).toEqual({
+      acao: "registrar",
+      horas: 2,
+    });
+    // Chave aleatória: exata, sem caixa.
+    const uuid = "123e4567-e89b-12d3-a456-426614174000";
+    expect(motivo(lido(uuid.toUpperCase()), 2, { config: so(uuid, null) })).toEqual({
+      acao: "registrar",
+      horas: 2,
+    });
+    expect(motivo(lido("123e4567e89b12d3a456426614174000"), 2, { config: so(uuid, null) })).toBe(
+      nao,
+    );
+    // CNPJ lido no campo da chave também confere.
+    expect(motivo(lido("12345678000190"), 2, { config: so(null, CONFIG.cnpj) })).toEqual({
+      acao: "registrar",
+      horas: 2,
+    });
   });
 
   test("recebedor de outra conta", () => {
@@ -78,6 +122,10 @@ describe("decidir", () => {
     );
   });
 
+  test("outro comprovante parecido com E2E diferente", () => {
+    expect(motivo({}, 2, { comprovanteParecido: true })).toBe("possível comprovante repetido");
+  });
+
   test("lead sem dono", () => {
     expect(motivo({}, 2, { leadComDono: false })).toBe("lead sem dono");
   });
@@ -95,7 +143,7 @@ describe("normalizarLeitura", () => {
         recebedor: "",
         chave_recebedor: "pix@wake.club",
         cnpj_recebedor: null,
-        e2e: " e123 abc ",
+        e2e: " e1234567 8202611081432abcdefghijk ",
       }),
     ).toEqual({
       ehComprovante: true,
@@ -106,8 +154,25 @@ describe("normalizarLeitura", () => {
       recebedor: null,
       chaveRecebedor: "pix@wake.club",
       cnpjRecebedor: null,
-      e2e: "E123ABC",
+      e2e: "E12345678202611081432ABCDEFGHIJK",
     });
+  });
+
+  test("E2E fora do formato vira null", () => {
+    const e2e = (x: unknown) => normalizarLeitura({ eh_comprovante: true, e2e: x }).e2e;
+    expect(e2e("E123ABC")).toBeNull();
+    expect(e2e("X12345678202611081432ABCDEFGHIJK")).toBeNull();
+    expect(e2e("E12345678202611081432ABCDEFGHIJKL")).toBeNull(); // 33
+    expect(e2e("E12345678-202611081432ABCDEFGHIJ")).toBeNull();
+  });
+
+  test("data também em DD/MM/YYYY HH:MM, em Brasília", () => {
+    const pago = (x: unknown) => normalizarLeitura({ eh_comprovante: true, pago_em: x }).pagoEm;
+    expect(pago("08/11/2026 14:32")).toBe("2026-11-08T17:32:00.000Z");
+    expect(pago("08/11/2026 14:32:10")).toBe("2026-11-08T17:32:10.000Z");
+    expect(pago("8/11/2026 14:32")).toBeNull();
+    expect(pago("31/02/2026 14:32")).toBeNull();
+    expect(pago("2026-02-31 14:32")).toBeNull();
   });
 
   test("resposta estranha vira leitura vazia que não é comprovante", () => {

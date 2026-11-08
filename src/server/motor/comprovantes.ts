@@ -78,13 +78,26 @@ export async function lerConfigPix(db: ClienteDb): Promise<ConfigPix> {
   };
 }
 
-/** "YYYY-MM-DD HH:MM" no horário de Brasília (sem horário de verão desde 2019) para ISO. */
+/**
+ * "YYYY-MM-DD HH:MM" ou "DD/MM/YYYY HH:MM" no horário de Brasília (sem horário de verão desde
+ * 2019) para ISO; data inexistente (31/02) ou outro formato vira null.
+ */
 function dataDeBrasilia(x: unknown): string | null {
-  const m =
-    typeof x === "string" ? /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(:\d{2})?$/.exec(x.trim()) : null;
-  if (!m) return null;
-  const d = new Date(`${m[1]}T${m[2]}${m[3] ?? ":00"}-03:00`);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  const t = typeof x === "string" ? x.trim() : "";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})(:\d{2})?$/.exec(t);
+  const br = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}:\d{2})(:\d{2})?$/.exec(t);
+  const [dia, hora, seg] = iso
+    ? [`${iso[1]}-${iso[2]}-${iso[3]}`, iso[4], iso[5]]
+    : br
+      ? [`${br[3]}-${br[2]}-${br[1]}`, br[4], br[5]]
+      : [];
+  if (!dia) return null;
+  const d = new Date(`${dia}T${hora}${seg ?? ":00"}-03:00`);
+  // O Date rola 31/02 para março; a data de Brasília tem de voltar igual.
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(d.getTime() - 3 * 3600_000).toISOString().slice(0, 10) === dia
+    ? d.toISOString()
+    : null;
 }
 
 /** Resposta da IA (fronteira não confiável) para `Leitura`; o que não tiver o tipo certo vira null. */
@@ -94,7 +107,9 @@ export function normalizarLeitura(cru: unknown): Leitura {
     typeof o.valor === "number" && Number.isFinite(o.valor) && o.valor > 0
       ? Math.round(o.valor * 100) / 100
       : null;
-  const e2e = textoOuNulo(o.e2e)?.replace(/\s+/g, "").toUpperCase() || null;
+  // E2E do Bacen: "E" + 31 letras/dígitos; fora disso não serve para deduplicar.
+  const e2eLido = typeof o.e2e === "string" ? o.e2e.replace(/\s+/g, "").toUpperCase() : "";
+  const e2e = /^E[0-9A-Z]{31}$/.test(e2eLido) ? e2eLido : null;
   return {
     ehComprovante: o.eh_comprovante === true,
     valor,
@@ -108,8 +123,21 @@ export function normalizarLeitura(cru: unknown): Leitura {
   };
 }
 
-// Chave e CNPJ comparados só por dígitos e letras minúsculas: máscara e caixa não importam.
-const normalizar = (s: string | null) => (s ?? "").toLowerCase().replace(/[^0-9a-z]/g, "");
+const CHAVE_ALEATORIA = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Chave/CNPJ na forma comparável, conforme o tipo: e-mail e chave aleatória exatos (sem caixa);
+ * CNPJ, CPF e telefone só dígitos, com 11 ou mais (máscara "12.***" não confere). Null: não compara.
+ */
+function chaveComparavel(s: string | null): string | null {
+  const t = (s ?? "").trim().toLowerCase();
+  if (!t) return null;
+  if (t.includes("@") || CHAVE_ALEATORIA.test(t)) return t;
+  const digitos = t.replace(/\D/g, "");
+  return digitos.length >= 11 ? digitos : null;
+}
+const comparaveis = (xs: (string | null)[]) =>
+  xs.map(chaveComparavel).filter((x): x is string => x !== null);
 const centavos = (n: number) => Math.round(n * 100);
 const valorBr = (n: number) => n.toFixed(2).replace(".", ",");
 
@@ -117,11 +145,17 @@ const valorBr = (n: number) => n.toFixed(2).replace(".", ",");
 export function decidir(
   l: Leitura,
   horasDeduzidas: number | null,
-  ctx: { config: ConfigPix; agora: Date; vendaAppParecida: boolean; leadComDono: boolean },
+  ctx: {
+    config: ConfigPix;
+    agora: Date;
+    vendaAppParecida: boolean;
+    comprovanteParecido: boolean;
+    leadComDono: boolean;
+  },
 ): Decisao {
   const confirmar = (motivo: string): Decisao => ({ acao: "confirmar", motivo });
   const { config } = ctx;
-  const wake = [config.chave, config.cnpj].map(normalizar).filter(Boolean);
+  const wake = comparaveis([config.chave, config.cnpj]);
   if (wake.length === 0 || PACOTES.some((h) => config.precos[h] === null))
     return confirmar("configure a chave Pix e os preços dos pacotes");
 
@@ -134,8 +168,9 @@ export function decidir(
     pago > ctx.agora.getTime() + FOLGA_FUTURO_MS
   )
     return confirmar("comprovante ilegível");
+  if (ctx.comprovanteParecido) return confirmar("possível comprovante repetido");
 
-  const lidos = [l.chaveRecebedor, l.cnpjRecebedor].map(normalizar).filter(Boolean);
+  const lidos = comparaveis([l.chaveRecebedor, l.cnpjRecebedor]);
   if (!lidos.some((x) => wake.includes(x)))
     return confirmar("recebedor não confere com a chave/CNPJ da Wake");
 
@@ -390,6 +425,34 @@ async function acharRepetido(
   return rows[0] ? { comprovanteId: rows[0].id, vendaId: null, por: "valor_hora" } : null;
 }
 
+/**
+ * Mesmo lead + valor + pagamento a até 10 min de outro comprovante ou venda Pix, os dois com E2E
+ * e E2Es diferentes: pode ser leitura errada do mesmo Pix, então vai ao admin em vez de registrar.
+ */
+async function acharParecido(
+  db: ClienteDb,
+  it: Item,
+  { e2e, valor, pagoEm }: { e2e: string | null; valor: number | null; pagoEm: string },
+): Promise<string | null> {
+  if (!e2e || valor === null) return null;
+  const { rows } = await db.query<{ id: string }>(
+    `select id from wakeclub.comprovantes
+      where lead_id = $2::uuid and valor = $3::numeric and id <> $1::uuid
+        and e2e is not null and e2e <> $5::text
+        and pago_em between $4::timestamptz - interval '10 minutes'
+                        and $4::timestamptz + interval '10 minutes'
+     union all
+     select id from wakeclub.vendas
+      where lead_id = $2::uuid and valor = $3::numeric and origem_externa = 'pix'
+        and id_externo ~ '^E[0-9A-Z]{31}$' and id_externo <> $5::text
+        and comprada_em between $4::timestamptz - interval '10 minutes'
+                            and $4::timestamptz + interval '10 minutes'
+     limit 1`,
+    [it.id, it.lead_id, valor, pagoEm, e2e],
+  );
+  return rows[0]?.id ?? null;
+}
+
 async function deduzirHoras(
   ia: ClienteIa,
   db: ClienteDb,
@@ -513,7 +576,8 @@ async function processar(
     return;
   }
 
-  // Sem hora legível, vale a hora da mensagem (spec §10b).
+  // Sem hora legível, vale a hora da mensagem para gravar e deduplicar (spec §10b); a decisão usa
+  // só a data lida, então sem ela o comprovante vai ao admin.
   const pagoEm = leitura.pagoEm ?? new Date(it.enviada_em).toISOString();
   const comum = { hash, e2e: leitura.e2e, valor: leitura.valor, pagoEm, leuComIa: true };
   const repetidoDe = async () => {
@@ -535,20 +599,23 @@ async function processar(
 
   const config = await lerConfigPix(db);
   const deducao = await deduzirHoras(deps.ia, db, it.lead_id, config);
+  const parecido = await acharParecido(db, it, { e2e: leitura.e2e, valor: leitura.valor, pagoEm });
   const { rows: lead } = await db.query<{ com_dono: boolean; parecida: string | null }>(
     `select l.atendente_id is not null as com_dono,
             (select v.id from wakeclub.vendas v
-              where v.lead_id = l.id and v.status = 'paga' and v.origem_externa <> 'pix'
+              where (v.lead_id = l.id or (v.lead_id is null and v.telefone = l.telefone))
+                and v.status = 'paga' and v.origem_externa <> 'pix'
                 and $2::numeric is not null and v.valor = $2::numeric
                 and v.comprada_em >= $3::timestamptz - interval '48 hours'
               order by v.comprada_em desc limit 1) as parecida
        from wakeclub.leads l where l.id = $1::uuid`,
     [it.lead_id, leitura.valor, pagoEm],
   );
-  const d = decidir({ ...leitura, pagoEm }, deducao.horas, {
+  const d = decidir(leitura, deducao.horas, {
     config,
     agora,
     vendaAppParecida: lead[0]?.parecida != null,
+    comprovanteParecido: parecido !== null,
     leadComDono: lead[0]?.com_dono === true,
   });
   const leituraGravada = { ...leitura, trechoHoras: deducao.trecho };
@@ -592,6 +659,7 @@ async function processar(
       leitura: leituraGravada,
       horas: deducao.horas,
       vendaSuspeitaId: lead[0]?.parecida ?? null,
+      metadados: parecido ? { parecido_com: parecido } : undefined,
     });
     if (fechou) await notificarAdmins(c, it.lead_id, leitura.valor);
   });

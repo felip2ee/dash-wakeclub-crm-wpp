@@ -43,7 +43,8 @@ function tornarAdmin(id: string) {
   if (r.status !== 0) throw new Error(r.stderr);
 }
 
-const e2eNovo = () => `E${randomUUID().replace(/-/g, "")}`;
+/** E2E no formato do Bacen: "E" + 31 caracteres. */
+const e2eNovo = () => `E${randomUUID().replace(/-/g, "").slice(0, 31).toUpperCase()}`;
 
 const leitura = (extra: Record<string, unknown> = {}) => ({
   eh_comprovante: true,
@@ -310,6 +311,76 @@ describe.skipIf(!bancoTesteAtivo)("tarefaComprovantes", () => {
     expect(vendas).toHaveLength(1);
     expect(vendas[0].id_externo).toBe(`msg:${print.evolutionMsgId}`);
     expect(ia.chamadas.chat[2].anexos?.[0].nomeArquivo).toBe("comprovante.pdf");
+  });
+
+  for (const [nome, pagoEm] of [
+    ["sem data", null],
+    ["data ilegível", "ontem à tarde"],
+  ] as const)
+    test(`comprovante ${nome} vira pergunta, sem usar a hora da mensagem`, async () => {
+      await configurar(CONFIG_OK);
+      const l = await criarLead();
+      const m = await midia(l.tel);
+      const ia = clienteIaFalso({ chat: [leitura({ pago_em: pagoEm }), { horas: 2, trecho: "" }] });
+      const c = await rodar(m.mensagemId, {
+        ia,
+        adaptador: adaptador({ [m.evolutionMsgId]: { mime: "image/jpeg", dados: bytes() } }),
+      });
+      expect([c.status, c.motivo, c.venda_id]).toEqual(["confirmar", "comprovante ilegível", null]);
+      expect(await vendasDoLead(l.leadId)).toHaveLength(0);
+    });
+
+  test("mesmo valor e hora com E2E diferente vira pergunta, não segunda venda", async () => {
+    await configurar(CONFIG_OK);
+    const l = await criarLead();
+    const a = await midia(l.tel);
+    const mapa: Record<string, { mime: string; dados: Uint8Array }> = {
+      [a.evolutionMsgId]: { mime: "image/jpeg", dados: bytes() },
+    };
+    const ad = adaptador(mapa);
+    const ia = clienteIaFalso({
+      chat: [
+        leitura({ pago_em: brasilia(-30) }),
+        { horas: 2, trecho: "" },
+        leitura({ pago_em: brasilia(-25) }),
+        { horas: 2, trecho: "" },
+      ],
+    });
+    const ca = await rodar(a.mensagemId, { ia, adaptador: ad });
+    expect(ca.status).toBe("registrado");
+    const b = await midia(l.tel, "imagem", 1);
+    mapa[b.evolutionMsgId] = { mime: "image/jpeg", dados: bytes() };
+    const cb = await rodar(b.mensagemId, { ia, adaptador: ad });
+    expect([cb.status, cb.motivo, cb.venda_id]).toEqual([
+      "confirmar",
+      "possível comprovante repetido",
+      null,
+    ]);
+    expect(await vendasDoLead(l.leadId)).toHaveLength(1);
+  });
+
+  test("venda do app paga sem lead, mesmo telefone e valor, vira pergunta", async () => {
+    await configurar(CONFIG_OK);
+    const l = await criarLead();
+    const { rows: v } = await db().query<{ id: string }>(
+      `insert into wakeclub.vendas (origem_externa, id_externo, comprada_em, valor, telefone, status)
+       select 'webhook', $1::text, now() - interval '2 hours', 720, telefone, 'paga'
+         from wakeclub.leads where id = $2::uuid
+       returning id`,
+      [`app-${randomUUID()}`, l.leadId],
+    );
+    const m = await midia(l.tel);
+    const ia = clienteIaFalso({ chat: [leitura(), { horas: 2, trecho: "" }] });
+    const c = await rodar(m.mensagemId, {
+      ia,
+      adaptador: adaptador({ [m.evolutionMsgId]: { mime: "image/jpeg", dados: bytes() } }),
+    });
+    expect([c.status, c.motivo, c.venda_suspeita_id]).toEqual([
+      "confirmar",
+      "possível venda repetida com venda do app",
+      v[0].id,
+    ]);
+    expect(await vendasDoLead(l.leadId)).toHaveLength(0);
   });
 
   test("imagem que não é comprovante vira nao_e", async () => {
