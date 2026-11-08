@@ -71,6 +71,20 @@ async function pedir(fetchFn: FetchFn, url: string, init: RequestInit, timeoutMs
   }
 }
 
+/** Conteúdo do usuário: texto puro sem anexos; com anexos, partes de texto, imagem e PDF. */
+function conteudoUsuario(p: Parameters<ClienteIa["chatJson"]>[0]) {
+  if (!p.anexos?.length) return p.usuario;
+  const partes: unknown[] = [{ type: "text", text: p.usuario }];
+  for (const a of p.anexos) {
+    const url = `data:${a.mime};base64,${Buffer.from(a.dados).toString("base64")}`;
+    if (a.mime.startsWith("image/")) partes.push({ type: "image_url", image_url: { url } });
+    else if (a.mime === "application/pdf")
+      partes.push({ type: "file", file: { filename: a.nomeArquivo, file_data: url } });
+    else throw new ErroIa("anexo não suportado", null);
+  }
+  return partes;
+}
+
 /** null sem `OPENAI_API_KEY`: as tarefas de IA não rodam. */
 export function criarClienteOpenAi(fetchFn: FetchFn = fetch): ClienteIa | null {
   const chave = process.env.OPENAI_API_KEY;
@@ -89,7 +103,7 @@ export function criarClienteOpenAi(fetchFn: FetchFn = fetch): ClienteIa | null {
             model: p.modelo,
             messages: [
               { role: "system", content: p.sistema },
-              { role: "user", content: p.usuario },
+              { role: "user", content: conteudoUsuario(p) },
             ],
             reasoning_effort: p.reasoningEffort,
             response_format: {

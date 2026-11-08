@@ -7,6 +7,8 @@ export type PedidoChat = {
   modelo: string;
   sistema: string;
   usuario: string;
+  /** Imagens e PDFs que o modelo lê junto do texto. */
+  anexos?: { mime: string; dados: Uint8Array; nomeArquivo: string }[];
   schema: Record<string, unknown>;
   nomeSchema: string;
   reasoningEffort: "low" | "medium";
