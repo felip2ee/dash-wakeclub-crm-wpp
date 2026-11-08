@@ -81,12 +81,15 @@ export async function cruzar(
   return { leadId: rows[0].id, por: rows[0].por };
 }
 
-/** Liga a venda sem dono ao lead, com categoria e comissão do momento. False se já tinha dono. */
-async function aplicarVinculo(
+/**
+ * Liga a venda sem dono ao lead, com categoria e comissão do momento. False se já tinha dono.
+ * `comprovante`: venda Pix registrada pelo motor ao ler o comprovante (`comprovantes.ts`).
+ */
+export async function aplicarVinculo(
   db: PoolClient,
   vendaId: string,
   leadId: string,
-  quem: "cpf" | "telefone" | { adminId: string },
+  quem: "cpf" | "telefone" | "comprovante" | { adminId: string },
 ): Promise<boolean> {
   const por = typeof quem === "string" ? quem : "admin";
   const metadados = typeof quem === "string" ? {} : { admin_id: quem.adminId };
@@ -136,7 +139,8 @@ async function aplicarVinculo(
      )
      ${EVENTO}
      select v.lead_id, 'vendas', 'sale_linked',
-            case when $3::text = 'admin' then 'admin' else 'webhook' end,
+            case when $3::text = 'admin' then 'admin'
+                 when $3::text = 'comprovante' then 'motor' else 'webhook' end,
             'venda ligada ao lead por ' || $3::text, $9::text,
             jsonb_build_object('lead_id', null),
             jsonb_build_object('lead_id', v.lead_id, 'categoria', $4::text,
