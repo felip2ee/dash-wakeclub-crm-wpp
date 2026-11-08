@@ -40,6 +40,7 @@ export default defineConfig({
             "**/src/server/admin-varredura.ts",
             "**/src/server/prazos.ts",
             "**/src/server/fila-envio.ts",
+            "**/src/server/vendas-pix.ts",
           ],
         },
       },
