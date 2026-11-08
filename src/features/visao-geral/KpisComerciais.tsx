@@ -34,7 +34,7 @@ export function KpisComerciais({ comercial }: { comercial: ResumoComercial | und
         <CardDegrade
           titulo="Faturamento"
           valor={moeda(vendas.faturamento.atual)}
-          legenda={textoVariacao(vendas.faturamento.atual, vendas.faturamento.anterior)}
+          legenda={`${textoVariacao(vendas.faturamento.atual, vendas.faturamento.anterior)} · App ${moeda(vendas.faturadoApp)} · Direta ${moeda(vendas.faturadoDireta)}`}
           icone={Coins}
           info="Vendas pagas no período escolhido; estornadas não contam."
         />

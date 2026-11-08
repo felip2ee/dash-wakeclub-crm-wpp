@@ -41,7 +41,13 @@ export type ResumoComercial = {
     diasDecorridos: number;
     projecaoMes: number | null;
   };
-  vendas: { quantidade: Comparado; faturamento: Comparado };
+  /** `faturadoApp`/`faturadoDireta` dividem o faturamento atual: Direta = `origem_externa = 'pix'`. */
+  vendas: {
+    quantidade: Comparado;
+    faturamento: Comparado;
+    faturadoApp: number;
+    faturadoDireta: number;
+  };
   leadsNovos: Comparado;
   /** Sem comparação: a coorte anterior teve mais tempo para converter (spec §8). */
   coorte: { compraram: number; conversaoPct: number; faturamento: number };
@@ -152,6 +158,10 @@ export async function lerComercial(
       `with ${LIM}, ${PRIMEIRA}
        select count(*) filter (where v.comprada_em >= lim.ini)::int as qtd,
               coalesce(sum(v.valor) filter (where v.comprada_em >= lim.ini), 0) as fat,
+              coalesce(sum(v.valor) filter (where v.comprada_em >= lim.ini
+                                 and v.origem_externa <> 'pix'), 0) as fat_app,
+              coalesce(sum(v.valor) filter (where v.comprada_em >= lim.ini
+                                 and v.origem_externa = 'pix'), 0) as fat_direta,
               count(*) filter (where v.comprada_em < lim.ini)::int as qtd_ant,
               coalesce(sum(v.valor) filter (where v.comprada_em < lim.ini), 0) as fat_ant,
               count(*) filter (where v.comprada_em >= lim.ini and v.lead_id is not null
@@ -249,7 +259,12 @@ export async function lerComercial(
       vendas: quantidade.atual,
       agora,
     }),
-    vendas: { quantidade, faturamento: { atual: Number(v.fat), anterior: Number(v.fat_ant) } },
+    vendas: {
+      quantidade,
+      faturamento: { atual: Number(v.fat), anterior: Number(v.fat_ant) },
+      faturadoApp: Number(v.fat_app),
+      faturadoDireta: Number(v.fat_direta),
+    },
     leadsNovos: { atual: total.leadsNovos, anterior: qtdLeads(grupos.filter((g) => !g.atual)) },
     coorte: {
       compraram: total.compraram,

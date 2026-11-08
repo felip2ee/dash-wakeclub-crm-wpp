@@ -54,7 +54,7 @@ async function vender(
   vendedorId: string,
   compradaEm: string,
   valor: number,
-  o: { comissiona?: boolean; status?: "paga" | "estornada" } = {},
+  o: { comissiona?: boolean; status?: "paga" | "estornada"; origem?: string } = {},
 ): Promise<string> {
   const comissiona = o.comissiona ?? true;
   const quando = new Date(Date.parse(compradaEm) - (comissiona ? HORA : 30 * 24 * HORA));
@@ -71,6 +71,11 @@ async function vender(
     decisoes: [],
   };
   const { vendaId } = await comTransacao((c) => processarVenda(c, v, { bruto: true }));
+  if (o.origem)
+    await db().query("update wakeclub.vendas set origem_externa = $2::text where id = $1::uuid", [
+      vendaId,
+      o.origem,
+    ]);
   return vendaId;
 }
 
@@ -200,14 +205,20 @@ describe.skipIf(!bancoTesteAtivo)("dinheiro", () => {
   test("resumo do período em São Paulo, só vendas pagas", async () => {
     const vid = await vendedor("Vendedor Resumo", 10);
     const entra1 = await vender(vid, "2023-03-01T03:30:00Z", 1000); // 01/03 00h30 SP
-    const entra2 = await vender(vid, "2023-04-01T02:30:00Z", 200); // 31/03 23h30 SP
+    const entra2 = await vender(vid, "2023-04-01T02:30:00Z", 200, { origem: "pix" }); // 31/03 23h30 SP
     await vender(vid, "2023-04-01T03:30:00Z", 300); // 01/04 SP: fora
     await vender(vid, "2023-03-01T02:30:00Z", 400); // 28/02 SP: fora
     const entra3 = await vender(vid, "2023-03-15T15:00:00Z", 500, { comissiona: false });
     await vender(vid, "2023-03-16T15:00:00Z", 900, { status: "estornada" });
 
     const r = await lerResumoDinheiro(db(), { de: "2023-03-01", ate: "2023-03-31" }, vid);
-    expect(r.vendidoPeriodo).toEqual({ valor: 1700, quantidade: 3 });
+    expect(r.vendidoPeriodo).toEqual({
+      valor: 1700,
+      quantidade: 3,
+      valorApp: 1500,
+      valorDireta: 200,
+    });
+    expect(r.vendasRecentes.map((v) => v.origemExterna)).toEqual(["pix", "webhook", "webhook"]);
     expect(r.porCategoria).toEqual([
       { categoria: "follow-up", valor: 0, quantidade: 0, percentual: 0 },
       { categoria: "atendimento", valor: 1200, quantidade: 2, percentual: 71 },

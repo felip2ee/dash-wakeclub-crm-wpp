@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Carregando, ErroAoCarregar } from "@/features/configuracoes/Secao";
 import { dataHoraCompleta, moeda } from "@/lib/formato";
 import { estornarVenda, listarVendas, type VendaLinha } from "@/server/vendas";
-import { clienteDa, ROTULO_CATEGORIA } from "./venda";
+import { clienteDa, origemDa, ROTULO_CATEGORIA } from "./venda";
 
 export function StatusVenda({ status }: { status: VendaLinha["status"] }) {
   return status === "paga" ? (
@@ -69,10 +69,10 @@ export function ListaVendas({
 
   return (
     <div className="-mx-4 overflow-x-auto px-4">
-      <table className="w-full min-w-[44rem] text-sm">
+      <table className="w-full min-w-[48rem] text-sm">
         <thead className="text-left text-xs text-muted-foreground">
           <tr className="border-b border-border">
-            {["Data", "Cliente", "Vendedor", "Categoria", "Valor", "Status"].map((c) => (
+            {["Data", "Cliente", "Vendedor", "Categoria", "Origem", "Valor", "Status"].map((c) => (
               <th key={c} scope="col" className="py-2 pr-3 font-medium">
                 {c}
               </th>
@@ -89,6 +89,7 @@ export function ListaVendas({
               <td className="py-2 pr-3">{clienteDa(v)}</td>
               <td className="py-2 pr-3">{v.vendedorNome ?? "—"}</td>
               <td className="py-2 pr-3">{v.categoria ? ROTULO_CATEGORIA[v.categoria] : "—"}</td>
+              <td className="py-2 pr-3">{origemDa(v)}</td>
               <td className="py-2 pr-3 tabular-nums">{moeda(v.valor)}</td>
               <td className="py-2 pr-3">
                 <StatusVenda status={v.status} />

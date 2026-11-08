@@ -29,12 +29,14 @@ export type VendaLinha = {
   comissaoPct: number | null;
   comissaoValor: number | null;
   vinculadaPor: string | null;
+  /** 'pix' = venda Direta; qualquer outro valor (hoje 'webhook') = App. */
+  origemExterna: string;
 };
 
 const SELECT = `select v.id, v.id_externo, v.comprada_em, v.valor, v.cpf, v.telefone, v.produto,
                       v.horas, v.status, v.estornada_em, v.lead_id, l.nome as lead_nome,
                       v.vendedor_id, u.nome as vendedor_nome, v.categoria, v.comissao_pct,
-                      v.comissao_valor, v.vinculada_por
+                      v.comissao_valor, v.vinculada_por, v.origem_externa
                  from wakeclub.vendas v
                  left join wakeclub.leads l on l.id = v.lead_id
                  left join wakeclub.usuarios u on u.id = v.vendedor_id`;
@@ -61,6 +63,7 @@ function linha(r: Record<string, unknown>): VendaLinha {
     comissaoPct: numOuNull(r.comissao_pct),
     comissaoValor: numOuNull(r.comissao_valor),
     vinculadaPor: r.vinculada_por as string | null,
+    origemExterna: r.origem_externa as string,
   };
 }
 

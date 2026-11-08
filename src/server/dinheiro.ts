@@ -27,7 +27,8 @@ export type ResumoDinheiro = {
   pipelineCheio: number;
   pipelineEsperado: number;
   leadsAtivos: number;
-  vendidoPeriodo: { valor: number; quantidade: number };
+  /** `valorApp` + `valorDireta` = `valor`; Direta = `origem_externa = 'pix'`. */
+  vendidoPeriodo: { valor: number; quantidade: number; valorApp: number; valorDireta: number };
   /** As quatro categorias sempre; `null` (venda sem dono) só quando houver. */
   porCategoria: {
     categoria: Categoria | null;
@@ -135,11 +136,16 @@ export async function lerResumoDinheiro(
      and v.comprada_em < ($2::date + 1)::timestamp at time zone ${SP}
      and ($3::uuid is null or v.vendedor_id = $3::uuid)`;
   const params = [periodo.de, periodo.ate, vendedorId];
-  const [pipeline, categorias, ranking, aPagar, vendas] = await Promise.all([
+  const [pipeline, categorias, direta, ranking, aPagar, vendas] = await Promise.all([
     lerPipeline(db, vendedorId),
     db.query(
       `select v.categoria, count(*)::int as quantidade, sum(v.valor) as valor
          from wakeclub.vendas v where ${filtro} group by v.categoria`,
+      params,
+    ),
+    db.query(
+      `select coalesce(sum(v.valor) filter (where v.origem_externa = 'pix'), 0) as direta
+         from wakeclub.vendas v where ${filtro}`,
       params,
     ),
     db.query(
@@ -164,6 +170,8 @@ export async function lerResumoDinheiro(
     vendidoPeriodo: {
       valor: total,
       quantidade: categorias.rows.reduce((t, r) => t + r.quantidade, 0),
+      valorApp: somar([total, -Number(direta.rows[0].direta)]),
+      valorDireta: Number(direta.rows[0].direta),
     },
     porCategoria: chaves.map((categoria) => {
       const valor = Number(porCat.get(categoria)?.valor ?? 0);
