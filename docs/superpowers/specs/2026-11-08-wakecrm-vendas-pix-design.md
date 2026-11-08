@@ -101,6 +101,40 @@ Novo cartão **"Venda direta por Pix"**:
   cada um com sua checagem de repetição.
 - A pergunta ao admin não expira.
 
+## 10b. Decisões do construtor após a revisão do design (08/11/2026, revisáveis)
+
+- **Onde mora:** tabela nova `comprovantes` (uma linha por mensagem analisada: `mensagem_id`
+  único, `hash` SHA-256 do arquivo, `e2e`, `status`, leitura da IA em jsonb, horas sugeridas,
+  motivo da dúvida, `venda_id`, quem decidiu e quando). A pergunta não aparece em faturado,
+  vendas sem dono ou fechamento até ser confirmada. O admin grava pelo pool do motor, como o
+  `vincular` de hoje (sem grant novo para `painel_rw`).
+- **Chave da venda Pix:** `origem_externa = 'pix'`; `id_externo` = E2E lido do comprovante ou,
+  sem E2E, `msg:<evolution_msg_id>`. `vinculada_por` ganha os valores `comprovante` (registro
+  automático) e continua `admin` quando o admin confirma.
+- **Repetição:** é repetido o comprovante com o mesmo `hash`, o mesmo E2E (contra qualquer venda
+  ou comprovante, de qualquer origem) ou, sem E2E, mesmo lead + mesmo valor + pagamento a até
+  10 min de outro comprovante. Repetido de um já registrado ou recusado não gera nada novo
+  (fica `repetido`, com referência ao original).
+- **App x direta (§10):** o caminho do webhook não muda. Comprovante de lead que tem venda do app
+  paga com o mesmo valor nas 48 h anteriores vira pergunta. Venda do app que chega com o mesmo
+  valor até 48 h depois de uma venda direta do mesmo lead entra normalmente e **abre uma pergunta**
+  "possível venda repetida" apontando as duas; o admin decide qual desfazer.
+- **Desfazer:** "Não é venda" também vale para venda Pix já registrada: estorna pelo `estornar`
+  atual e **devolve as horas** (saldo = saldo − horas, sem ficar negativo), com evento. A etapa
+  não volta sozinha.
+- **Data e vendedor:** `comprada_em` = data e hora do pagamento lidas do comprovante; sem hora
+  legível, `enviada_em` da mensagem. O vendedor é o dono do lead no momento do registro (o
+  automático ou a confirmação do admin). Lead sem dono: a venda entra sem vendedor (sem comissão),
+  como as vendas do app de lead sem dono hoje.
+- **Correção pelo admin:** horas inteiras de 1 a 100 e valor livre maior que zero; um comprovante
+  vira no máximo uma venda.
+- **Horas no CRM:** a venda direta credita o saldo do CRM. Se a mesma compra também for lançada no
+  app e voltar pelo webhook, cai na regra "possível venda repetida".
+- **Varredura inicial:** a tarefa só considera mensagens dos últimos 7 dias; cada mensagem é lida
+  uma vez, então a primeira rodada cobre os 7 dias anteriores ao deploy sem marcador extra.
+- **Miniatura:** buscada na Evolution sob demanda pelo admin (`src/server/midia.ts`); se a mídia
+  sumiu, a tela mostra "comprovante indisponível" e mantém o que a IA leu.
+
 ## 11. Fica para o construtor
 
 - Formato exato dos prompts de leitura e de dedução das horas; modelo de visão.
