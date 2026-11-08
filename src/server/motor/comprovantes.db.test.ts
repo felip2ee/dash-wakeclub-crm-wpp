@@ -186,6 +186,13 @@ describe.skipIf(!bancoTesteAtivo)("tarefaComprovantes", () => {
       [c.id],
     );
     expect(ev).toEqual([{ tipo_evento: "sale_registered", gatilho: "motor" }]);
+    // Etapa e saldo movidos pelo registro automático também saem como motor, não admin.
+    const { rows: etapa } = await db().query(
+      `select distinct gatilho from wakeclub.eventos_automacao
+        where lead_id = $1::uuid and correlacao_id like 'motor:venda-vinculada:%'`,
+      [l.leadId],
+    );
+    expect(etapa).toEqual([{ gatilho: "motor" }]);
   });
 
   test("recebedor de outra conta vira pergunta e avisa os admins", async () => {

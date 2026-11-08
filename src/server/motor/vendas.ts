@@ -12,6 +12,7 @@ import { normalizarEventoApp } from "../vendas/eventos-app";
 import { normalizarVenda, type VendaNormalizada } from "../vendas/normalizar";
 import { categoriaDaVenda, comissaoDaVenda } from "../vendas/regras";
 import { avancarPorVendaVinculada, processarEventoApp } from "./app-eventos";
+import { notificarAdmins } from "./comprovantes";
 import { ErroPermanente, type Processador } from "./fila";
 
 const EVENTO = `insert into wakeclub.eventos_automacao
@@ -198,6 +199,45 @@ export async function estornar(
   return true;
 }
 
+/**
+ * Venda paga do app com o mesmo lead e valor de uma venda Pix das 48 h anteriores (spec vendas
+ * Pix §10b): entra normalmente e abre uma pergunta ao admin apontando as duas, uma por par.
+ * O contrário (comprovante depois da venda do app) fica em `comprovantes.ts`.
+ */
+async function perguntarSeRepetida(db: PoolClient, vendaId: string): Promise<void> {
+  const { rows } = await db.query<{ lead_id: string; valor: string }>(
+    `with pix as (
+       select p.id, a.lead_id, a.valor, p.comprada_em
+         from wakeclub.vendas a
+         join wakeclub.vendas p
+           on p.lead_id = a.lead_id and p.origem_externa = 'pix' and p.status = 'paga'
+          and p.valor = a.valor
+          and p.comprada_em between a.comprada_em - interval '48 hours' and a.comprada_em
+        where a.id = $1::uuid and a.status = 'paga' and a.lead_id is not null
+          and not exists (select 1 from wakeclub.comprovantes c
+                           where c.venda_id = p.id and c.venda_suspeita_id = a.id)
+        order by p.comprada_em desc limit 1
+     ), c as (
+       insert into wakeclub.comprovantes
+         (lead_id, status, motivo, valor, pago_em, venda_id, venda_suspeita_id)
+       select lead_id, 'confirmar', 'possível venda repetida', valor, comprada_em, id, $1::uuid
+         from pix
+       returning id, lead_id, valor, venda_id
+     ), ev as (
+       ${EVENTO}
+       select c.lead_id, 'comprovantes', 'receipt_needs_confirmation', 'webhook',
+              'venda do app parecida com venda Pix', 'possível venda repetida', '{}'::jsonb,
+              jsonb_build_object('status', 'confirmar', 'valor', c.valor, 'venda_id', c.venda_id,
+                                 'venda_suspeita_id', $1::uuid),
+              '{}'::jsonb, 'comprovante', c.id, 'motor', 'motor:comprovante:' || c.id::text
+         from c
+     )
+     select lead_id, valor from c`,
+    [vendaId],
+  );
+  if (rows[0]) await notificarAdmins(db, rows[0].lead_id, Number(rows[0].valor));
+}
+
 export async function processarVenda(
   db: PoolClient,
   v: VendaNormalizada,
@@ -214,7 +254,9 @@ export async function processarVenda(
     vendaId = rows[0].id;
   } else {
     const casou = await cruzar(db, v);
-    if (casou) await aplicarVinculo(db, vendaId, casou.leadId, casou.por);
+    const ligou = casou !== null && (await aplicarVinculo(db, vendaId, casou.leadId, casou.por));
+    // Venda que já chega estornada não abre pergunta (o estorno vem logo abaixo).
+    if (ligou && v.status === "paga") await perguntarSeRepetida(db, vendaId);
   }
   if (v.status === "estornada") await estornar(db, vendaId, null);
   else if (nova) await vendaAtrasada(db, vendaId);

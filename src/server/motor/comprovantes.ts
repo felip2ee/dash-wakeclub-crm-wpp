@@ -199,7 +199,12 @@ export async function registrarVendaPix(
   if (!(await aplicarVinculo(db, vendaId, c.leadId, c.por)))
     throw new Error("Venda Pix não ligou ao lead.");
   await vendaAtrasada(db, vendaId);
-  await avancarPorVendaVinculada(db, c.leadId, c.horas);
+  await avancarPorVendaVinculada(
+    db,
+    c.leadId,
+    c.horas,
+    c.por === "comprovante" ? "motor" : "admin",
+  );
 
   const adminId = c.por === "comprovante" ? null : c.por.adminId;
   await db.query(
@@ -422,7 +427,7 @@ async function deduzirHoras(
 }
 
 /** Uma notificação por admin ativo (o push agrupa por destinatário). */
-async function notificarAdmins(db: PoolClient, leadId: string, valor: number | null) {
+export async function notificarAdmins(db: PoolClient, leadId: string, valor: number | null) {
   const { rows } = await db.query<{ nome: string | null; tel: string }>(
     "select nome, telefone as tel from wakeclub.leads where id = $1::uuid",
     [leadId],
