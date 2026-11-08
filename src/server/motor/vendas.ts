@@ -200,7 +200,7 @@ export async function estornar(
 }
 
 /**
- * Venda paga do app com o mesmo lead e valor de uma venda Pix das 48 h anteriores (spec vendas
+ * Venda paga do app com o mesmo lead e valor de uma venda Pix a até 48 h (antes ou depois) (spec vendas
  * Pix §10b): entra normalmente e abre uma pergunta ao admin apontando as duas, uma por par.
  * O contrário (comprovante depois da venda do app) fica em `comprovantes.ts`.
  */
@@ -212,8 +212,9 @@ async function perguntarSeRepetida(db: PoolClient, vendaId: string): Promise<voi
          join wakeclub.vendas p
            on p.lead_id = a.lead_id and p.origem_externa = 'pix' and p.status = 'paga'
           and p.valor = a.valor
-          and p.comprada_em between a.comprada_em - interval '48 hours' and a.comprada_em
+          and p.comprada_em between a.comprada_em - interval '48 hours' and a.comprada_em + interval '48 hours'
         where a.id = $1::uuid and a.status = 'paga' and a.lead_id is not null
+          and a.origem_externa <> 'pix'
           and not exists (select 1 from wakeclub.comprovantes c
                            where c.venda_id = p.id and c.venda_suspeita_id = a.id)
         order by p.comprada_em desc limit 1
@@ -293,6 +294,7 @@ export async function vincular(
   // evento do app já creditou essas horas (achou o lead pelo app_user_id).
   if (rows[0]?.status === "paga" && !rows[0].ja_creditada)
     await avancarPorVendaVinculada(db, leadId, rows[0].horas);
+  if (rows[0]?.status === "paga") await perguntarSeRepetida(db, vendaId);
 }
 
 /** Envelope `{ event: "USER_*", data }` do app; o resto segue o formato flat de venda. */

@@ -433,16 +433,16 @@ async function acharParecido(
   db: ClienteDb,
   it: Item,
   { e2e, valor, pagoEm }: { e2e: string | null; valor: number | null; pagoEm: string },
-): Promise<string | null> {
+): Promise<{ tipo: "comprovante" | "venda"; id: string } | null> {
   if (!e2e || valor === null) return null;
-  const { rows } = await db.query<{ id: string }>(
-    `select id from wakeclub.comprovantes
+  const { rows } = await db.query<{ tipo: "comprovante" | "venda"; id: string }>(
+    `select 'comprovante' as tipo, id from wakeclub.comprovantes
       where lead_id = $2::uuid and valor = $3::numeric and id <> $1::uuid
         and e2e is not null and e2e <> $5::text
         and pago_em between $4::timestamptz - interval '10 minutes'
                         and $4::timestamptz + interval '10 minutes'
      union all
-     select id from wakeclub.vendas
+     select 'venda' as tipo, id from wakeclub.vendas
       where lead_id = $2::uuid and valor = $3::numeric and origem_externa = 'pix'
         and id_externo ~ '^E[0-9A-Z]{31}$' and id_externo <> $5::text
         and comprada_em between $4::timestamptz - interval '10 minutes'
@@ -450,7 +450,7 @@ async function acharParecido(
      limit 1`,
     [it.id, it.lead_id, valor, pagoEm, e2e],
   );
-  return rows[0]?.id ?? null;
+  return rows[0] ?? null;
 }
 
 async function deduzirHoras(

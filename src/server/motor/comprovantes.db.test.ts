@@ -356,6 +356,13 @@ describe.skipIf(!bancoTesteAtivo)("tarefaComprovantes", () => {
       "possível comprovante repetido",
       null,
     ]);
+    const { rows: ev } = await db().query(
+      `select metadados->'parecido_com' as p from wakeclub.eventos_automacao
+        where entidade_tipo = 'comprovante' and entidade_id = $1::uuid
+          and metadados ? 'parecido_com'`,
+      [cb.id],
+    );
+    expect(ev).toEqual([{ p: { tipo: "comprovante", id: ca.id } }]);
     expect(await vendasDoLead(l.leadId)).toHaveLength(1);
   });
 
