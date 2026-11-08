@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { criarClienteOpenAi, ErroIa } from "./openai";
+import { anexoSuportado, criarClienteOpenAi, ErroIa } from "./openai";
 import type { PedidoChat } from "./tipos";
 
 type Chamada = { url: string; init: RequestInit };
@@ -199,6 +199,22 @@ describe("cliente OpenAI, anexos", () => {
     await expect(
       ia?.chatJson({ ...PEDIDO, anexos: [{ mime: "video/mp4", dados, nomeArquivo: "v.mp4" }] }),
     ).rejects.toThrow("anexo não suportado");
+    await expect(
+      ia?.chatJson({ ...PEDIDO, anexos: [{ mime: "image/heic", dados, nomeArquivo: "f.heic" }] }),
+    ).rejects.toThrow("anexo não suportado");
     expect(f.chamadas).toHaveLength(0);
   });
+});
+
+test("anexoSuportado aceita só PNG, JPEG, WebP, GIF e PDF, ignorando parâmetros do mime", () => {
+  expect(
+    ["image/jpeg; x=y", "IMAGE/PNG", "image/webp", "image/gif", "application/pdf"].map(
+      anexoSuportado,
+    ),
+  ).toEqual([true, true, true, true, true]);
+  expect(["image/heic", "video/mp4", "application/zip"].map(anexoSuportado)).toEqual([
+    false,
+    false,
+    false,
+  ]);
 });
