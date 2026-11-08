@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { comTransacao, getPoolMotor } from "./db";
 import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./motor/banco-teste";
 import { registrarVendaPix } from "./motor/comprovantes";
+import { estornar } from "./motor/vendas";
 import {
   aplicarConfirmacao,
   aplicarRecusa,
@@ -272,5 +273,35 @@ describe.skipIf(!bancoTesteAtivo)("vendas Pix no admin", () => {
     await expect(
       comTransacao((c) => aplicarRepetida(c, r.adminId, { id: r.id, desfazer: "app" })),
     ).rejects.toThrow();
+  });
+
+  test("resolverRepetida 'direta' com a direta já estornada fecha a pergunta sem mexer no saldo", async () => {
+    const r = await repetida();
+    await comTransacao((c) => estornar(c, r.direta, r.adminId));
+    const saldoAntes = await saldo(r.l.leadId);
+    await comTransacao((c) => aplicarRepetida(c, r.adminId, { id: r.id, desfazer: "direta" }));
+    expect(await saldo(r.l.leadId)).toBe(saldoAntes);
+    expect((await venda(r.app)).status).toBe("paga");
+    expect((await linha(r.id)).status).toBe("recusado");
+    expect(await eventos(r.id)).toEqual(["repeat_resolved"]);
+  });
+
+  test("resolverRepetida 'app' com a do app já estornada fecha a pergunta", async () => {
+    const r = await repetida();
+    await comTransacao((c) => estornar(c, r.app, r.adminId));
+    await comTransacao((c) => aplicarRepetida(c, r.adminId, { id: r.id, desfazer: "app" }));
+    expect((await linha(r.id)).status).toBe("registrado");
+    expect((await venda(r.direta)).status).toBe("paga");
+  });
+
+  test("confirmar rejeita data de pagamento no futuro", async () => {
+    const adminId = await criarVendedor("Admin Pix");
+    const l = await criarLead();
+    const id = await pergunta(l.leadId);
+    const futuro = new Date(Date.now() + 3600_000).toISOString();
+    await expect(
+      comTransacao((c) => aplicarConfirmacao(c, adminId, { id, pagoEm: futuro })),
+    ).rejects.toThrow("A data do pagamento não pode estar no futuro.");
+    expect((await linha(id)).status).toBe("confirmar");
   });
 });

@@ -45,6 +45,9 @@ const paraCampo = (iso: string | null) =>
   iso ? new Date(Date.parse(iso) - 3 * HORA_MS).toISOString().slice(0, 16) : "";
 const doCampo = (v: string) => new Date(`${v}:00-03:00`).toISOString();
 
+/** "Agora" no formato do `datetime-local` (Brasília), para o `max` do campo. */
+const agoraCampo = () => paraCampo(new Date().toISOString());
+
 const nomeLead = (x: { leadNome: string | null; leadTelefone: string }) =>
   x.leadNome?.trim() || telefone(x.leadTelefone);
 
@@ -79,11 +82,9 @@ export function ParaConfirmar() {
       subtitulo="Comprovantes de Pix do WhatsApp que precisam da sua resposta."
       acao={
         total !== undefined && (
-          <Badge
-            variant={total > 0 ? "default" : "outline"}
-            aria-label={plural(total, "pergunta aberta", "perguntas abertas")}
-          >
-            {total}
+          <Badge variant={total > 0 ? "default" : "outline"}>
+            <span aria-hidden>{total}</span>
+            <span className="sr-only">{plural(total, "pergunta aberta", "perguntas abertas")}</span>
           </Badge>
         )
       }
@@ -136,6 +137,7 @@ function Miniatura({ mensagemId, tipo }: { mensagemId: string | null; tipo: stri
     return (
       <a
         href={url}
+        download
         className={`${caixa} flex-col gap-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
       >
         <FileText aria-hidden className="h-6 w-6" />
@@ -279,18 +281,24 @@ function ItemPergunta({ p }: { p: Pergunta }) {
   );
 }
 
+type Campo = "valor" | "horas" | "data";
+const ERRO_ID = "corrigir-erro";
+
 function Corrigir({ p }: { p: Pergunta }) {
   const [aberto, setAberto] = useState(false);
   const [valor, setValor] = useState("");
   const [horas, setHoras] = useState("");
   const [data, setData] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
+  const [erro, setErro] = useState<{ campo: Campo; texto: string } | null>(null);
   const salvar = useAcao(
     (d: { valor: number; horas: number; pagoEm: string }) =>
       confirmarComprovante({ data: { id: p.id, ...d } }),
     "Venda registrada com a correção.",
     () => setAberto(false),
   );
+
+  const ligacao = (campo: Campo) =>
+    erro?.campo === campo ? { "aria-invalid": true, "aria-describedby": ERRO_ID } : {};
 
   function abrir() {
     setValor(p.valor === null ? "" : String(p.valor).replace(".", ","));
@@ -304,9 +312,14 @@ function Corrigir({ p }: { p: Pergunta }) {
     e.preventDefault();
     const v = /^\d+([.,]\d{1,2})?$/.test(valor.trim()) ? Number(valor.trim().replace(",", ".")) : 0;
     const h = Number(horas);
-    if (!(v > 0)) return setErro("Informe um valor em reais maior que zero.");
-    if (!Number.isInteger(h) || h < 1 || h > 100) return setErro("Horas inteiras de 1 a 100.");
-    if (!data) return setErro("Informe a data do pagamento.");
+    if (!(v > 0))
+      return setErro({ campo: "valor", texto: "Informe um valor em reais maior que zero." });
+    if (!Number.isInteger(h) || h < 1 || h > 100)
+      return setErro({ campo: "horas", texto: "Horas inteiras de 1 a 100." });
+    if (!data) return setErro({ campo: "data", texto: "Informe a data do pagamento." });
+    if (data > agoraCampo())
+      return setErro({ campo: "data", texto: "A data do pagamento não pode estar no futuro." });
+    setErro(null);
     salvar.mutate({ valor: v, horas: h, pagoEm: doCampo(data) });
   }
 
@@ -328,6 +341,7 @@ function Corrigir({ p }: { p: Pergunta }) {
               <span className="text-muted-foreground">Valor (R$)</span>
               <Input
                 className="h-11"
+                {...ligacao("valor")}
                 inputMode="decimal"
                 value={valor}
                 onChange={(e) => setValor(e.target.value)}
@@ -337,6 +351,7 @@ function Corrigir({ p }: { p: Pergunta }) {
               <span className="text-muted-foreground">Horas</span>
               <Input
                 className="h-11"
+                {...ligacao("horas")}
                 inputMode="numeric"
                 value={horas}
                 onChange={(e) => setHoras(e.target.value)}
@@ -346,14 +361,16 @@ function Corrigir({ p }: { p: Pergunta }) {
               <span className="text-muted-foreground">Data do pagamento (Brasília)</span>
               <Input
                 className="h-11"
+                {...ligacao("data")}
                 type="datetime-local"
+                max={agoraCampo()}
                 value={data}
                 onChange={(e) => setData(e.target.value)}
               />
             </label>
             {erro && (
-              <p role="alert" className="text-sm text-destructive">
-                {erro}
+              <p id={ERRO_ID} role="alert" className="text-sm text-destructive">
+                {erro.texto}
               </p>
             )}
             <DialogFooter>
@@ -452,6 +469,19 @@ const OPCOES_REPETIDA = [
   { desfazer: "nenhuma", rotulo: "Manter as duas", efeito: "as duas vendas continuam valendo" },
 ] as const;
 
+/** Por que a opção não vale: a venda alvo já está estornada ou não existe mais. */
+function motivoBloqueio(
+  desfazer: "direta" | "app" | "nenhuma",
+  direta: VendaResumo,
+  app: VendaResumo | null,
+): string | null {
+  if (desfazer === "direta" && direta.status === "estornada")
+    return "a venda direta já foi estornada";
+  if (desfazer === "app" && (!app || app.status === "estornada"))
+    return app ? "a venda do app já foi estornada" : "não há venda do app";
+  return null;
+}
+
 function ItemRepetida({ p, direta }: { p: Pergunta; direta: VendaResumo }) {
   const [escolha, setEscolha] = useState<(typeof OPCOES_REPETIDA)[number] | null>(null);
   const resolver = useAcao(
@@ -471,17 +501,30 @@ function ItemRepetida({ p, direta }: { p: Pergunta; direta: VendaResumo }) {
         {p.vendaSuspeita && <LinhaVenda rotulo="Venda do app" v={p.vendaSuspeita} />}
       </div>
       <div className="flex flex-wrap gap-2">
-        {OPCOES_REPETIDA.map((o) => (
-          <Button
-            key={o.desfazer}
-            variant={o.desfazer === "nenhuma" ? "outline" : "default"}
-            className="min-h-11"
-            disabled={resolver.isPending}
-            onClick={() => setEscolha(o)}
-          >
-            {o.rotulo}
-          </Button>
-        ))}
+        {OPCOES_REPETIDA.map((o) => {
+          const bloqueio = motivoBloqueio(o.desfazer, direta, p.vendaSuspeita);
+          return (
+            <div key={o.desfazer} className="flex flex-col gap-1">
+              <Button
+                variant={o.desfazer === "nenhuma" ? "outline" : "default"}
+                className="min-h-11"
+                disabled={resolver.isPending || bloqueio !== null}
+                aria-describedby={bloqueio ? `bloqueio-${p.id}-${o.desfazer}` : undefined}
+                onClick={() => setEscolha(o)}
+              >
+                {o.rotulo}
+              </Button>
+              {bloqueio && (
+                <span
+                  id={`bloqueio-${p.id}-${o.desfazer}`}
+                  className="text-xs text-muted-foreground"
+                >
+                  Indisponível: {bloqueio}.
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
       <AlertDialog open={escolha !== null} onOpenChange={(o) => !o && setEscolha(null)}>
         <AlertDialogContent>

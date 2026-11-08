@@ -277,11 +277,15 @@ async function fecharComo(
 
 /**
  * Desfaz uma venda direta: estorno pelo caminho atual e saldo de volta (sem ficar negativo).
- * A etapa não volta sozinha (spec §10b). Devolve as horas tiradas do saldo.
+ * A etapa não volta sozinha (spec §10b). Devolve as horas tiradas do saldo, ou `null` se a
+ * venda já estava estornada (ou não existe) e nada foi mexido.
  */
-async function desfazerDireta(c: PoolClient, vendaId: string, adminId: string): Promise<number> {
-  if (!(await estornar(c, vendaId, adminId)))
-    throw new Error("A venda já estava estornada ou não existe.");
+async function desfazerDireta(
+  c: PoolClient,
+  vendaId: string,
+  adminId: string,
+): Promise<number | null> {
+  if (!(await estornar(c, vendaId, adminId))) return null;
   const { rows } = await c.query<{ lead_id: string; saldo: number | null; horas: number | null }>(
     `select l.id as lead_id, l.saldo_horas as saldo, v.horas
        from wakeclub.vendas v join wakeclub.leads l on l.id = v.lead_id
@@ -319,6 +323,9 @@ export async function aplicarConfirmacao(
   const valor = d.valor ?? numOuNull(l.valor);
   const horas = d.horas ?? l.horas_sugeridas;
   const pagoEm = d.pagoEm ? new Date(d.pagoEm) : (l.pago_em ?? l.enviada_em);
+  // 10 min de folga para relógio desencontrado; mais que isso é data digitada errada.
+  if (d.pagoEm && pagoEm && pagoEm.getTime() > Date.now() + 10 * 60_000)
+    throw new Error("A data do pagamento não pode estar no futuro.");
   if (valor === null || horas === null || !pagoEm)
     throw new Error("Informe valor, horas e data em Corrigir e confirmar.");
   const leadId = d.leadId ?? l.lead_id;
@@ -362,7 +369,9 @@ export async function aplicarRecusa(
   if (ehRepetida(l)) throw new Error("Escolha qual venda desfazer.");
   let horasDevolvidas = 0;
   if (l.status === "registrado" && l.venda_id) {
-    horasDevolvidas = await desfazerDireta(c, l.venda_id, adminId);
+    const horas = await desfazerDireta(c, l.venda_id, adminId);
+    if (horas === null) throw new Error("A venda já estava estornada ou não existe.");
+    horasDevolvidas = horas;
   } else if (l.status !== "confirmar") {
     throw new Error("Este comprovante já foi respondido.");
   }
@@ -396,8 +405,18 @@ export async function aplicarRepetida(
   const l = await travar(c, d.id);
   if (!ehRepetida(l) || !l.venda_id) throw new Error("Esta pergunta já foi respondida.");
   let horasDevolvidas = 0;
+  // Venda já estornada (ou sumida): a pergunta fecha mesmo assim, sem mexer em horas.
+  let jaEstornada = false;
   if (d.desfazer === "direta") {
-    horasDevolvidas = await desfazerDireta(c, l.venda_id, adminId);
+    // Trava o comprovante da direta antes da venda, a mesma ordem de aplicarRecusa (sem deadlock).
+    await c.query(
+      `select 1 from wakeclub.comprovantes
+        where venda_id = $1::uuid and status = 'registrado' for update`,
+      [l.venda_id],
+    );
+    const horas = await desfazerDireta(c, l.venda_id, adminId);
+    jaEstornada = horas === null;
+    horasDevolvidas = horas ?? 0;
     // O comprovante que gerou a direta deixa de contar como registrado.
     await c.query(
       `update wakeclub.comprovantes
@@ -407,8 +426,7 @@ export async function aplicarRepetida(
       [l.venda_id, adminId],
     );
   } else if (d.desfazer === "app") {
-    if (!l.venda_suspeita_id || !(await estornar(c, l.venda_suspeita_id, adminId)))
-      throw new Error("A venda do app já estava estornada ou não existe.");
+    jaEstornada = !l.venda_suspeita_id || !(await estornar(c, l.venda_suspeita_id, adminId));
   }
   const status = d.desfazer === "direta" ? "recusado" : "registrado";
   await fecharComo(c, d.id, adminId, { status, motivo: null });
@@ -417,13 +435,18 @@ export async function aplicarRepetida(
     leadId: l.lead_id,
     tipo: "repeat_resolved",
     decisao:
-      d.desfazer === "nenhuma" ? "as duas vendas ficam" : `venda ${d.desfazer} desfeita pelo admin`,
+      d.desfazer === "nenhuma"
+        ? "as duas vendas ficam"
+        : jaEstornada
+          ? `venda ${d.desfazer} já estava estornada`
+          : `venda ${d.desfazer} desfeita pelo admin`,
     motivo: l.motivo,
     antes: { status: l.status },
     depois: {
       status,
       desfazer: d.desfazer,
       horas_devolvidas: horasDevolvidas,
+      ja_estornada: jaEstornada,
     },
     adminId,
   });
