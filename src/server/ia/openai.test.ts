@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { criarClienteOpenAi, ErroIa } from "./openai";
+import { anexoSuportado, criarClienteOpenAi, ErroIa } from "./openai";
+import type { PedidoChat } from "./tipos";
 
 type Chamada = { url: string; init: RequestInit };
 
@@ -160,4 +161,60 @@ describe("cliente OpenAI", () => {
     expect(arquivo.name).toBe("audio.ogg");
     expect(arquivo.type).toBe("audio/ogg");
   });
+});
+
+describe("cliente OpenAI, anexos", () => {
+  const dados = new Uint8Array([1, 2, 3]);
+  const b64 = "AQID";
+
+  async function corpoCom(anexos?: PedidoChat["anexos"]) {
+    const f = fetchFalso([conteudo({})]);
+    await criarClienteOpenAi(f.fn)?.chatJson({ ...PEDIDO, anexos });
+    return JSON.parse(String(f.chamadas[0].init.body));
+  }
+
+  test("sem anexos o conteúdo do usuário segue string", async () => {
+    expect((await corpoCom()).messages[1]).toEqual({ role: "user", content: "usuario" });
+    expect((await corpoCom([])).messages[1]).toEqual({ role: "user", content: "usuario" });
+  });
+
+  test("imagem e PDF viram partes do conteúdo", async () => {
+    const corpo = await corpoCom([
+      { mime: "image/jpeg", dados, nomeArquivo: "a.jpg" },
+      { mime: "application/pdf", dados, nomeArquivo: "b.pdf" },
+    ]);
+    expect(corpo.messages[1].content).toEqual([
+      { type: "text", text: "usuario" },
+      { type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64}` } },
+      {
+        type: "file",
+        file: { filename: "b.pdf", file_data: `data:application/pdf;base64,${b64}` },
+      },
+    ]);
+  });
+
+  test("mime não suportado lança ErroIa", async () => {
+    const f = fetchFalso([]);
+    const ia = criarClienteOpenAi(f.fn);
+    await expect(
+      ia?.chatJson({ ...PEDIDO, anexos: [{ mime: "video/mp4", dados, nomeArquivo: "v.mp4" }] }),
+    ).rejects.toThrow("anexo não suportado");
+    await expect(
+      ia?.chatJson({ ...PEDIDO, anexos: [{ mime: "image/heic", dados, nomeArquivo: "f.heic" }] }),
+    ).rejects.toThrow("anexo não suportado");
+    expect(f.chamadas).toHaveLength(0);
+  });
+});
+
+test("anexoSuportado aceita só PNG, JPEG, WebP, GIF e PDF, ignorando parâmetros do mime", () => {
+  expect(
+    ["image/jpeg; x=y", "IMAGE/PNG", "image/webp", "image/gif", "application/pdf"].map(
+      anexoSuportado,
+    ),
+  ).toEqual([true, true, true, true, true]);
+  expect(["image/heic", "video/mp4", "application/zip"].map(anexoSuportado)).toEqual([
+    false,
+    false,
+    false,
+  ]);
 });

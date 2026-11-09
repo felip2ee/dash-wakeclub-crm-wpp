@@ -51,7 +51,7 @@ export function Kpis({
           <CardDegrade
             titulo="Vendido no período"
             valor={moeda(vendas.vendidoPeriodo.valor)}
-            legenda={plural(vendas.vendidoPeriodo.quantidade, "venda", "vendas")}
+            legenda={`${plural(vendas.vendidoPeriodo.quantidade, "venda", "vendas")} · App ${moeda(vendas.vendidoPeriodo.valorApp)} · Direta ${moeda(vendas.vendidoPeriodo.valorDireta)}`}
             icone={ShoppingCart}
             info="Vendas pagas no período escolhido; estornadas não contam."
           />

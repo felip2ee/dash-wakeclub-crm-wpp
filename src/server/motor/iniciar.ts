@@ -13,6 +13,7 @@ import { comTransacao, getPoolMotor } from "../db";
 import { criarClienteOpenAi } from "../ia/openai";
 import { logErro, logInfo } from "../log";
 import { agendar as agendarSemRegistro } from "./agenda";
+import { tarefaComprovantes } from "./comprovantes";
 import { redistribuirSoltos, soltarDeInativos } from "./distribuicao";
 import { tarefaEnvioFollowups } from "./envio-followups";
 import { devolverOrfaos, type Processador, rodarFila } from "./fila";
@@ -106,6 +107,11 @@ function agendarIaEFollowups(adaptador: AdaptadorEvolution | null) {
     agendar("redator", 15 * MINUTO, async () => void (await tarefaRedator({ ia })));
     if (adaptador) {
       agendar("transcricao", MINUTO, async () => void (await tarefaTranscricao({ ia, adaptador })));
+      agendar(
+        "comprovantes",
+        2 * MINUTO,
+        async () => void (await tarefaComprovantes({ ia, adaptador })),
+      );
     }
   } else {
     logInfo("ia.sem_chave");

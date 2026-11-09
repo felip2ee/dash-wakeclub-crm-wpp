@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { comTransacao, getPoolMotor } from "../db";
@@ -25,6 +26,25 @@ function venda(extra: Partial<VendaNormalizada> = {}): VendaNormalizada {
     decisoes: [],
     ...extra,
   };
+}
+
+/** O papel só muda pelo dono do banco (nenhuma role da aplicação tem UPDATE nele). */
+function tornarAdmin(id: string) {
+  const r = spawnSync(
+    "node",
+    [
+      "--input-type=module",
+      "-e",
+      `import pg from "pg";
+       const c = new pg.Client(process.env.ADMIN_DATABASE_URL);
+       await c.connect();
+       await c.query("update wakeclub.usuarios set papel = 'admin' where id = $1::uuid", [process.argv[1]]);
+       await c.end();`,
+      id,
+    ],
+    { encoding: "utf8" },
+  );
+  if (r.status !== 0) throw new Error(r.stderr);
 }
 
 const processar = (v: VendaNormalizada) =>
@@ -304,5 +324,108 @@ describe.skipIf(!bancoTesteAtivo)("processador de vendas", () => {
     expect(await comTransacao((c) => estornar(c, outra.vendaId, adminId))).toBe(false);
     const ev = (await eventos(outra.vendaId)).find((e) => e.tipo_evento === "sale_refunded");
     expect(ev?.metadados).toMatchObject({ pos_fechamento: true, admin_id: adminId });
+  });
+
+  test("venda do app parecida com venda Pix das 48 h anteriores abre uma pergunta", async () => {
+    const adminId = await criarVendedor("Admin Venda");
+    tornarAdmin(adminId);
+    const l = await criarLead();
+    const { rows: pix } = await db().query<{ id: string }>(
+      `insert into wakeclub.vendas
+         (origem_externa, id_externo, comprada_em, valor, lead_id, horas, status)
+       values ('pix', $1::text, now() - interval '1 day', 720, $2::uuid, 2, 'paga') returning id`,
+      [`pix-${randomUUID()}`, l.leadId],
+    );
+    const perguntas = async () =>
+      (
+        await db().query(
+          `select c.id, c.mensagem_id, c.status, c.motivo, c.valor, c.venda_id,
+                  c.venda_suspeita_id,
+                  (select count(*)::int from wakeclub.eventos_automacao e
+                    where e.entidade_tipo = 'comprovante' and e.entidade_id = c.id) as eventos
+             from wakeclub.comprovantes c where c.lead_id = $1::uuid`,
+          [l.leadId],
+        )
+      ).rows;
+
+    // Valor diferente: nenhuma pergunta.
+    await processar(venda({ telefone: l.telefone, valor: 360 }));
+    expect(await perguntas()).toEqual([]);
+
+    const app = venda({ telefone: l.telefone, valor: 720, horas: 2 });
+    const { vendaId } = await processar(app);
+    await processar(app); // mesmo id de novo: nada novo
+    const lida = await lerVenda(vendaId);
+    expect([lida.lead_id, lida.status]).toEqual([l.leadId, "paga"]);
+    expect((await lerVenda(pix[0].id)).status).toBe("paga");
+    const p = await perguntas();
+    expect(p).toEqual([
+      {
+        id: p[0]?.id,
+        mensagem_id: null,
+        status: "confirmar",
+        motivo: "possível venda repetida",
+        valor: "720.00",
+        venda_id: pix[0].id,
+        venda_suspeita_id: vendaId,
+        eventos: 1,
+      },
+    ]);
+    const { rows: avisos } = await db().query(
+      `select titulo, corpo from wakeclub.notificacoes
+        where usuario_id = $1::uuid and tipo = 'comprovante'`,
+      [adminId],
+    );
+    expect(avisos).toEqual([
+      {
+        titulo: "Comprovante para confirmar",
+        corpo: expect.stringMatching(/^Lead Venda · R\$\s720,00$/),
+      },
+    ]);
+  });
+
+  const perguntasDe = async (leadId: string) =>
+    (
+      await db().query<{ venda_id: string; venda_suspeita_id: string }>(
+        `select venda_id, venda_suspeita_id from wakeclub.comprovantes where lead_id = $1::uuid`,
+        [leadId],
+      )
+    ).rows;
+  const inserirPix = (leadId: string, em: string) =>
+    db().query<{ id: string }>(
+      `insert into wakeclub.vendas
+         (origem_externa, id_externo, comprada_em, valor, lead_id, horas, status)
+       values ('pix', $1::text, $3::timestamptz, 720, $2::uuid, 2, 'paga') returning id`,
+      [`pix-${randomUUID()}`, leadId, em],
+    );
+
+  test("webhook do app atrasado, com hora anterior ao Pix, abre a pergunta", async () => {
+    tornarAdmin(await criarVendedor("Admin Venda"));
+    const l = await criarLead();
+    const agora = Date.now();
+    const pix = await inserirPix(l.leadId, new Date(agora - 5 * 60_000).toISOString());
+    const { vendaId } = await processar(
+      venda({
+        telefone: l.telefone,
+        valor: 720,
+        horas: 2,
+        compradaEm: new Date(agora - 10 * 60_000).toISOString(),
+      }),
+    );
+    expect(await perguntasDe(l.leadId)).toEqual([
+      { venda_id: pix.rows[0].id, venda_suspeita_id: vendaId },
+    ]);
+  });
+
+  test("vínculo manual de venda do app parecida com Pix abre a pergunta", async () => {
+    tornarAdmin(await criarVendedor("Admin Venda"));
+    const l = await criarLead();
+    const pix = await inserirPix(l.leadId, new Date(Date.now() - HORA).toISOString());
+    const { vendaId } = await processar(venda({ telefone: telefoneUnico(), valor: 720, horas: 2 }));
+    expect(await perguntasDe(l.leadId)).toEqual([]);
+    await comTransacao((c) => vincular(c, vendaId, l.leadId, randomUUID()));
+    expect(await perguntasDe(l.leadId)).toEqual([
+      { venda_id: pix.rows[0].id, venda_suspeita_id: vendaId },
+    ]);
   });
 });

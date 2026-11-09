@@ -14,7 +14,11 @@ import type { EventoApp, PessoaApp } from "../vendas/eventos-app";
 import { cruzar } from "./vendas";
 
 type Resultado = "aplicado" | "hora_sem_saldo" | "saldo_desconhecido";
-type Origem = { appEventoId: string | null; correlacao: string; gatilho: "webhook" | "admin" };
+type Origem = {
+  appEventoId: string | null;
+  correlacao: string;
+  gatilho: "webhook" | "admin" | "motor";
+};
 type Mudanca = {
   tipo: TipoEventoApp;
   ocorridoEm: string | null;
@@ -292,16 +296,20 @@ export async function processarEventoApp(
   return "processado";
 }
 
-/** Mesma regra da compra paga do app, para a venda ligada pelo admin (sem `app_eventos`). */
+/**
+ * Mesma regra da compra paga do app, para a venda ligada pelo admin (sem `app_eventos`).
+ * `motor`: venda Pix registrada sozinha pela leitura do comprovante.
+ */
 export async function avancarPorVendaVinculada(
   db: PoolClient,
   leadId: string,
   horas: number | null,
+  gatilho: "admin" | "motor" = "admin",
 ): Promise<void> {
   await aplicar(
     db,
     leadId,
     { tipo: "compra_paga", ocorridoEm: null, horas },
-    { appEventoId: null, correlacao: `motor:venda-vinculada:${randomUUID()}`, gatilho: "admin" },
+    { appEventoId: null, correlacao: `motor:venda-vinculada:${randomUUID()}`, gatilho },
   );
 }

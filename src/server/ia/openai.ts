@@ -71,6 +71,33 @@ async function pedir(fetchFn: FetchFn, url: string, init: RequestInit, timeoutMs
   }
 }
 
+// Imagens que a OpenAI aceita; HEIC e outras voltariam 400 depois de uma chamada paga.
+const IMAGENS_ACEITAS = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
+/** Mime sem parâmetros (`image/jpeg; x=y` → `image/jpeg`), em minúsculas. */
+const mimeBase = (mime: string) => mime.split(";")[0].trim().toLowerCase();
+
+/** Se o anexo pode ir à IA: as tarefas checam antes de gastar uma tentativa. */
+export function anexoSuportado(mime: string): boolean {
+  const m = mimeBase(mime);
+  return IMAGENS_ACEITAS.has(m) || m === "application/pdf";
+}
+
+/** Conteúdo do usuário: texto puro sem anexos; com anexos, partes de texto, imagem e PDF. */
+function conteudoUsuario(p: Parameters<ClienteIa["chatJson"]>[0]) {
+  if (!p.anexos?.length) return p.usuario;
+  const partes: unknown[] = [{ type: "text", text: p.usuario }];
+  for (const a of p.anexos) {
+    const mime = mimeBase(a.mime);
+    const url = `data:${mime};base64,${Buffer.from(a.dados).toString("base64")}`;
+    if (IMAGENS_ACEITAS.has(mime)) partes.push({ type: "image_url", image_url: { url } });
+    else if (mime === "application/pdf")
+      partes.push({ type: "file", file: { filename: a.nomeArquivo, file_data: url } });
+    else throw new ErroIa("anexo não suportado", null);
+  }
+  return partes;
+}
+
 /** null sem `OPENAI_API_KEY`: as tarefas de IA não rodam. */
 export function criarClienteOpenAi(fetchFn: FetchFn = fetch): ClienteIa | null {
   const chave = process.env.OPENAI_API_KEY;
@@ -89,7 +116,7 @@ export function criarClienteOpenAi(fetchFn: FetchFn = fetch): ClienteIa | null {
             model: p.modelo,
             messages: [
               { role: "system", content: p.sistema },
-              { role: "user", content: p.usuario },
+              { role: "user", content: conteudoUsuario(p) },
             ],
             reasoning_effort: p.reasoningEffort,
             response_format: {

@@ -58,12 +58,13 @@ async function origem(
   );
 }
 
-async function vender(telefone: string, compradaEm: string, valor: number) {
+async function vender(telefone: string, compradaEm: string, valor: number, origem?: string) {
+  const idExterno = `c-${randomUUID()}`;
   await comTransacao((c) =>
     processarVenda(
       c,
       {
-        idExterno: `c-${randomUUID()}`,
+        idExterno,
         compradaEm,
         valor,
         cpf: null,
@@ -76,6 +77,11 @@ async function vender(telefone: string, compradaEm: string, valor: number) {
       { bruto: true },
     ),
   );
+  if (origem)
+    await db().query(
+      "update wakeclub.vendas set origem_externa = $2::text where id_externo = $1::text",
+      [idExterno, origem],
+    );
 }
 
 describe.skipIf(!bancoTesteAtivo)("resumo comercial", () => {
@@ -105,6 +111,8 @@ describe.skipIf(!bancoTesteAtivo)("resumo comercial", () => {
     expect(r.vendas).toEqual({
       quantidade: { atual: 2, anterior: 0 },
       faturamento: { atual: 700, anterior: 0 },
+      faturadoApp: 700,
+      faturadoDireta: 0,
     });
     expect(r.coorte).toEqual({ compraram: 1, conversaoPct: 33, faturamento: 360 });
     expect(r.clientesExistentes).toEqual({ quantidade: 2, faturamento: 700 });
@@ -158,6 +166,18 @@ describe.skipIf(!bancoTesteAtivo)("resumo comercial", () => {
     expect(r2.leadsNovos.atual).toBe(0);
     expect(r2.vendas.quantidade.atual).toBe(1);
     expect(r2.clientesExistentes.quantidade).toBe(0);
+  });
+
+  test("faturado separa App (webhook) e Direta (pix)", async () => {
+    const vendedor = await criarVendedor("Vendedor Origem Venda");
+    const a = await lead(vendedor, "2026-10-05T15:00:00Z");
+    await vender(a.telefone, "2026-10-06T15:00:00Z", 360);
+    await vender(a.telefone, "2026-10-07T15:00:00Z", 100, "pix");
+
+    const r = await lerComercial(db(), outubro, vendedor, agora);
+    expect(r.vendas.faturamento.atual).toBe(460);
+    expect(r.vendas.faturadoApp).toBe(360);
+    expect(r.vendas.faturadoDireta).toBe(100);
   });
 
   test("lead sem mensagem recebida não é novo", async () => {
