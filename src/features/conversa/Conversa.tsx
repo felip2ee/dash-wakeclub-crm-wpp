@@ -83,7 +83,10 @@ export function Conversa({
   const lista = mensagens.data ?? [];
 
   // Abre (e acompanha) a conversa no fim, como no WhatsApp.
-  useEffect(() => fim.current?.scrollIntoView({ block: "end" }), [lista.length]);
+  // Corpo com chaves: o Chrome novo devolve Promise em scrollIntoView, e o React chamaria isso como limpeza.
+  useEffect(() => {
+    fim.current?.scrollIntoView({ block: "end" });
+  }, [lista.length]);
 
   // Lista de conversas (loader da rota e a contagem do AppShell): última mensagem,
   // contador e não lidas mudam quando sai/chega mensagem ou a sugestão é decidida.
