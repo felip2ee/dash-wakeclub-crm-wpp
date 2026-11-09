@@ -110,16 +110,6 @@ async function gastarCota(n: number) {
   );
 }
 
-/** Data de São Paulo daqui a `dias` dias, com a hora em que a sugestão expira. */
-const fimDaJanela = async (dias: number) =>
-  (
-    await db().query<{ c: string }>(
-      `select to_char((now() at time zone 'America/Sao_Paulo')::date + $1::int, 'YYYY-MM-DD')
-              || ' 19:59:59' as c`,
-      [dias],
-    )
-  ).rows[0].c;
-
 /** Revisão do admin sobre uma decisão da atendente num follow-up já usado. */
 async function revisar(followupId: string, atendente: string, admin: string, texto: string) {
   const { rows } = await db().query<{ id: string }>(
@@ -218,7 +208,7 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     expect(fu).toMatchObject({
       status: "aguardando_aprovacao",
       texto_sugerido: "Oi, conseguiu ver o pagamento?",
-      expira: await fimDaJanela(0),
+      expira: null,
     });
     expect(fu.sugerido_em).not.toBeNull();
 
@@ -259,7 +249,7 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     expect(await tarefaRedator({ ia, agora: MEIO_DIA })).toBe(1);
     expect(await followup(f.id)).toMatchObject({
       status: "aguardando_aprovacao",
-      expira: await fimDaJanela(0),
+      expira: null,
     });
   });
 
@@ -301,8 +291,7 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     for (const [i, f] of fs.entries()) {
       const fu = await followup(f.id);
       expect(fu.status).toBe(i >= 2 ? "aguardando_aprovacao" : "pendente");
-      // Toda sugestão que espera aprovação tem validade (a aprovação só expira com ela).
-      if (i >= 2) expect(fu.expira).toBe(await fimDaJanela(0));
+      if (i >= 2) expect(fu.expira).toBeNull();
     }
   });
 
@@ -359,7 +348,7 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     }
   });
 
-  test("redigir: validade de hoje (automático) ou de amanhã (varredura)", async () => {
+  test("redigir: grava a sugestão sem validade e relata o progresso", async () => {
     const hoje = await vencido();
     const amanha = await vencido();
     const barrado = await vencido();
@@ -374,7 +363,7 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     });
     const parciais: number[] = [];
 
-    expect(await redigir(db(), ia, [hoje.id], { diasValidade: 0 })).toEqual({
+    expect(await redigir(db(), ia, [hoje.id], {})).toEqual({
       sugeridos: 1,
       barrados: [],
       reagendados: 0,
@@ -382,7 +371,6 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     });
     expect(
       await redigir(db(), ia, [amanha.id, barrado.id], {
-        diasValidade: 1,
         aoConcluirUm: async (p) => void parciais.push(p.sugeridos + p.barrados.length),
       }),
     ).toEqual({
@@ -393,8 +381,8 @@ describe.skipIf(!bancoTesteAtivo)("redator", () => {
     });
     expect(parciais).toEqual([1, 2]);
 
-    expect((await followup(hoje.id)).expira).toBe(await fimDaJanela(0));
-    expect((await followup(amanha.id)).expira).toBe(await fimDaJanela(1));
+    expect((await followup(hoje.id)).expira).toBeNull();
+    expect((await followup(amanha.id)).expira).toBeNull();
     expect(await followup(barrado.id)).toMatchObject({ status: "abortado", expira: null });
   });
 

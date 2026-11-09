@@ -126,44 +126,12 @@ export async function tarefaRitmoMeiaNoite(db: ClienteDb): Promise<number> {
 }
 
 /**
- * Sugestão sem decisão com `expira_em` vencido vira `expirado` (o automático vale até 19h59
- * do dia, a varredura até 19h59 do dia seguinte); `expira_em` null é legado e não expira,
- * como em `aprovacao.decidir`. Lembrete de aula aberto cuja aula já passou vira `cancelado`.
- * Em ambos a notificação pendente é cancelada. Devolve quantos mudaram.
+ * Sugestão sem decisão não vence: só sai da fila com decisão, mensagem ou evento do app.
+ * Lembrete de aula aberto cuja aula já passou vira `cancelado`, com a notificação pendente
+ * cancelada. Devolve quantos mudaram.
  */
 export async function tarefaExpirarFollowups(db: ClienteDb, agora = new Date()): Promise<number> {
   const rodada = crypto.randomUUID();
-  const expirados = await db.query(
-    `with expirados as (
-       update wakeclub.followups f
-          set status = 'expirado'
-        where f.status = 'aguardando_aprovacao'
-          and f.expira_em <= $2::timestamptz
-       returning f.id, f.lead_id, f.tipo, f.sugerido_em, f.expira_em
-     ),
-     notificacoes as (
-       update wakeclub.notificacoes n
-          set status = 'cancelada',
-              erro = 'follow-up expirou sem decisão'
-        where n.status = 'pendente'
-          and n.followup_id in (select id from expirados)
-       returning 1
-     )
-     insert into wakeclub.eventos_automacao
-       (lead_id, agente, tipo_evento, gatilho, decisao, motivo,
-        estado_anterior, estado_novo, metadados,
-        entidade_tipo, entidade_id, origem_tipo, origem_id, correlacao_id)
-     select e.lead_id, 'sistema', 'followup_expired', 'schedule', 'expirou sem decisão',
-            'sem decisão até a validade da sugestão',
-            jsonb_build_object('status', 'aguardando_aprovacao', 'tipo', e.tipo,
-                               'sugerido_em', e.sugerido_em, 'expira_em', e.expira_em),
-            jsonb_build_object('status', 'expirado'),
-            jsonb_build_object('notificacoes_canceladas', (select count(*) from notificacoes)),
-            'followup', e.id, 'motor', $1::text, 'motor:exp:' || $1::text || ':' || e.id::text
-       from expirados e
-     on conflict do nothing`,
-    [rodada, agora],
-  );
   const cancelados = await db.query(
     `with alvo as (
        select f.id, f.status
@@ -202,5 +170,5 @@ export async function tarefaExpirarFollowups(db: ClienteDb, agora = new Date()):
      on conflict do nothing`,
     [rodada, agora],
   );
-  return (expirados.rowCount ?? 0) + (cancelados.rowCount ?? 0);
+  return cancelados.rowCount ?? 0;
 }

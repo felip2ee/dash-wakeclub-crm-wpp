@@ -104,9 +104,10 @@ export const SQL_PARADOS = `
     from wakeclub.leads l
    where l.atendente_id is not null and not l.opt_out and not l.sem_atendimento
      and not exists (${ABERTO})
-     -- Um \`parado\` por episódio: encerrado (abortado, recusado, expirado) só volta com atividade nova.
+     -- Um \`parado\` por episódio: abortado ou recusado só volta com atividade nova. expirado é
+     -- legado (a sugestão não vence mais) e não conta.
      and not exists (select 1 from wakeclub.followups f
-                      where f.lead_id = l.id and f.tipo = 'parado'
+                      where f.lead_id = l.id and f.tipo = 'parado' and f.status <> 'expirado'
                         and f.criado_em > coalesce(greatest(l.ultima_msg_lead_em, l.ultima_msg_equipe_em,
                               l.ultimo_evento_app_em, l.ultima_aula_em), '-infinity'))
      and (

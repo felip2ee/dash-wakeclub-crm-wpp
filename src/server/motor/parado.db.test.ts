@@ -172,6 +172,16 @@ describe.skipIf(!bancoTesteAtivo)("sinal parado", () => {
     expect((await followups(outro)).map((x) => x.tipo)).toEqual(["reengajar"]);
   });
 
+  test("parado expirado (legado) volta a ser sugerido sem atividade nova", async () => {
+    const id = await criarLead({ etiqueta: "Em atendimento", equipe: "25 hours" });
+    await tarefaParados(db());
+    await db().query("update wakeclub.followups set status = 'expirado' where lead_id = $1::uuid", [
+      id,
+    ]);
+    await tarefaParados(db());
+    expect(await followups(id)).toHaveLength(2);
+  });
+
   test("um parado por episódio: encerrado não renasce até haver atividade nova", async () => {
     const id = await criarLead({ etiqueta: "Em atendimento", equipe: "25 hours" });
     const p = PRAZOS_PADRAO;

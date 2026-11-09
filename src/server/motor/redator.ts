@@ -2,7 +2,7 @@
  * Porteiro e redator: porta do WF-03 do n8n (docs/n8n-legado/wf-03-redator-de-followup.json)
  * para o motor (spec fases 2-3 §6). Pega follow-ups pendentes vencidos, o porteiro decide se
  * ainda faz sentido (libera, reagenda ou aborta), o redator escreve o texto e ele espera a
- * aprovação humana em `aguardando_aprovacao`, com validade até 19h59 (spec pipeline §8). Respeita
+ * aprovação humana em `aguardando_aprovacao`, sem validade. Respeita
  * a janela; a cota do ritmo limita envios, não preparo. Põe as revisões do admin no fim dos
  * prompts (spec pipeline §9). Montagem e validação são as do legado.
  */
@@ -328,13 +328,12 @@ export type ResultadoRedacao = {
 /**
  * Porteiro e redator sobre os follow-ups `ids` (pendentes vencidos), na ordem dada; cada um
  * grava na própria transação. Falha da IA, da validação ou da gravação reagenda em +30 min.
- * `diasValidade` diz até quando a sugestão espera aprovação: 0 hoje, 1 amanhã (varredura).
  */
 export async function redigir(
   db: ClienteDb,
   ia: ClienteIa,
   ids: string[],
-  opcoes: { diasValidade: 0 | 1; aoConcluirUm?: (parcial: ResultadoRedacao) => Promise<void> },
+  opcoes: { aoConcluirUm?: (parcial: ResultadoRedacao) => Promise<void> },
 ): Promise<ResultadoRedacao> {
   const r: ResultadoRedacao = { sugeridos: 0, barrados: [], reagendados: 0, falhas: 0 };
   const rodada = randomUUID();
@@ -345,9 +344,7 @@ export async function redigir(
   for (const d of rows) {
     try {
       const x = await decidir(ia, d, revisoes);
-      if (
-        await comTransacao((c) => aplicar(c, d, x, { rodada, diasValidade: opcoes.diasValidade }))
-      ) {
+      if (await comTransacao((c) => aplicar(c, d, x, { rodada }))) {
         if (x.tipo === "gravar") r.sugeridos++;
         else if (x.tipo === "abortar")
           r.barrados.push({ followupId: d.followup_id, motivo: x.motivo });
@@ -397,6 +394,6 @@ export async function tarefaRedator(deps: { ia: ClienteIa; agora?: Date }): Prom
     .map((v) => v.id);
   if (!ids.length) return 0;
 
-  const r = await redigir(db, deps.ia, ids, { diasValidade: 0 });
+  const r = await redigir(db, deps.ia, ids, {});
   return r.sugeridos + r.barrados.length + r.reagendados;
 }

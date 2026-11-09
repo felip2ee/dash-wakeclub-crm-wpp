@@ -13,7 +13,7 @@ const db = () => getPoolMotor();
 const SUGERIDO = new Date("2026-11-04T10:00:00-03:00");
 const AGORA = new Date("2026-11-04T12:00:00-03:00");
 // Validade do card automático: 19h59 de SP do mesmo dia (spec §8).
-const EXPIRA = new Date("2026-11-04T19:59:00-03:00");
+const EXPIRA = new Date("2020-01-01T19:59:00-03:00");
 
 const sessao = (usuarioId: string, papel: Sessao["papel"] = "atendente"): Sessao => ({
   usuarioId,
@@ -200,18 +200,13 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
   test("enviar grava aprovado, texto_enviado, aprovado_por, avaliacao e evento", async () => {
     const { dono, followupId } = await cenario();
     await comTransacao((c) =>
-      decidir(
-        c,
-        sessao(dono),
-        {
-          followupId,
-          decisao: "enviar",
-          texto: "Oi! Ainda quer agendar?",
-          motivos: ["Ajustei o texto"],
-          textoLivre: "mais curto",
-        },
-        AGORA,
-      ),
+      decidir(c, sessao(dono), {
+        followupId,
+        decisao: "enviar",
+        texto: "Oi! Ainda quer agendar?",
+        motivos: ["Ajustei o texto"],
+        textoLivre: "mais curto",
+      }),
     );
     const f = await followup(followupId);
     expect(f).toMatchObject({
@@ -237,7 +232,7 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
   test("enviar sem texto usa o sugerido", async () => {
     const { dono, followupId } = await cenario();
     await comTransacao((c) =>
-      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: ["Texto certo"] }, AGORA),
+      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: ["Texto certo"] }),
     );
     expect((await followup(followupId)).texto_enviado).toBe("Oi, ainda quer agendar a aula?");
   });
@@ -248,9 +243,7 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
       followupId,
     ]);
     await expect(
-      comTransacao((c) =>
-        decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, AGORA),
-      ),
+      comTransacao((c) => decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] })),
     ).rejects.toThrow("sem texto");
     expect((await followup(followupId)).status).toBe("aguardando_aprovacao");
   });
@@ -275,7 +268,7 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
   test("pular grava avaliacao com motivos vazios", async () => {
     const { dono, followupId } = await cenario();
     await comTransacao((c) =>
-      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, AGORA),
+      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }),
     );
     expect(await avaliacoes(followupId)).toMatchObject([
       { decisao: "enviar", motivos: [], texto_livre: null },
@@ -285,44 +278,16 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
   test("so decide follow-up aguardando aprovacao", async () => {
     const { dono, followupId } = await cenario();
     const decidirUma = () =>
-      comTransacao((c) =>
-        decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, AGORA),
-      );
+      comTransacao((c) => decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }));
     await decidirUma();
     await expect(decidirUma()).rejects.toThrow("não está mais aguardando");
     expect(await avaliacoes(followupId)).toHaveLength(1);
   });
 
-  test("enviar depois das 19h59 de SP é recusado; recusar ainda vale", async () => {
+  test("expira_em antigo não impede enviar", async () => {
     const { dono, followupId } = await cenario();
-    const noite = new Date("2026-11-04T20:00:00-03:00");
-    await expect(
-      comTransacao((c) =>
-        decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, noite),
-      ),
-    ).rejects.toThrow("Follow-up expirou: a IA prepara um novo amanhã");
-    const amanha = new Date("2026-11-05T09:00:00-03:00");
-    await expect(
-      comTransacao((c) =>
-        decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, amanha),
-      ),
-    ).rejects.toThrow("Follow-up expirou");
-    expect((await followup(followupId)).status).toBe("aguardando_aprovacao");
-    expect(await avaliacoes(followupId)).toHaveLength(0);
     await comTransacao((c) =>
-      decidir(c, sessao(dono), { followupId, decisao: "recusar", motivos: [] }, noite),
-    );
-    expect((await followup(followupId)).status).toBe("abortado");
-  });
-
-  test("sem expira_em o card não expira pelo horário", async () => {
-    const { dono, followupId } = await cenario();
-    await db().query("update wakeclub.followups set expira_em = null where id = $1::uuid", [
-      followupId,
-    ]);
-    const noite = new Date("2026-11-04T21:00:00-03:00");
-    await comTransacao((c) =>
-      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }, noite),
+      decidir(c, sessao(dono), { followupId, decisao: "enviar", motivos: [] }),
     );
     expect((await followup(followupId)).status).toBe("aprovado");
   });
@@ -341,12 +306,12 @@ describe.skipIf(!bancoTesteAtivo)("fila de aprovação", () => {
     const { followupId } = await cenario();
     const admin = await criarVendedor("Admin Revisa");
     await comTransacao((c) =>
-      decidir(
-        c,
-        sessao(admin, "admin"),
-        { followupId, decisao: "enviar", motivos: ["Texto certo"], textoLivre: "bom gancho" },
-        AGORA,
-      ),
+      decidir(c, sessao(admin, "admin"), {
+        followupId,
+        decisao: "enviar",
+        motivos: ["Texto certo"],
+        textoLivre: "bom gancho",
+      }),
     );
     expect(await revisoes(followupId)).toEqual([
       { admin_id: admin, concorda: true, observacao: "bom gancho" },

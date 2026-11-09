@@ -124,36 +124,14 @@ describe.skipIf(!bancoTesteAtivo)("ritmo", () => {
     expect(await enviadosHoje(db())).toBe(antes + 1);
   });
 
-  test("expira pelo expira_em: ontem expira e push é cancelado", async () => {
-    const ontem = await aguardando("-1 day", new Date(Date.now() - 86_400_000).toISOString());
-
-    await tarefaExpirarFollowups(db());
-
-    expect(await estado(ontem)).toEqual({ status: "expirado", push: "cancelada", eventos: 1 });
-    await tarefaExpirarFollowups(db());
-    expect((await estado(ontem)).eventos).toBe(1);
-  });
-
-  test("automático expira às 19h59; o da varredura (amanhã) fica às 20h de hoje", async () => {
-    const hoje = await aguardando("0 minutes", "2026-11-04T19:59:59-03:00");
-    const varredura = await aguardando("0 minutes", "2026-11-05T19:59:59-03:00");
-
-    await tarefaExpirarFollowups(db(), new Date("2026-11-04T19:59:00-03:00"));
-    expect((await estado(hoje)).status).toBe("aguardando_aprovacao");
-
-    await tarefaExpirarFollowups(db(), new Date("2026-11-04T20:00:00-03:00"));
-    expect(await estado(hoje)).toEqual({ status: "expirado", push: "cancelada", eventos: 1 });
-    expect(await estado(varredura)).toEqual({
+  test("sugestão sem decisão não vence, mesmo com expira_em antigo", async () => {
+    const antiga = await aguardando("-3 days", new Date(Date.now() - 86_400_000).toISOString());
+    expect(await tarefaExpirarFollowups(db())).toBe(0);
+    expect(await estado(antiga)).toEqual({
       status: "aguardando_aprovacao",
       push: "pendente",
       eventos: 0,
     });
-  });
-
-  test("sem expira_em (legado) não expira, como na decisão em aprovacao.ts", async () => {
-    const legado = await aguardando("-3 days");
-    await tarefaExpirarFollowups(db(), new Date("2026-11-04T23:00:00-03:00"));
-    expect((await estado(legado)).status).toBe("aguardando_aprovacao");
   });
 
   test("lembrete aberto com aula já passada é cancelado; o de aula futura fica", async () => {
