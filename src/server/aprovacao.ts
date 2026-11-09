@@ -168,15 +168,13 @@ export async function decidir(
   db: PoolClient,
   sessao: Sessao,
   entrada: EntradaDecisao,
-  agora = new Date(),
 ): Promise<{ avaliacaoId: string }> {
   const { rows } = await db.query<{
     lead_id: string;
     status: string;
     texto_sugerido: string | null;
-    expira_em: Date | null;
   }>(
-    `select f.lead_id, f.status, f.texto_sugerido, f.expira_em
+    `select f.lead_id, f.status, f.texto_sugerido
        from wakeclub.followups f
        join wakeclub.leads l on l.id = f.lead_id
       where f.id = $1::uuid and ($2::boolean or l.atendente_id = $3::uuid)
@@ -189,10 +187,6 @@ export async function decidir(
     throw new Error("Este follow-up não está mais aguardando aprovação.");
   }
   const enviar = entrada.decisao === "enviar";
-  // A expiração roda a cada 5 min: entre 19h59 e a rodada, o card ainda aparece na fila.
-  if (enviar && f.expira_em !== null && f.expira_em <= agora) {
-    throw new Error("Follow-up expirou: a IA prepara um novo amanhã");
-  }
   const textoEnviado = enviar ? (entrada.texto ?? f.texto_sugerido) : null;
   if (enviar && !textoEnviado?.trim()) throw new Error("Follow-up sem texto para enviar.");
   if (enviar) {

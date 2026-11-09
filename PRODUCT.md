@@ -75,7 +75,7 @@ Decisões parqueadas (o código segue o padrão anotado ao lado até o dono deci
 - **Regex de opt-out:** hoje determinística (`ehOptOut`); confirmar a lista de expressões
   antes de a IA começar a mexer nos leads.
 - **Expirar `aprovado` com mais de 24 h:** sem adaptador (ou fora da janela) os aprovados
-  acumulam; hoje só `aguardando_aprovacao` expira.
+  acumulam; hoje nenhum follow-up expira por tempo.
 - **Ordem das colunas do Pipeline:** segue o funil do CRM, não a ordem da imagem de
   referência; o dono pode pedir a da imagem.
 - **Ranking top 3 com medalhas:** hoje o ranking lista todos os vendedores ativos; o top 3

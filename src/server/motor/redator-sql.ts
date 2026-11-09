@@ -157,17 +157,13 @@ select a.texto_original, a.texto_enviado, a.decisao, a.motivos, a.texto_livre,
 
 // "Gravar texto sugerido": agora também `aguardando_aprovacao`, push para '/aprovar' e
 // `metadados.modo` (a fila de aprovação lê). Só grava se ainda está pendente: a conversa
-// pode ter cancelado o follow-up enquanto a IA escrevia. `expira_em` ($7 dias à frente,
-// 19h59:59 de São Paulo): o automático vale até o fim da janela de hoje, a varredura até a
-// de amanhã (spec §8, §13).
+// pode ter cancelado o follow-up enquanto a IA escrevia. A sugestão não tem validade.
 export const SQL_GRAVAR = `
 with gravado as (
   update wakeclub.followups f
      set texto_sugerido = nullif($2, ''),
          sugerido_em = now(),
-         status = 'aguardando_aprovacao',
-         expira_em = ((now() at time zone 'America/Sao_Paulo')::date + $7::int * interval '1 day'
-                      + interval '19 hours 59 minutes 59 seconds') at time zone 'America/Sao_Paulo'
+         status = 'aguardando_aprovacao'
    where f.id = $1::uuid
      and f.status = 'pendente'
      and f.texto_sugerido is null
@@ -323,7 +319,7 @@ export async function aplicar(
   db: PoolClient,
   d: LinhaFollowup,
   x: Desfecho,
-  { rodada, diasValidade }: { rodada: string; diasValidade: 0 | 1 },
+  { rodada }: { rodada: string },
 ): Promise<boolean> {
   const ia = [MODELO_PORTEIRO, porteiro.VERSAO_PROMPT];
   if (x.tipo === "reagendar") {
@@ -341,7 +337,6 @@ export async function aplicar(
     rodada,
     MODELO_REDATOR,
     redator.VERSAO_PROMPT,
-    diasValidade,
   ]);
   if (rows[0].gravados === 0) return false;
   await db.query(SQL_LIBERACAO, [d.lead_id, d.followup_id, x.motivo, d.tipo, rodada, ...ia]);

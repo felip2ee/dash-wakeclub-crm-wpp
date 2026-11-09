@@ -76,14 +76,6 @@ async function followupsDe(leadIds: string[]) {
   return rows;
 }
 
-const amanha1959 = async () =>
-  (
-    await db().query<{ c: string }>(
-      `select to_char((now() at time zone 'America/Sao_Paulo')::date + 1, 'YYYY-MM-DD')
-              || ' 19:59:59' as c`,
-    )
-  ).rows[0].c;
-
 async function esperarFim(id: string) {
   for (let i = 0; i < 200; i++) {
     if ((await varredura(id)).status !== "rodando") return;
@@ -93,7 +85,7 @@ async function esperarFim(id: string) {
 }
 
 describe.skipIf(!bancoTesteAtivo)("varredura", () => {
-  test("3 parados viram 3 sugestões que expiram amanhã às 19h59, nunca aprovadas", async () => {
+  test("3 parados viram 3 sugestões sem validade, nunca aprovadas", async () => {
     const leads = [await leadParado(), await leadParado(), await leadParado()];
     const ia = iaPorLead(
       Object.fromEntries(leads.map((l) => [l.nome, { porteiro: LIBERA, redator: TEXTO }])),
@@ -115,8 +107,7 @@ describe.skipIf(!bancoTesteAtivo)("varredura", () => {
     expect(v.total).toBeGreaterThanOrEqual(3);
     expect(v.analisados).toBe(v.total);
     const fs = await followupsDe(leads.map((l) => l.id));
-    const limite = await amanha1959();
-    expect(fs).toEqual([1, 2, 3].map(() => ({ status: "aguardando_aprovacao", expira: limite })));
+    expect(fs).toEqual([1, 2, 3].map(() => ({ status: "aguardando_aprovacao", expira: null })));
     const { rows } = await db().query<{ n: number }>(
       `select count(*)::int as n from wakeclub.followups
         where lead_id = any($1::uuid[]) and status in ('aprovado', 'enviado', 'enviando')`,

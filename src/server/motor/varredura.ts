@@ -2,7 +2,7 @@
  * Varredura sob demanda, o botão "Buscar follow-ups agora" (spec pipeline §7). Cria os
  * follow-ups `parado` que faltam e passa porteiro e redator em todos os pendentes vencidos,
  * sem a cota (ela limita envios, §11). Só prepara: as sugestões caem em
- * `aguardando_aprovacao` na fila do dono do lead e valem até 19h59 do dia seguinte (§13).
+ * `aguardando_aprovacao` na fila do dono do lead.
  * Uma por vez (índice `varreduras_uma_rodando`); o progresso fica em `varreduras`.
  */
 import { comTransacao, type ClienteDb } from "../db";
@@ -154,7 +154,6 @@ export async function executarVarredura(db: ClienteDb, ia: ClienteIa, id: string
         [id, analisados(r), r.sugeridos, r.barrados.length],
       );
     const r = await redigir(db, ia, ids, {
-      diasValidade: 1,
       aoConcluirUm: async (parcial) => {
         await progresso(parcial);
       },

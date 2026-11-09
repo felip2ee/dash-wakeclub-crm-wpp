@@ -69,7 +69,7 @@ Responsabilidade operacional:
 
 - **motor** (`MOTOR_ATIVO=1`): ingere mensagens, distribui leads, mantém a saúde do número
   e a fila de notificações, transcreve áudios, qualifica leads, redige follow-ups, envia os
-  aprovados, expira o que ficou sem decisão, processa vendas e devolve o ritmo aquecido ao
+  aprovados, cancela lembrete de aula passada, processa vendas e devolve o ritmo aquecido ao
   conservador. Detalhe em "Motor".
 - **dashboard:** lê o CRM, autentica a equipe, registra inscrições e aberturas, grava a
   decisão humana sobre cada sugestão, envia mensagens pelo app (quando houver adaptador) e
@@ -353,7 +353,7 @@ banco), registradas em `iniciar.ts`. Toda tarefa grava a última execução em
 | `push`              | 1 min     | sempre                      | `enviarPushPendentes` (fila `notificacoes`, sem n8n)                 |
 | `heartbeat`         | 5 min     | adaptador                   | `gravarHeartbeat` da instância                                       |
 | `ritmo-meia-noite`  | 5 min     | sempre                      | aquecido ligado antes da meia-noite de São Paulo volta a conservador |
-| `expirar-followups` | 5 min     | sempre                      | `aguardando_aprovacao` com `expira_em` vencido vira `expirado`; lembrete aberto de aula que já passou vira `cancelado` |
+| `expirar-followups` | 5 min     | sempre                      | lembrete aberto de aula que já passou vira `cancelado` (sugestão sem decisão não vence) |
 | `parado`            | 15 min    | sempre                      | `tarefaParados`: lead sem avanço além do prazo da etapa ganha follow-up `parado` (prazos em `configuracoes.prazos_parado`; alunos: silêncio de 48 h) |
 | `pagamento-pendente` | 5 min    | sempre                      | `tarefaPagamentoPendente`: pagamento pendente há 24 h gera o sinal de cobrança |
 | `envio-followups`   | 1 min     | adaptador                   | envia um follow-up aprovado por rodada; com `OPENAI_API_KEY`, reconfere pelo porteiro o aprovado com mais de 3 dias |
@@ -450,12 +450,12 @@ com contagem, aviso de custo e progresso; botão em `/revisar-decisoes`.
 pendente ──(redator)──▶ aguardando_aprovacao ──(humano: Enviar)──▶ aprovado
    │                           │                                      │
    │                           ├─(humano: Não enviar)─▶ abortado      ├─(motor)─▶ enviando ─▶ enviado
-   │                           └─(expirar, 19h59)─────▶ expirado      │               └─(órfão/incerto)─▶ abortado
+   │                           └─(conversa ou app)─────▶ cancelado     │               └─(órfão/incerto)─▶ abortado
    └─(porteiro: aborta)────────────────────────────────▶ abortado     └─(conversa andou)─▶ cancelado
 ```
 
-`aguardando_aprovacao` tem `expira_em` (19h59 de São Paulo do dia do texto) e `expirar-followups`
-expira só quem não foi decidido. `aprovado` não expira: fica na fila entre dias e, com mais de 3 dias
+`aguardando_aprovacao` não tem validade: fica na fila até a decisão humana, mensagem enviada ou
+recebida, ou evento do app (`expira_em` e o status `expirado` são legado). `aprovado` também não expira: fica na fila entre dias e, com mais de 3 dias
 (`reconferido_em` nulo ou antigo), passa de novo pelo porteiro antes de sair; sem IA o item é pulado.
 Aprovado barrado na reconferência avisa o vendedor por notificação. Lembretes de aula
 (`lembrete_d1`, `lembrete_dia`, com `aula_em`) convivem com o follow-up aberto do lead (um por tipo)
@@ -474,7 +474,7 @@ Quem muda o quê:
 | ingestão                  | mensagem nova do lead ou opt-out cancela `pendente`/`aguardando_aprovacao`/`aprovado` (`cancelado`, "conversa viva" ou "opt-out") e cancela a notificação pendente. `enviando` e `enviado` ficam como estão |
 | redator (porteiro)        | `pendente` → `aguardando_aprovacao` (texto), reagenda ou `abortado` (o lead não precisa mais)      |
 | vendedor (`decidir`)      | `aguardando_aprovacao` → `aprovado` ("Enviar", com ou sem edição) ou `abortado` ("recusado pelo vendedor"). Recusa após 19h59 do dia do texto é rejeitada com "expirou" |
-| `expirar-followups`       | `aguardando_aprovacao` com `expira_em` vencido vira `expirado`; cancela a notificação pendente |
+| `expirar-followups`       | cancela lembrete de aula passada e a notificação pendente; sugestão sem decisão não vence |
 | `envio-followups`         | `aprovado` → `enviando` → `enviado` (grava mensagem com `followup_id`); falhas: `aprovado` de novo (`nao_saiu`) ou `abortado` (`incerto`/órfão/sem texto) |
 
 `aprovado` sem envio (por exemplo, sem adaptador, fora da janela ou além da cota) espera na
