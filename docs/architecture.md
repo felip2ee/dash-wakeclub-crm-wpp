@@ -279,6 +279,8 @@ domínio mantidos manualmente.
 | `admin.ts`             | painel, alteração/cadastro de atendente, remoção de aparelho e push de teste    | views admin, `usuarios`, `push_subscriptions`                                                    |
 | `push-dispatch.ts`     | `entregarPush`                                                                  | aparelhos ativos; atualiza falhas/uso e remove inscrições 404/410                                |
 
+A conversa (`/` e `/meus-leads`) pede só as 50 mensagens mais recentes (`limite` em `lerMensagens`); "Ver mensagens anteriores" soma mais 50. Sem `limite` vem o histórico todo (workspace de oportunidades). O `QueryClient` usa `staleTime` de 30 s e `gcTime` de 30 min, só em memória: nada fica no aparelho.
+
 **Leitores que passaram a usar o pool do motor.** `v_eventos_automacao_painel` não existe
 (ficou fora da 0001) e `painel_ro` não lê `followups`. Por isso `getPipeline`,
 `getLinhaDoTempo`, `leadsComSugestao` (usada por `getConversas` e `listarMeusLeads`) e

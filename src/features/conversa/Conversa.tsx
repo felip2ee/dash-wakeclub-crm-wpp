@@ -1,4 +1,4 @@
-import { type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, type QueryKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import {
   ArrowLeftRight,
@@ -25,6 +25,8 @@ import { type ChipLinha, dataDoChip, montarLinhaDoTempo, rotuloDia } from "./lin
 import { SugestaoDaConversa } from "./SugestaoDaConversa";
 
 const RECARREGAR_A_CADA_MS = 30_000;
+// A conversa abre com o fim; o histórico antigo só vem quando pedido.
+const POR_PAGINA = 50;
 
 const ICONE_CHIP: Record<ChipLinha["tipo"], typeof UserRound> = {
   cadastro: UserRound,
@@ -45,7 +47,8 @@ export function Conversa({
 }: {
   lead: { id: string; nome: string | null; telefone: string };
   queryKey: QueryKey;
-  carregar: () => Promise<MensagemConversa[]>;
+  /** As `limite` mensagens mais recentes, em ordem cronológica. */
+  carregar: (limite: number) => Promise<MensagemConversa[]>;
   onVoltar: () => void;
   /** Conteúdo do menu ⋮ (ficha do lead); sem ele o menu não aparece. */
   ficha?: ReactNode;
@@ -57,11 +60,14 @@ export function Conversa({
   const cliente = useQueryClient();
   const [fichaAberta, setFichaAberta] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
+  const [limite, setLimite] = useState(POR_PAGINA);
 
+  // `queryKey` continua prefixo: o Composer invalida a thread sem saber do limite.
   const mensagens = useQuery({
-    queryKey,
-    queryFn: carregar,
+    queryKey: [...queryKey, limite],
+    queryFn: () => carregar(limite),
     refetchInterval: RECARREGAR_A_CADA_MS,
+    placeholderData: keepPreviousData,
   });
   const linha = useQuery({
     queryKey: ["linha-do-tempo", lead.id],
@@ -81,12 +87,15 @@ export function Conversa({
     [linha.data],
   );
   const lista = mensagens.data ?? [];
+  const ultimaId = lista.at(-1)?.id;
+  // shortcut: com exatamente `limite` mensagens o botão aparece e não traz nada; aceitável.
+  const temAnteriores = lista.length >= limite;
 
-  // Abre (e acompanha) a conversa no fim, como no WhatsApp.
+  // Abre (e acompanha) a conversa no fim, como no WhatsApp; carregar anteriores não rola.
   // Corpo com chaves: o Chrome novo devolve Promise em scrollIntoView, e o React chamaria isso como limpeza.
   useEffect(() => {
     fim.current?.scrollIntoView({ block: "end" });
-  }, [lista.length]);
+  }, [ultimaId]);
 
   // Lista de conversas (loader da rota e a contagem do AppShell): última mensagem,
   // contador e não lidas mudam quando sai/chega mensagem ou a sugestão é decidida.
@@ -94,14 +103,16 @@ export function Conversa({
     void router.invalidate();
     void cliente.invalidateQueries({ queryKey: ["meus-leads"] });
   };
-  // O Composer (fase 1) só invalida a própria thread; mudou o total, a lista recarrega.
-  const total = useRef<number | null>(null);
+  // O Composer (fase 1) só invalida a própria thread; chegou mensagem nova, a lista recarrega.
+  // Compara a última mensagem, não o total: com limite o total para de crescer.
+  const ultimaVista = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (!mensagens.isSuccess) return;
-    if (total.current !== null && total.current !== lista.length) atualizarLista();
-    total.current = lista.length;
+    const atual = ultimaId ?? null;
+    if (ultimaVista.current !== undefined && ultimaVista.current !== atual) atualizarLista();
+    ultimaVista.current = atual;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- atualizarLista é estável na prática (router/cliente)
-  }, [mensagens.isSuccess, lista.length]);
+  }, [mensagens.isSuccess, ultimaId]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -145,6 +156,17 @@ export function Conversa({
             <p role="alert" className="text-center text-xs text-destructive">
               Não deu para ler a linha do tempo: {linha.error.message}
             </p>
+          )}
+
+          {temAnteriores && (
+            <button
+              type="button"
+              onClick={() => setLimite((l) => l + POR_PAGINA)}
+              disabled={mensagens.isPlaceholderData}
+              className="mx-auto mb-2 rounded-full border border-border bg-card px-4 py-2 text-xs font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              {mensagens.isPlaceholderData ? "Carregando…" : "Ver mensagens anteriores"}
+            </button>
           )}
 
           {mensagens.isPending && (

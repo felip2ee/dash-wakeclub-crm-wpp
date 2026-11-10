@@ -100,7 +100,7 @@ type LinhaConversa = {
   followup_tipo: string | null;
 };
 
-type LinhaMensagem = {
+export type LinhaMensagem = {
   id: string;
   lead_id: string;
   direcao: Direcao;
@@ -162,20 +162,15 @@ export const getConversas = createServerFn({ method: "GET" }).handler(
  * A view não filtra por lead — quem filtra é este parâmetro. O `uuid()` do zod
  * não é decoração: sem ele um id inválido viraria erro cru do Postgres na tela.
  */
+/** Sem limite, o histórico todo (workspace de oportunidades); a conversa pede só o fim. */
+export const LIMITE_MENSAGENS = z.number().int().min(1).max(5000).optional();
+
 export const getMensagens = createServerFn({ method: "GET" })
-  .validator(z.object({ leadId: z.string().uuid() }))
+  .validator(z.object({ leadId: z.string().uuid(), limite: LIMITE_MENSAGENS }))
   .handler(async ({ data }): Promise<Mensagem[]> => {
     await exigirAdmin();
 
-    const { rows } = await getPool().query<LinhaMensagem>(
-      `select m.id, m.lead_id, m.direcao, m.texto, m.enviada_em, m.entrega_nivel,
-              m.entrega_em, a.enviada_por, a.autor_nome
-         from wakeclub.v_mensagens_painel m
-         left join wakeclub.v_mensagens_autoria a on a.mensagem_id = m.id
-        where m.lead_id = $1::uuid
-        order by m.enviada_em asc, m.criado_em asc`,
-      [data.leadId],
-    );
+    const rows = await lerMensagens(getPool(), data.leadId, data.limite ?? null);
 
     return rows.map((r) => ({
       id: r.id,
@@ -188,6 +183,31 @@ export const getMensagens = createServerFn({ method: "GET" })
       autoria: autoria(r.enviada_por, r.autor_nome),
     }));
   });
+
+/**
+ * As `limite` mensagens mais recentes do lead (null = todas), em ordem cronológica.
+ * Quem chama já autorizou o lead.
+ */
+export async function lerMensagens(
+  db: ClienteDb,
+  leadId: string,
+  limite: number | null,
+): Promise<LinhaMensagem[]> {
+  const { rows } = await db.query<LinhaMensagem>(
+    `select * from (
+       select m.id, m.lead_id, m.direcao, m.texto, m.enviada_em, m.criado_em, m.entrega_nivel,
+              m.entrega_em, a.enviada_por, a.autor_nome
+         from wakeclub.v_mensagens_painel m
+         left join wakeclub.v_mensagens_autoria a on a.mensagem_id = m.id
+        where m.lead_id = $1::uuid
+        order by m.enviada_em desc, m.criado_em desc
+        limit $2::int
+     ) recentes
+     order by enviada_em asc, criado_em asc`,
+    [leadId, limite],
+  );
+  return rows;
+}
 
 /** Leads com follow-up `aguardando_aprovacao`; `atendenteId` null = todos (admin). */
 export async function leadsComSugestao(

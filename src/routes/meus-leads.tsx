@@ -45,7 +45,9 @@ function MeusLeadsPage() {
           key={selecionado.id}
           lead={selecionado}
           queryKey={["mensagens-meu-lead", selecionado.id]}
-          carregar={() => listarMensagensDoMeuLead({ data: { leadId: selecionado.id } })}
+          carregar={(limite) =>
+            listarMensagensDoMeuLead({ data: { leadId: selecionado.id, limite } })
+          }
           onVoltar={() => void navigate({ to: "/meus-leads", search: {} })}
           ficha={<Ficha lead={selecionado} />}
         />

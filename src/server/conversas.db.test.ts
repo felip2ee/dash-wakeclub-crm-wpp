@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 
-import { leadsComSugestao, lerLinhaDoTempo } from "./conversas";
-import { comTransacao, getPoolMotor } from "./db";
+import { leadsComSugestao, lerLinhaDoTempo, lerMensagens } from "./conversas";
+import { comTransacao, getPool, getPoolMotor } from "./db";
 import { bancoTesteAtivo, criarVendedor, telefoneUnico } from "./motor/banco-teste";
 import { registrarMensagem } from "./motor/ingestao";
 
@@ -111,5 +111,45 @@ describe.skipIf(!bancoTesteAtivo)("lerLinhaDoTempo", () => {
     const { leadId } = await lead();
     const outra = await criarVendedor("Outra");
     await expect(lerLinhaDoTempo(db(), leadId, outra)).rejects.toThrow("Lead não encontrado.");
+  });
+});
+
+// scripts/banco-teste.sh só aplica migrações; as views do painel (db/painel-views.sql)
+// entram à mão no contêiner descartável. Sem elas, o teste é pulado.
+const temViewsDoPainel =
+  bancoTesteAtivo &&
+  (
+    await getPool().query<{ ok: boolean }>(
+      "select to_regclass('wakeclub.v_mensagens_painel') is not null as ok",
+    )
+  ).rows[0].ok;
+
+describe.skipIf(!temViewsDoPainel)("lerMensagens", () => {
+  test("com limite, só as mais recentes, em ordem cronológica; sem limite, todas", async () => {
+    const { leadId } = await lead();
+    const { rows } = await db().query<{ telefone: string }>(
+      "select telefone from wakeclub.leads where id = $1::uuid",
+      [leadId],
+    );
+    const base = Date.now();
+    for (const i of [1, 2, 3]) {
+      await comTransacao((c) =>
+        registrarMensagem(c, {
+          tipo: "mensagem",
+          telefone: rows[0].telefone,
+          nome: "Lead Linha",
+          daEquipe: false,
+          texto: `m${i}`,
+          tipoMidia: "texto",
+          enviadaEm: new Date(base + i * 1000).toISOString(),
+          evolutionMsgId: randomUUID(),
+        }),
+      );
+    }
+
+    const ultimas = await lerMensagens(getPool(), leadId, 2);
+    expect(ultimas.map((m) => m.texto)).toEqual(["m2", "m3"]);
+    const todas = await lerMensagens(getPool(), leadId, null);
+    expect(todas.map((m) => m.texto)).toEqual(["oi", "m1", "m2", "m3"]);
   });
 });
