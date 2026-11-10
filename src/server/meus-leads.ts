@@ -3,7 +3,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { exigirAtendente } from "./auth";
-import { type Autoria, autoria, leadsComSugestao } from "./conversas";
+import {
+  type Autoria,
+  autoria,
+  LIMITE_MENSAGENS,
+  leadsComSugestao,
+  lerMensagens,
+} from "./conversas";
 import { getPool, getPoolMotor } from "./db";
 
 export type MeuLead = {
@@ -48,16 +54,6 @@ type LinhaLead = {
   msgs_lead_sem_resposta: number | null;
 };
 
-type LinhaMensagem = {
-  id: string;
-  direcao: MensagemDoMeuLead["direcao"];
-  texto: string | null;
-  enviada_em: Date;
-  entrega_nivel: number | null;
-  enviada_por: string | null;
-  autor_nome: string | null;
-};
-
 export const listarMeusLeads = createServerFn({ method: "GET" }).handler(
   async (): Promise<MeuLead[]> => {
     const sessao = await exigirAtendente();
@@ -95,7 +91,7 @@ export const listarMeusLeads = createServerFn({ method: "GET" }).handler(
 );
 
 export const listarMensagensDoMeuLead = createServerFn({ method: "GET" })
-  .validator(z.object({ leadId: z.string().uuid() }))
+  .validator(z.object({ leadId: z.string().uuid(), limite: LIMITE_MENSAGENS }))
   .handler(async ({ data }): Promise<MensagemDoMeuLead[]> => {
     const sessao = await exigirAtendente();
     const pertence = await getPool().query<{ existe: boolean }>(
@@ -110,14 +106,7 @@ export const listarMensagensDoMeuLead = createServerFn({ method: "GET" })
 
     if (!pertence.rows[0]?.existe) throw new Error("Lead não encontrado.");
 
-    const { rows } = await getPool().query<LinhaMensagem>(
-      `select m.id, m.direcao, m.texto, m.enviada_em, m.entrega_nivel, a.enviada_por, a.autor_nome
-         from wakeclub.v_mensagens_painel m
-         left join wakeclub.v_mensagens_autoria a on a.mensagem_id = m.id
-        where m.lead_id = $1::uuid
-        order by m.enviada_em asc, m.criado_em asc`,
-      [data.leadId],
-    );
+    const rows = await lerMensagens(getPool(), data.leadId, data.limite ?? null);
 
     return rows.map((linha) => ({
       id: linha.id,

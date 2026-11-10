@@ -54,7 +54,10 @@ function InboxPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const t = setInterval(() => void router.invalidate(), RECARREGAR_A_CADA_MS);
+    // Aba em segundo plano não recarrega a lista inteira à toa.
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") void router.invalidate();
+    }, RECARREGAR_A_CADA_MS);
     return () => clearInterval(t);
   }, [router]);
 
@@ -95,7 +98,7 @@ function InboxPage() {
             key={ativa.id}
             lead={ativa}
             queryKey={["mensagens", ativa.id]}
-            carregar={() => getMensagens({ data: { leadId: ativa.id } })}
+            carregar={(limite) => getMensagens({ data: { leadId: ativa.id, limite } })}
             onVoltar={() => void navigate({ search: {}, resetScroll: false })}
             voltarNoDesktop={false}
             ficha={<DetalhesDoLead conversa={ativa} />}
